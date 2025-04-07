@@ -55,7 +55,7 @@ async def on_member_remove(member):
         channel = guild.get_channel(NOTIFY_CHANNEL_ID)
 
         if channel and notify_role:
-            notifiyembed = discord.Embed(
+            notifyembed = discord.Embed(
                 title="🚨 Possible Deserter!",
                 description=f"`{member.mention}` with the role **{role.mention}** has left the server.",
                 color=discord.Color.red()
