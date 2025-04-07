@@ -8,8 +8,11 @@ ROBLOX_API_URL = "https://api.roblox.com/users/"
 
 async def sc(ctx, user_id: int):
     try:
-        user_url = f"{ROBLOX_API_URL}{user_id}"
-        user_data = requests.get(user_url).json()
+        await ctx.trigger_typing()  # Show "bot is typing"
+        user_data = requests.get(f"{ROBLOX_API_URL}{user_id}", timeout=10).json()
+        ...
+    except requests.exceptions.Timeout:
+        await ctx.send("⏳ API timed out. Try again later.")
 
         if user_data.get("errorMessage"):
             await ctx.send(f"Error: {user_data['errorMessage']}")
