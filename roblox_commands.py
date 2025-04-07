@@ -9,7 +9,7 @@ ROBLOX_API_URL = "https://api.roblox.com/users/"
 
 # Command to check Roblox user stats
 @commands.command()  # <- This is necessary for defining a bot command
-async def roblox_user(ctx, user_id: int):
+async def sc(ctx, user_id: int):
     # Fetch the user's data from Roblox API
     user_url = f"{ROBLOX_API_URL}{user_id}"
     user_data = requests.get(user_url).json()
