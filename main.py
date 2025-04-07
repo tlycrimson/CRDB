@@ -63,7 +63,7 @@ async def on_member_remove(member):
 
             await channel.send(
                 content=f"{notify_role.mention}",
-                embed=notifyembed
+                embed=notifyembed)
 
             
 bot.run(TOKEN)
