@@ -14,8 +14,9 @@ intents.guilds = True
 # BOT INSTANCE
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Load the roblox_commands extension synchronously
-bot.load_extension("roblox_commands")
+# SECURITY CHECK COMMAND
+from roblox_commands import sc
+bot.add_command(sc)
 
 # VERIFICATION THAT BOT IS ONLINE
 @bot.event
