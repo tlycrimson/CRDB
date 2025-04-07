@@ -1,7 +1,10 @@
-# bot.py
+# main.py
 import os
 import discord
 from discord.ext import commands
+
+#TOKEN
+TOKEN = os.getenv('DISCORD_TOKEN')
 
 #
 # INTENTS
