@@ -29,7 +29,10 @@ async def on_ready():
 #    
 # SECURITY CHECK
 #
-bot.add_command(roblox_user)
+@bot.command()
+async def roblox_user(ctx, user_id: int):
+    # function code here
+
 
 #
 # Ping Pong command
