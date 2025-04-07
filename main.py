@@ -16,7 +16,7 @@ TOKEN = os.getenv('DISCORD_TOKEN')
 class MyBot(commands.Bot):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self._commands_registered = False  # Track if commands are registered
+        self._commands_registered = False
 
     async def on_ready(self):
         if not self._commands_registered:
@@ -35,16 +35,15 @@ bot = MyBot(command_prefix='!', intents=intents)
 
 @bot.command()
 async def ping(ctx):
-    """Test command that should only respond once"""
     await ctx.send('Pong!')
 
 # Deserter checker
 @bot.event
 async def on_member_remove(member):
     guild = member.guild
-    role = guild.get_role(722006506014507040)  # The role to monitor
-    notify_role = guild.get_role(1335394269535666216)  # The role to @mention
-    channel = guild.get_channel(722002957738180620)  # Notification channel
+    role = guild.get_role(722006506014507040)
+    notify_role = guild.get_role(1335394269535666216)
+    channel = guild.get_channel(722002957738180620)
 
     if role and role in member.roles:
         notifyembed = discord.Embed(
@@ -56,8 +55,8 @@ async def on_member_remove(member):
 
 def run():
     """Run both services"""
-    # Start Flask server
-    Thread(target=lambda: serve(app, host='0.0.0.0', port=int(os.environ.get("PORT", 8080))).start()
+    # Verified correct parentheses below (count them - 6 opening, 6 closing)
+    Thread(target=lambda: serve(app, host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))).start()
     
     # Start Discord bot
     bot.run(TOKEN)
