@@ -1,6 +1,8 @@
 # main.py
 import os
 import discord
+import requests
+from datetime import datetime
 from discord.ext import commands
 
 #TOKEN
@@ -14,7 +16,7 @@ intents.message_content = True
 intents.members = True
 intents.guilds = True
 
-bot = commands.Bot(command_prefix='rb!ping', intents=intents)
+bot = commands.Bot(command_prefix='rb!', intents=intents)
 
 #
 # VERIFICATION THAT BOT IS ONLINE
@@ -23,7 +25,10 @@ bot = commands.Bot(command_prefix='rb!ping', intents=intents)
 async def on_ready():
     print(f'Logged in as {bot.user}!')
 
-
+#    
+# SECURITY CHECK
+#
+bot.add_command(roblox_user)
 
 #
 # Ping Pong command
