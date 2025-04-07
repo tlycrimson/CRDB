@@ -4,7 +4,7 @@ import discord
 import requests
 from datetime import datetime
 from discord.ext import commands
-from roblox_commands import roblox_user
+from roblox_commands import sc
 
 #TOKEN
 TOKEN = os.getenv('DISCORD_TOKEN')
