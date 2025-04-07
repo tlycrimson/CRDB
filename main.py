@@ -14,19 +14,13 @@ intents.guilds = True
 # BOT INSTANCE
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Load the roblox_commands extension asynchronously
-async def load_extensions():
-    try:
-        await bot.load_extension("roblox_commands")
-        print("roblox_commands extension loaded successfully.")
-    except Exception as e:
-        print(f"Error loading extension: {e}")
+# Load the roblox_commands extension synchronously
+bot.load_extension("roblox_commands")
 
 # VERIFICATION THAT BOT IS ONLINE
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}!')
-    await load_extensions()  # Call the load_extension inside the on_ready event
 
 # Ping Pong command
 @bot.command()
