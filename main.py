@@ -14,13 +14,17 @@ def health():
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 class MyBot(commands.Bot):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._commands_registered = False  # Track if commands are registered
+
     async def on_ready(self):
+        if not self._commands_registered:
+            from roblox_commands import sc
+            self.add_command(sc)
+            self._commands_registered = True
         print(f'Logged in as {self.user}!')
         await self.change_presence(activity=discord.Game(name="Monitoring Deserters"))
-
-    async def setup_hook(self):
-        from roblox_commands import sc
-        self.add_command(sc)
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -31,6 +35,7 @@ bot = MyBot(command_prefix='!', intents=intents)
 
 @bot.command()
 async def ping(ctx):
+    """Test command that should only respond once"""
     await ctx.send('Pong!')
 
 # Deserter checker
@@ -51,8 +56,8 @@ async def on_member_remove(member):
 
 def run():
     """Run both services"""
-    # CORRECTED LINE - Properly closed parentheses
-    Thread(target=lambda: serve(app, host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))).start()
+    # Start Flask server
+    Thread(target=lambda: serve(app, host='0.0.0.0', port=int(os.environ.get("PORT", 8080))).start()
     
     # Start Discord bot
     bot.run(TOKEN)
