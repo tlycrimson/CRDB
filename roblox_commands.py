@@ -1,25 +1,49 @@
 import discord
 import requests
+import socket
+import requests
 from datetime import datetime
 from discord.ext import commands
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 
+
 ROBLOX_API_URL = "https://api.roblox.com/users/"
 
-# Configure retries for Heroku's flaky network
+# Force IPv4 resolution (Heroku-specific fix)
 session = requests.Session()
-retries = Retry(
-    total=3,
-    backoff_factor=1,
-    status_forcelist=[500, 502, 503, 504]
-)
-session.mount('https://', HTTPAdapter(max_retries=retries))
+session.mount('https://', HTTPAdapter(
+    max_retries=Retry(
+        total=3,
+        backoff_factor=1,
+        status_forcelist=[500, 502, 503, 504]
+    )
+))
+
+# Explicit DNS resolution
+def resolve_roblox_api():
+    try:
+        # Get all IPs for the domain
+        ips = socket.getaddrinfo('api.roblox.com', 443)
+        # Force IPv4 by using the first IPv4 address found
+        for ip in ips:
+            if ip[0] == socket.AF_INET:  # IPv4
+                return f"https://{ip[4][0]}/users/"
+        return ROBLOX_API_URL
+    except:
+        return ROBLOX_API_URL
 
 @commands.command(name="sc")
 async def sc(ctx, user_id: int):
     try:
-        async with ctx.typing():  # Shows "bot is typing"
+        async with ctx.typing():
+            # Use resolved URL or fallback
+            api_url = resolve_roblox_api()
+            response = session.get(
+                f"{api_url}{user_id}",
+                timeout=10,
+                headers={'User-Agent': 'Mozilla/5.0'}
+            ) # Shows "bot is typing"
             # Fetch user data with retries
             user_url = f"{ROBLOX_API_URL}{user_id}"
             user_data = session.get(user_url, timeout=10).json()
