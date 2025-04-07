@@ -1,14 +1,23 @@
 import os
+import threading
 import discord
 from discord.ext import commands
-
 from flask import Flask
+
+# Initialize Flask app for health checks
 app = Flask(__name__)
 
 @app.route('/health')
 def health():
     return "OK", 200
 
+def run_flask():
+    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
+
+# Start Flask in a separate thread
+threading.Thread(target=run_flask, daemon=True).start()
+
+# Discord bot setup
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 intents = discord.Intents.default()
@@ -25,6 +34,7 @@ bot.add_command(sc)
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}!')
+    await bot.change_presence(activity=discord.Game(name="Monitoring Deserters"))
 
 @bot.command()
 async def ping(ctx):
@@ -51,10 +61,9 @@ async def on_member_remove(member):
                 description=f"{member.mention} with the {role.mention} role has left the server.",
                 color=discord.Color.red()
             )
-
             await channel.send(
                 content=f"{notify_role.mention}",
                 embed=notifyembed)
 
-# Run the bot with the token
+# Run the bot
 bot.run(TOKEN)
