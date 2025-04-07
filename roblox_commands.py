@@ -1,113 +1,121 @@
 import discord
-import socket
 import requests
 import json
 from datetime import datetime
 from discord.ext import commands
 from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
+import asyncio
 
-# Configuration
-USER_AGENT = "RMPBot/1.0 (+https://github.com/tlycrimson/RMP-Discord-Bot)"
-GROUP_IDS = [32578828, 4219097]
+# Configuration - Updated for Render compatibility
+USER_AGENT = "RMPBot/2.0 (+https://github.com/tlycrimson/RMP-Discord-Bot)"
+GROUP_IDS = [32578828, 4219097]  # Your Roblox group IDs
+TIMEOUT = 15  # Increased timeout for Render's network
 
-# Known Roblox API IPs (update these periodically)
-ROBLOX_IPS = [
-    "172.253.118.95",  # Primary
-    "142.250.190.46",  # Secondary
-    "api.roblox.com"   # Official domain as last resort
+# Official Roblox API endpoints (prioritized)
+ROBLOX_ENDPOINTS = [
+    "https://users.roblox.com",  # Primary
+    "https://api.roblox.com",    # Legacy
+    "https://groups.roblox.com"  # Fallback
 ]
 
 def create_session():
-    """Configure requests session with retries"""
+    """Optimized session for Render's environment"""
     session = requests.Session()
     retry_strategy = Retry(
-        total=2,  # Fewer retries since we're trying multiple IPs
+        total=3,
         backoff_factor=1,
-        status_forcelist=[500, 502, 503, 504]
+        status_forcelist=[408, 429, 500, 502, 503, 504]
     )
-    adapter = HTTPAdapter(max_retries=retry_strategy)
+    adapter = HTTPAdapter(
+        max_retries=retry_strategy,
+        pool_maxsize=20,  # Better for concurrent requests
+        pool_block=True
+    )
     session.mount('https://', adapter)
-    session.mount('http://', adapter)
-    session.verify = False  # Required for IP direct access
+    session.headers.update({
+        "User-Agent": USER_AGENT,
+        "Accept": "application/json",
+        "Connection": "keep-alive"
+    })
     return session
 
-async def try_fetch(session, user_id, ip):
-    """Attempt to fetch data using a specific IP/domain"""
-    base_url = f"https://{ip}" if ip not in ["api.roblox.com"] else f"https://{ip}"
-    headers = {
-        "Host": "api.roblox.com",
-        "User-Agent": USER_AGENT,
-        "Accept": "application/json"
-    }
-    
+async def fetch_roblox_data(session, endpoint, user_id, path=""):
+    """Unified data fetcher with proper error handling"""
+    url = f"{endpoint}/v1/users/{user_id}{path}"
     try:
-        # Try user endpoint
-        user_url = f"{base_url}/users/{user_id}"
-        response = session.get(user_url, headers=headers, timeout=10)
+        response = await asyncio.to_thread(
+            session.get, 
+            url, 
+            timeout=TIMEOUT
+        )
         response.raise_for_status()
-        user_data = response.json()
-        
-        # Try badges endpoint to confirm full API access
-        badges_url = f"{base_url}/users/{user_id}/badges"
-        session.get(badges_url, headers=headers, timeout=5)
-        
-        return user_data
+        return response.json()
     except Exception as e:
-        print(f"[FAILOVER] Failed with {ip}: {str(e)}")
+        print(f"[API ERROR] {endpoint}{path}: {str(e)}")
         return None
 
 @commands.command(name="sc")
 async def sc(ctx, user_id: int):
-    """Fetch and display Roblox user info"""
+    """Optimized Roblox user lookup command"""
     try:
         async with ctx.typing():
             session = create_session()
-            user_data = None
             
-            # Try all available IPs/domains
-            for ip in ROBLOX_IPS:
-                user_data = await try_fetch(session, user_id, ip)
+            # Try all endpoints for basic user data
+            user_data = None
+            for endpoint in ROBLOX_ENDPOINTS:
+                user_data = await fetch_roblox_data(session, endpoint, user_id)
                 if user_data:
                     break
             
             if not user_data:
-                return await ctx.send("❌ Roblox API is currently unreachable. Please try again later.")
+                return await ctx.send("🔴 Roblox API unavailable. Try again later.")
 
-            # Process data
-            username = user_data["username"]
-            created_at = datetime.strptime(user_data["created"], "%Y-%m-%dT%H:%M:%S.%fZ")
-            account_age = (datetime.utcnow() - created_at).days // 365
+            # Process core data
+            username = user_data.get("name", user_data.get("username", "Unknown"))
+            created = user_data.get("created", user_data.get("joinDate"))
+            created_at = datetime.strptime(created, "%Y-%m-%dT%H:%M:%S.%fZ") if created else None
+            account_age = (datetime.utcnow() - created_at).days // 365 if created_at else "Unknown"
 
-            # Fetch badges
-            badges_url = f"https://{ROBLOX_IPS[0]}/users/{user_id}/badges"
-            badges_data = (await try_fetch(session, user_id, ROBLOX_IPS[0])) or []
-            total_badges = len(badges_data) if isinstance(badges_data, list) else 0
-            free_badges = [b for b in badges_data if isinstance(badges_data, list) and b.get("isFree")]
+            # Parallel fetching for badges and groups
+            tasks = []
+            for endpoint in ROBLOX_ENDPOINTS[:2]:  # Only check first two endpoints
+                tasks.append(fetch_roblox_data(session, endpoint, user_id, "/badges"))
+                for group_id in GROUP_IDS:
+                    tasks.append(fetch_roblox_data(session, endpoint, user_id, f"/groups/{group_id}"))
+            
+            results = await asyncio.gather(*tasks, return_exceptions=True)
+            
+            # Process badges
+            badges = [r for r in results if isinstance(r, list)]
+            total_badges = len(badges[0]) if badges else 0
+            free_badges = sum(1 for b in (badges[0] if badges else []) if b.get("isFree", False))
 
-            # Check groups
+            # Process groups
             groups = []
-            for group_id in GROUP_IDS:
-                group_url = f"https://{ROBLOX_IPS[0]}/users/{user_id}/groups/{group_id}"
-                group_data = session.get(group_url, headers={"Host": "api.roblox.com"}, timeout=5).json()
-                if group_data and group_data.get("success"):
+            for i, group_id in enumerate(GROUP_IDS, start=2):  # Skip badge results
+                group_data = results[i] if i < len(results) else None
+                if group_data and group_data.get("role"):
                     groups.append(str(group_id))
 
-            # Build embed
+            # Build optimized embed
             embed = discord.Embed(
-                title=f"Roblox User: {username}",
-                color=discord.Color.blue()
+                title=f"🔍 Roblox Profile: {username}",
+                color=0x00b0f4,
+                url=f"https://www.roblox.com/users/{user_id}/profile"
             )
-            embed.add_field(name="Account Age", value=f"{account_age} years", inline=False)
-            embed.add_field(name="Total Badges", value=total_badges, inline=False)
-            embed.add_field(name="Free Badges", value=len(free_badges), inline=False)
-            embed.add_field(name="Groups", value=", ".join(groups) if groups else "None", inline=False)
-            
+            embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}")
+            embed.add_field(name="📅 Account Age", value=f"{account_age} years" if isinstance(account_age, int) else account_age)
+            embed.add_field(name="🎖️ Badges", value=f"{total_badges} (Free: {free_badges})")
+            embed.add_field(name="👥 Groups", value=", ".join(groups) if groups else "None", inline=False)
+            embed.set_footer(text=f"User ID: {user_id} | Requested by {ctx.author.display_name}")
+
             await ctx.send(embed=embed)
 
     except Exception as e:
-        print(f"[FATAL ERROR] {type(e).__name__}: {str(e)}")
-        await ctx.send("❌ Service error. Contact bot administrator.")
+        print(f"[COMMAND ERROR] SC: {type(e).__name__}: {str(e)}")
+        await ctx.send("⚠️ Service temporarily unavailable. Please try again in a minute.")
 
 def setup(bot):
     bot.add_command(sc)
