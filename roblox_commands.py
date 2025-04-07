@@ -2,6 +2,7 @@
 import discord
 import requests
 from datetime import datetime
+from discord.ext import commands
 
 # The Roblox user info API
 ROBLOX_API_URL = "https://api.roblox.com/users/"
