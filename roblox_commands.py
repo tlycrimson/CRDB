@@ -6,6 +6,7 @@ from discord.ext import commands
 
 ROBLOX_API_URL = "https://api.roblox.com/users/"
 
+@commands.command(name="sc")
 async def sc(ctx, user_id: int):
     try:
         await ctx.trigger_typing()  # Show "bot is typing"
