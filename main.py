@@ -51,8 +51,8 @@ async def on_member_remove(member):
 
 def run():
     """Run both services"""
-    # Start Flask server in a separate thread
-    Thread(target=lambda: serve(app, host='0.0.0.0', port=int(os.environ.get("PORT", 8080))).start()
+    # CORRECTED LINE - Properly closed parentheses
+    Thread(target=lambda: serve(app, host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))).start()
     
     # Start Discord bot
     bot.run(TOKEN)
