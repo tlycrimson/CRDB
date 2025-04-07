@@ -26,11 +26,14 @@ bot = commands.Bot(command_prefix='rb!', intents=intents)
 async def on_ready():
     print(f'Logged in as {bot.user}!')
 
+#
+# SECURITY CHECK
+#
+# The roblox_user function is now imported from roblox_commands.py, no need to define it here again.
 
 #
 # Ping Pong command
 #
-
 @bot.command()
 async def ping(ctx):
     await ctx.send('Pong!')
@@ -38,7 +41,6 @@ async def ping(ctx):
 #
 # ACTIVELY CHECKS FOR DESERTERS
 #
-
 # IDs for monitoring and notification
 ROLE_ID_TO_MONITOR = 722006506014507040  # The role to monitor
 NOTIFY_ROLE_ID = 1335394269535666216     # The role to @mention
