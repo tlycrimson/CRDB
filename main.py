@@ -2,28 +2,23 @@ import os
 import discord
 from discord.ext import commands
 
-# Get TOKEN from environment variable
 TOKEN = os.getenv('DISCORD_TOKEN')
 
-# INTENTS
 intents = discord.Intents.default()
 intents.message_content = True
 intents.members = True
 intents.guilds = True
 
-# BOT INSTANCE
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# SECURITY CHECK COMMAND
+# Load commands directly (no extension system for simplicity)
 from roblox_commands import sc
 bot.add_command(sc)
 
-# VERIFICATION THAT BOT IS ONLINE
 @bot.event
 async def on_ready():
     print(f'Logged in as {bot.user}!')
 
-# Ping Pong command
 @bot.command()
 async def ping(ctx):
     await ctx.send('Pong!')
