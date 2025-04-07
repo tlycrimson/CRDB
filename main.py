@@ -52,8 +52,15 @@ async def on_member_remove(member):
         channel = guild.get_channel(NOTIFY_CHANNEL_ID)
 
         if channel and notify_role:
-            await channel.send(
-                f":bell: A member with the role **{role.name}** has left the server: `{member}`\n{notify_role.mention}"
+            embed = discord.Embed(
+                title="🚨 Member Left!",
+                description=f"`{member}` with the role **{role.name}** has left the server.",
+                color=discord.Color.red()
             )
+            embed.add_field(name="Notify", value=notify_role.mention, inline=False)
+            embed.set_footer(text="Stay alert!")
+
+            await channel.send(embed=embed)
+
             
 bot.run(TOKEN)
