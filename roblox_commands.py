@@ -9,7 +9,7 @@ from urllib3.util.retry import Retry
 
 
 ROBLOX_IP = "172.253.118.95"  # api.roblox.com's current IPv4 (Google DNS)
-ROBLOX_API_URL = f"https://{ROBLOX_IP}/users/"
+ROBLOX_API_URL = f"https://{ROBLOX_IP}/users"
 
 HEADERS = {
     "Host": "api.roblox.com",  # Trick the server
