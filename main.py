@@ -29,7 +29,7 @@ async def on_ready():
 #
 # SECURITY CHECK
 #
-# The roblox_user function is now imported from roblox_commands.py, no need to define it here again.
+bot.add_command(sc)
 
 #
 # Ping Pong command
