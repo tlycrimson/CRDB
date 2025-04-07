@@ -1,7 +1,12 @@
+# roblox_commands.py
+import discord
+import requests
+from datetime import datetime
+
 # The Roblox user info API
 ROBLOX_API_URL = "https://api.roblox.com/users/"
 
-# Command to check Roblox user stats
+@commands.command()
 async def roblox_user(ctx, user_id: int):
     # Fetch the user's data from Roblox API
     user_url = f"{ROBLOX_API_URL}{user_id}"
