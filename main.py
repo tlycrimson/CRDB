@@ -26,13 +26,6 @@ bot = commands.Bot(command_prefix='rb!', intents=intents)
 async def on_ready():
     print(f'Logged in as {bot.user}!')
 
-#    
-# SECURITY CHECK
-#
-@bot.command()
-async def roblox_user(ctx, user_id: int):
-    # function code here
-
 
 #
 # Ping Pong command
