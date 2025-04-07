@@ -1,14 +1,13 @@
-# roblox_commands.py
 import discord
 import requests
 from datetime import datetime
-from discord.ext import commands
+from discord.ext import commands  # <- Import commands
 
 # The Roblox user info API
 ROBLOX_API_URL = "https://api.roblox.com/users/"
 
 # Command to check Roblox user stats
-@commands.command()
+@commands.command()  # <- This is necessary for defining a bot command
 async def sc(ctx, user_id: int):
     # Fetch the user's data from Roblox API
     user_url = f"{ROBLOX_API_URL}{user_id}"
@@ -55,6 +54,5 @@ async def sc(ctx, user_id: int):
     # Send the embed
     await ctx.send(embed=embed)
 
-# Setup function to add the command to the bot
 def setup(bot):
-    bot.add_command(sc)
+    bot.add_command(sc)  # Make sure the command is added correctly
