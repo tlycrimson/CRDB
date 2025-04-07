@@ -102,13 +102,13 @@ async def sc(ctx, user_id: int):
             # Build optimized embed
             embed = discord.Embed(
                 title=f"🔍 Roblox Profile: {username}",
-                color=0x00b0f4,
+                color=0xb44e4e,
                 url=f"https://www.roblox.com/users/{user_id}/profile"
             )
             embed.set_thumbnail(url=f"https://www.roblox.com/headshot-thumbnail/image?userId={user_id}")
             embed.add_field(name="📅 Account Age", value=f"{account_age} years" if isinstance(account_age, int) else account_age)
             embed.add_field(name="🎖️ Badges", value=f"{total_badges} (Free: {free_badges})")
-            embed.add_field(name="👥 Groups", value=", ".join(groups) if groups else "None", inline=False)
+            embed.add_field(name="👥 Banned Groups", value=", ".join(groups) if groups else "None", inline=False)
             embed.set_footer(text=f"User ID: {user_id} | Requested by {ctx.author.display_name}")
 
             await ctx.send(embed=embed)
