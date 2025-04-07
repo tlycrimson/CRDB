@@ -14,8 +14,12 @@ intents.guilds = True
 # BOT INSTANCE
 bot = commands.Bot(command_prefix='!', intents=intents)
 
-# Load the roblox_commands extension
-bot.load_extension("roblox_commands")
+# Load the roblox_commands extension with error handling
+try:
+    bot.load_extension("roblox_commands")
+    print("roblox_commands extension loaded successfully.")
+except Exception as e:
+    print(f"Error loading extension: {e}")
 
 # VERIFICATION THAT BOT IS ONLINE
 @bot.event
