@@ -42,6 +42,9 @@ ROLE_ID_TO_MONITOR = 722006506014507040  # The role to monitor
 NOTIFY_ROLE_ID = 1335394269535666216     # The role to @mention
 NOTIFY_CHANNEL_ID = 722002957738180620  # The channel to send the notification
 
+#
+# DESERTER CHECKER
+#
 @bot.event
 async def on_member_remove(member):
     guild = member.guild
@@ -52,15 +55,15 @@ async def on_member_remove(member):
         channel = guild.get_channel(NOTIFY_CHANNEL_ID)
 
         if channel and notify_role:
-            embed = discord.Embed(
-                title="🚨 Member Left!",
-                description=f"`{member}` with the role **{role.name}** has left the server.",
+            notifiyembed = discord.Embed(
+                title="🚨 Possible Deserter!",
+                description=f"`{member.mention}` with the role **{role.mention}** has left the server.",
                 color=discord.Color.red()
             )
-            embed.add_field(name="Notify", value=notify_role.mention, inline=False)
-            embed.set_footer(text="Stay alert!")
 
-            await channel.send(embed=embed)
+            await channel.send(
+                content=f"{notify_role.mention}",
+                embed=notifyembed
 
             
 bot.run(TOKEN)
