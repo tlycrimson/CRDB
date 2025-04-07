@@ -2,6 +2,21 @@ import os
 import discord
 from discord.ext import commands
 
+from flask import Flask
+import threading
+
+# Health check server
+server = Flask(__name__)
+@server.route('/')
+def home():
+    return "Bot is running", 200
+
+def run_web():
+    server.run(host="0.0.0.0", port=8080)
+
+# Start web server in a thread
+threading.Thread(target=run_web).start()
+
 TOKEN = os.getenv('DISCORD_TOKEN')
 
 intents = discord.Intents.default()
