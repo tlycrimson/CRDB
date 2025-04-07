@@ -101,7 +101,7 @@ async def sc(ctx, user_id: int):
 
             # Build optimized embed
             embed = discord.Embed(
-                title=f"🔍 Roblox Profile: {username}",
+                title=f"{username}",
                 color=0xb44e4e,
                 url=f"https://www.roblox.com/users/{user_id}/profile"
             )
