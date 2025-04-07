@@ -17,7 +17,7 @@ intents.message_content = True
 intents.members = True
 intents.guilds = True
 
-bot = commands.Bot(command_prefix='rb!', intents=intents)
+bot = commands.Bot(command_prefix='!', intents=intents)
 
 #
 # VERIFICATION THAT BOT IS ONLINE
