@@ -9,7 +9,7 @@ ROBLOX_API_URL = "https://api.roblox.com/users/"
 @commands.command(name="sc")
 async def sc(ctx, user_id: int):
     try:
-        await ctx.trigger_typing()  # Show "bot is typing"
+        async with ctx.typing():   # Show "bot is typing"
         user_data = requests.get(f"{ROBLOX_API_URL}{user_id}", timeout=10).json()
         ...
     except requests.exceptions.Timeout:
