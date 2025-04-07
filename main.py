@@ -57,7 +57,7 @@ async def on_member_remove(member):
         if channel and notify_role:
             notifyembed = discord.Embed(
                 title="🚨 Possible Deserter!",
-                description=f"`{member.mention}` with the role **{role.mention}** has left the server.",
+                description=f"{member.mention} with the {role.mention} role has left the server.",
                 color=discord.Color.red()
             )
 
