@@ -11,12 +11,6 @@ app = Flask(__name__)
 def health():
     return "OK", 200
 
-def run_flask():
-    app.run(host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
-
-# Start Flask in a separate thread
-threading.Thread(target=run_flask, daemon=True).start()
-
 # Discord bot setup
 TOKEN = os.getenv('DISCORD_TOKEN')
 
