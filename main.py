@@ -56,4 +56,13 @@ async def on_member_remove(member):
 
 def run_flask():
     """Run production WSGI server"""
-    serve(app, host='0.0.0.0', port=int(os.environ.get("PORT
+    serve(app, host='0.0.0.0', port=int(os.environ.get("PORT", 8080)))
+
+if __name__ == '__main__':
+    # Start Flask in production mode
+    import threading
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    
+    # Start Discord bot
+    bot.run(TOKEN)
