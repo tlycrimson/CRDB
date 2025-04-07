@@ -54,3 +54,6 @@ async def sc(ctx, user_id: int):
     
     # Send the embed
     await ctx.send(embed=embed)
+
+def setup(bot):
+    bot.add_command(sc)
