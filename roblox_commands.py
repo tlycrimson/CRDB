@@ -111,8 +111,6 @@ async def sc(ctx: commands.Context, user_id: int):
         rate_limiter = ctx.bot.rate_limiter
         await rate_limiter.wait_if_needed()
         
-    """Optimized Roblox user checker with British Army rank"""
-    try:
         async with ctx.typing(), aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT) as session:
             # Prepare all API endpoints
             urls = {
@@ -127,7 +125,7 @@ async def sc(ctx: commands.Context, user_id: int):
                 'profile': fetch_with_cache(session, urls['profile']),
                 'groups': fetch_with_cache(session, urls['groups']),
                 'friends': fetch_with_cache(session, urls['friends']),
-                'avatar': fetch_with_cache(session, urlFs['avatar']),
+                'avatar': fetch_with_cache(session, urls['avatar']),
                 'badges': fetch_badge_count(session, user_id),
                 'rank': fetch_group_rank(session, user_id)
             }
@@ -182,7 +180,7 @@ async def sc(ctx: commands.Context, user_id: int):
                     if group and group['group']['id'] in BGROUP_IDS
                 ]
             
-                        # Build improved embed
+            # Build improved embed
             emoji_map = {
                 "age": "📅",
                 "friends": "👥",
@@ -213,9 +211,7 @@ async def sc(ctx: commands.Context, user_id: int):
                 if name == 'badges':
                     warning = "\n⚠️ Badges may be private or user has none"
                 elif metric['percentage'] >= 100 and metric['value'] < REQUIREMENTS['badges']:
-                    warning = "\n ⚠️ Requirement may have changed"
-                if REQUIREMENTS['badges'] <= 0:
-                    warning = "\n ⚠️ Badge requirement not set"
+                    warning = "\n⚠️ Requirement may have changed"
 
                 embed.add_field(
                     name=f"{emoji} {name.capitalize()} {status_icon}",
@@ -235,11 +231,10 @@ async def sc(ctx: commands.Context, user_id: int):
             else:
                 embed.add_field(
                     name="✅",
-                    value=" User is not in any banned groups or main regiments.",
+                    value="User is not in any banned groups or main regiments.",
                     inline=True
                 )
             
-
             embed.set_author(
                 name=f"Roblox User Check • {username}",
                 icon_url=ctx.author.avatar.url if ctx.author.avatar else discord.Embed.Empty
@@ -254,10 +249,6 @@ async def sc(ctx: commands.Context, user_id: int):
             description="Failed to process request. The user may have private settings.",
             color=discord.Color.red()
         ))
-        
- except Exception as e:
-        # Errors will be caught by the global handler
-        raise
 
 def setup(bot):
     bot.add_command(sc)
