@@ -1,9 +1,11 @@
 import os
+import time
+import asyncio
 from decorators import has_allowed_role, min_rank_required
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
-from flask import Flask
+from flask import Flask, request
 
 class RateLimiter:
     def __init__(self, calls_per_minute=50):
@@ -231,11 +233,10 @@ async def on_command_error(ctx, error):
             await ctx.send(f"⚠️ Rate limited. Please wait {retry_after} seconds before trying again.")
             return
             
+    if isinstance(error, commands.CheckFailure):
+        return
+        
     await ctx.send(f"⚠️ An error occurred: `{error}`")
-@bot.event
-async def on_command_error(ctx, error):
-    if not isinstance(error, commands.CheckFailure):
-        await ctx.send(f"⚠️ An error occurred: `{error}`")
 
 @bot.event
 async def on_member_remove(member):
@@ -244,7 +245,7 @@ async def on_member_remove(member):
     notify_role = guild.get_role(ALLOWED_ROLE_ID)
     alert_channel = guild.get_channel(DESERTER_ALERT_CHANNEL_ID)
 
-    if deserter_role in member.roles:
+    if deserter_role and deserter_role in member.roles and notify_role and alert_channel:
         embed = discord.Embed(
             title="🚨 Deserter Alert",
             description=f"{member.mention} with role {deserter_role.mention} left the server!",
@@ -253,12 +254,32 @@ async def on_member_remove(member):
         await alert_channel.send(notify_role.mention, embed=embed)
 
 app = Flask(__name__)
+keep_alive = True
 
 @app.route('/')
 def home():
     return "Bot is running", 200
 
+@app.route('/shutdown', methods=['POST'])
+def shutdown():
+    global keep_alive
+    keep_alive = False
+    return "Shutting down...", 200
+
+def run_flask():
+    while keep_alive:
+        try:
+            app.run(host='0.0.0.0', port=8080)
+        except Exception as e:
+            print(f"Flask error: {e}")
+            time.sleep(5)
+
 if __name__ == '__main__':
-    import threading
-    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=8080)).start()
-    bot.run(TOKEN)
+    flask_thread = threading.Thread(target=run_flask)
+    flask_thread.daemon = True
+    flask_thread.start()
+    
+    try:
+        bot.run(TOKEN)
+    finally:
+        keep_alive = False
