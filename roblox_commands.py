@@ -13,7 +13,7 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 BGROUP_IDS = {32578828, 4219097, 6447250, 4973512, 14286518, 32014700, 15229694, 15224554, 14557406, 14609194, 5029915}  # Using set for faster lookups
 BRITISH_ARMY_GROUP_ID = 4972535
 TIMEOUT = aiohttp.ClientTimeout(total=10)
-REQUIREMENTS = {'age': 150, 'friends': 8, 'groups': 10, 'badges': 5}
+REQUIREMENTS = {'age': 90, 'friends': 8, 'groups': 10, 'badges': 150}
 CACHE = {}  # Simple in-memory cache
 CACHE_TTL = 300  # 5 minutes cache duration
 
@@ -56,25 +56,51 @@ async def fetch_group_rank(session: aiohttp.ClientSession, user_id: int) -> str:
     return 'Not in Group'
 
 async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int:
-    """Optimized badge count fetching with multiple fallbacks"""
-    # Try modern API first
-    modern_url = f"https://badges.roblox.com/v1/users/{user_id}/badges?limit=100&sortOrder=Asc"
-    modern_data = await fetch_with_cache(session, modern_url)
-    
-    if modern_data:
-        if "total" in modern_data:
-            return modern_data["total"]
-        elif "data" in modern_data:
-            return len(modern_data["data"])
-    
-    # Fallback to inventory API
-    inventory_url = f"https://inventory.roblox.com/v1/users/{user_id}/items/Collectible/1?limit=100"
-    inventory_data = await fetch_with_cache(session, inventory_url)
-    
-    if inventory_data and "data" in inventory_data:
-        return len(inventory_data["data"])
-    
-    return 0
+    """Reliable badge count fetcher with multiple verification methods"""
+    try:
+        # Primary method - Modern badges API with pagination
+        badge_count = 0
+        cursor = ""
+        
+        while True:
+            url = f"https://badges.roblox.com/v1/users/{user_id}/badges?limit=100&sortOrder=Asc"
+            if cursor:
+                url += f"&cursor={cursor}"
+                
+            data = await fetch_with_cache(session, url)
+            
+            if not data or "data" not in data:
+                break
+                
+            badge_count += len(data["data"])
+            
+            if not data.get("nextPageCursor"):
+                break
+                
+            cursor = data["nextPageCursor"]
+            
+        if badge_count > 0:
+            return badge_count
+            
+        # Fallback method - Inventory API for collectibles
+        inventory_url = f"https://inventory.roblox.com/v1/users/{user_id}/items/Collectible/1?limit=100"
+        inventory_data = await fetch_with_cache(session, inventory_url)
+        
+        if inventory_data and "data" in inventory_data:
+            return len(inventory_data["data"])
+            
+        # Final fallback - Legacy API
+        legacy_url = f"https://api.roblox.com/users/{user_id}/badges"
+        legacy_data = await fetch_with_cache(session, legacy_url)
+        
+        if legacy_data and isinstance(legacy_data, list):
+            return len(legacy_data)
+            
+        return 0
+        
+    except Exception as e:
+        print(f"[BADGE COUNT ERROR] {e}")
+        return 0
 
 @has_allowed_role()
 @commands.command(name="sc")
@@ -95,7 +121,7 @@ async def sc(ctx: commands.Context, user_id: int):
                 'profile': fetch_with_cache(session, urls['profile']),
                 'groups': fetch_with_cache(session, urls['groups']),
                 'friends': fetch_with_cache(session, urls['friends']),
-                'avatar': fetch_with_cache(session, urls['avatar']),
+                'avatar': fetch_with_cache(session, urlFs['avatar']),
                 'badges': fetch_badge_count(session, user_id),
                 'rank': fetch_group_rank(session, user_id)
             }
@@ -136,7 +162,7 @@ async def sc(ctx: commands.Context, user_id: int):
                 },
                 'badges': {
                     'value': badge_count,
-                    'percentage': min(100, (badge_count / REQUIREMENTS['badges']) * 100),
+                    'percentage': min(100, (badge_count / max(1, REQUIREMENTS['badges'])) * 100),
                     'meets_req': badge_count >= REQUIREMENTS['badges']
                 }
             }
@@ -178,8 +204,12 @@ async def sc(ctx: commands.Context, user_id: int):
                 progress_bar = create_progress_bar(metric['percentage'], metric['meets_req'])
 
                 warning = ""
-                if name == 'badges' and metric['value'] == 0:
+                if name == 'badges':
                     warning = "\n⚠️ Badges may be private or user has none"
+                elif metric['percentage'] >= 100 and metric['value'] < REQUIREMENTS['badges']:
+                    warning = "\n ⚠️ Requirement may have changed"
+                if REQUIREMENTS['badges'] <= 0:
+                    warning = "\n ⚠️ Badge requirement not set"
 
                 embed.add_field(
                     name=f"{emoji} {name.capitalize()} {status_icon}",
