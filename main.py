@@ -3,6 +3,7 @@ from decorators import has_allowed_role, min_rank_required
 import discord
 from discord.ext import commands
 from dotenv import load_dotenv
+from flask import Flask
 
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
@@ -227,5 +228,13 @@ async def on_member_remove(member):
         )
         await alert_channel.send(notify_role.mention, embed=embed)
 
-if __name__ == "__main__":
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is running", 200
+
+if __name__ == '__main__':
+    import threading
+    threading.Thread(target=lambda: app.run(host='0.0.0.0', port=8080)).start()
     bot.run(TOKEN)
