@@ -5,6 +5,19 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from flask import Flask
 
+class RateLimiter:
+    def __init__(self, calls_per_minute=50):
+        self.calls_per_minute = calls_per_minute
+        self.last_calls = []
+
+    async def wait_if_needed(self):
+        now = time.time()
+        self.last_calls = [t for t in self.last_calls if now - t < 60]
+        if len(self.last_calls) >= self.calls_per_minute:
+            wait_time = 60 - (now - self.last_calls[0])
+            await asyncio.sleep(wait_time)
+        self.last_calls.append(now)
+        
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
@@ -106,6 +119,7 @@ class Bot(commands.Bot):
         intents.message_content = intents.members = intents.guilds = intents.reactions = True
         super().__init__(command_prefix="!", intents=intents)
         self.reaction_logger = ReactionLogger(self)
+        self.rate_limiter = RateLimiter(calls_per_minute=45)  # Slightly under Discord's limit
 
     async def setup_hook(self):
         from roblox_commands import setup
@@ -208,6 +222,16 @@ async def commands(ctx):
     await ctx.send(embed=embed)
 
 # --- Events ---
+@bot.event
+async def on_command_error(ctx, error):
+    if isinstance(error, commands.CommandInvokeError) and isinstance(error.original, discord.HTTPException):
+        if error.original.status == 429:
+            retry_after = error.original.response.headers.get('Retry-After', 5)
+            await asyncio.sleep(float(retry_after))
+            await ctx.send(f"⚠️ Rate limited. Please wait {retry_after} seconds before trying again.")
+            return
+            
+    await ctx.send(f"⚠️ An error occurred: `{error}`")
 @bot.event
 async def on_command_error(ctx, error):
     if not isinstance(error, commands.CheckFailure):
