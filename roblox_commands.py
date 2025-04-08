@@ -105,6 +105,12 @@ async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int
 @has_allowed_role()
 @commands.command(name="sc")
 async def sc(ctx: commands.Context, user_id: int):
+    """Roblox user check with built-in rate limiting"""
+    try:
+        # Get rate limiter from bot instance
+        rate_limiter = ctx.bot.rate_limiter
+        await rate_limiter.wait_if_needed()
+        
     """Optimized Roblox user checker with British Army rank"""
     try:
         async with ctx.typing(), aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT) as session:
@@ -248,6 +254,10 @@ async def sc(ctx: commands.Context, user_id: int):
             description="Failed to process request. The user may have private settings.",
             color=discord.Color.red()
         ))
+        
+ except Exception as e:
+        # Errors will be caught by the global handler
+        raise
 
 def setup(bot):
     bot.add_command(sc)
