@@ -1,28 +1,77 @@
 import discord
-from discord.ext import commands
+from discord import app_commands
+from config import Config  
 
 def has_allowed_role():
-    async def predicate(ctx):
-        allowed_role_id = 1335394269535666216  # Your allowed role ID
-        if any(role.id == allowed_role_id for role in getattr(ctx.author, "roles", [])):
-            return True
-        await ctx.send("⛔ You don't have permission to use this command.")
-        return False
-    return commands.check(predicate)
-
-def min_rank_required(required_rank_name: str):
-    async def predicate(ctx):
-        member_roles = ctx.author.roles
-        guild_roles = ctx.guild.roles
-
-        required_role = discord.utils.get(guild_roles, name=required_rank_name)
-        if not required_role:
-            await ctx.send(f"⚠️ Role `{required_rank_name}` not found.")
+    async def predicate(interaction: discord.Interaction) -> bool:
+        if not interaction.guild:
+            await interaction.response.send_message(
+                "This command only works in servers.", 
+                ephemeral=True
+            )
             return False
 
-        if any(role.position >= required_role.position for role in member_roles):
+        member = interaction.guild.get_member(interaction.user.id)
+        if not member:
+            await interaction.response.send_message(
+                "Member not found.", 
+                ephemeral=True
+            )
+            return False
+
+        # Check administrator first
+        if member.guild_permissions.administrator:
             return True
 
-        await ctx.send(f"⛔ You need at least the `{required_rank_name}` role to use this command.")
+        # Check for allowed role
+        allowed_role = interaction.guild.get_role(Config.ALLOWED_ROLE_ID)
+        if allowed_role and allowed_role in member.roles:
+            return True
+
+        await interaction.response.send_message(
+            "⛔ You don't have permission to use this command.",
+            ephemeral=True
+        )
         return False
-    return commands.check(predicate)
+    return app_commands.check(predicate)
+
+def min_rank_required(required_role_id: int):
+    async def predicate(interaction: discord.Interaction) -> bool:
+        if not interaction.guild:
+            await interaction.response.send_message(
+                "This command only works in servers.", 
+                ephemeral=True
+            )
+            return False
+
+        member = interaction.guild.get_member(interaction.user.id)
+        if not member:
+            await interaction.response.send_message(
+                "Member not found.", 
+                ephemeral=True
+            )
+            return False
+
+        # Check administrator first
+        if member.guild_permissions.administrator:
+            return True
+
+        required_role = interaction.guild.get_role(required_role_id)
+        if not required_role:
+            await interaction.response.send_message(
+                "⚠️ Required role not found.", 
+                ephemeral=True
+            )
+            return False
+
+        # Check if any of the member's roles meets or exceeds required position
+        for role in member.roles:
+            if role.position >= required_role.position:
+                return True
+
+        await interaction.response.send_message(
+            f"⛔ You need at least the {required_role.mention} role.",
+            ephemeral=True
+        )
+        return False
+    return app_commands.check(predicate)

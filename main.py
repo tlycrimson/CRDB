@@ -1,258 +1,396 @@
 import os
 import time
 import asyncio
-from decorators import has_allowed_role, min_rank_required
+import threading
 import discord
+from rate_limiter import RateLimiter
+from discord import app_commands
+from config import Config
 from discord.ext import commands
 from dotenv import load_dotenv
-from flask import Flask, request
+from flask import Flask
+from typing import Optional, Set, Dict, List, Tuple
+from roblox_commands import create_sc_command
 
-class RateLimiter:
-    def __init__(self, calls_per_minute=50):
-        self.calls_per_minute = calls_per_minute
-        self.last_calls = []
-
-    async def wait_if_needed(self):
-        now = time.time()
-        self.last_calls = [t for t in self.last_calls if now - t < 60]
-        if len(self.last_calls) >= self.calls_per_minute:
-            wait_time = 60 - (now - self.last_calls[0])
-            await asyncio.sleep(wait_time)
-        self.last_calls.append(now)
-        
+# --- Configuration ---
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-# Config
-ALLOWED_ROLE_ID = 1165368311840784508
-DESERTER_ROLE_ID = 1165368311727521795
-DESERTER_ALERT_CHANNEL_ID = 1197664960294170724
-TRACKED_REACTIONS = {"✅", "❌"}
+
+# --- Utility Classes ---
 
 class ReactionLogger:
-    def __init__(self, bot):
+    """Handles reaction monitoring and logging"""
+    def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.monitor_channel_ids = set()
-        self.log_channel_id = None
+        self.monitor_channel_ids: Set[int] = set()
+        self.log_channel_id: Optional[int] = None
+        self.rate_limiter = RateLimiter(calls_per_minute=45)
 
-    async def setup(self, ctx, log_channel: discord.TextChannel, *monitor_channels: discord.TextChannel):
-        if len(monitor_channels) > 6:
-            return await ctx.send("⚠️ You can monitor up to 6 channels.")
-
-        self.monitor_channel_ids = {ch.id for ch in monitor_channels}
-        self.log_channel_id = log_channel.id
-
-        valid_mentions = [ch.mention for ch in monitor_channels if ch]
-        if not valid_mentions or not self.bot.get_channel(self.log_channel_id):
-            return await ctx.send("❌ Invalid channel(s) provided.")
-
-        await ctx.send(
-            f"✅ Setup complete!\n"
-            f"Monitoring {len(valid_mentions)} channels: {', '.join(valid_mentions)}\n"
-            f"Logging to: {log_channel.mention}\n"
-            f"Reactions tracked: ✅ and ❌"
-        )
-
-    async def add_monitor_channels(self, ctx, *channels: discord.TextChannel):
-        new_ids = {ch.id for ch in channels} - self.monitor_channel_ids
-        if len(self.monitor_channel_ids | new_ids) > 6:
-            return await ctx.send("⚠️ Max 6 channels can be monitored.")
-
-        self.monitor_channel_ids.update(new_ids)
-        await ctx.send(f"✅ Added {len(new_ids)} channel(s). Now monitoring {len(self.monitor_channel_ids)} total.")
-
-    async def remove_monitor_channels(self, ctx, *channels: discord.TextChannel):
-        removed = sum(1 for ch in channels if ch.id in self.monitor_channel_ids and self.monitor_channel_ids.remove(ch.id))
-        await ctx.send(f"✅ Removed {removed} channel(s). Now monitoring {len(self.monitor_channel_ids)} total.")
-
-    async def list_monitored_channels(self, ctx):
-        if not self.monitor_channel_ids:
-            return await ctx.send("No channels are currently being monitored.")
-
-        mentions = [self.bot.get_channel(cid).mention for cid in self.monitor_channel_ids if self.bot.get_channel(cid)]
+    async def _create_embed(self, title: str, description: str, 
+                          color: discord.Color = discord.Color.blue(), 
+                          ephemeral: bool = False) -> Dict:
+        """Helper to create consistent embeds"""
         embed = discord.Embed(
-            title="📋 Monitored Channels",
-            description="\n".join(mentions) or "None found",
-            color=discord.Color.blue()
+            title=title,
+            description=description,
+            color=color
         )
-        embed.set_footer(text=f"Total: {len(mentions)} channel(s)")
-        await ctx.send(embed=embed)
+        embed.set_footer(text=f"Executed at {time.strftime('%Y-%m-%d %H:%M:%S')}")
+        return {"embed": embed, "ephemeral": ephemeral}
 
-    async def log_reaction(self, payload):
-        if payload.channel_id not in self.monitor_channel_ids or str(payload.emoji) not in TRACKED_REACTIONS:
+    async def _process_channels(self, interaction: discord.Interaction, 
+                              input_str: str) -> Tuple[List[discord.TextChannel], List[str]]:
+        """Process channel input string into valid channels and invalid names"""
+        valid_channels = []
+        invalid_names = []
+        
+        for name in (n.strip() for n in input_str.split(',') if n.strip()):
+            if name.startswith('<#') and name.endswith('>'):
+                channel_id = int(name[2:-1])
+                if channel := interaction.guild.get_channel(channel_id):
+                    valid_channels.append(channel)
+                    continue
+            
+            if channel := discord.utils.get(interaction.guild.text_channels, name=name):
+                valid_channels.append(channel)
+            else:
+                invalid_names.append(name)
+                
+        return valid_channels, invalid_names
+
+    async def setup(self, interaction: discord.Interaction, 
+                   log_channel: discord.TextChannel, 
+                   monitor_channels: str):
+        """Initialize reaction monitoring system"""
+        channels, invalid = await self._process_channels(interaction, monitor_channels)
+        
+        if len(channels) > Config.MAX_MONITORED_CHANNELS:
+            response = await self._create_embed(
+                "⚠️ Channel Limit Exceeded",
+                f"You can monitor up to {Config.MAX_MONITORED_CHANNELS} channels.",
+                discord.Color.red(),
+                True
+            )
+            await interaction.response.send_message(**response)
             return
 
+        self.monitor_channel_ids = {ch.id for ch in channels}
+        self.log_channel_id = log_channel.id
+        
+        response = await self._create_embed(
+            "✅ Setup Complete" if not invalid else "⚠️ Partial Setup",
+            f"Now monitoring {len(channels)} channels" + 
+            (f"\nCouldn't find: {', '.join(invalid)}" if invalid else ""),
+            discord.Color.green() if not invalid else discord.Color.orange()
+        )
+        await interaction.response.send_message(**response)
+
+    async def add_channels(self, interaction: discord.Interaction, channels: str):
+        """Add channels to monitor"""
+        new_channels, invalid = await self._process_channels(interaction, channels)
+        
+        if len(self.monitor_channel_ids) + len(new_channels) > Config.MAX_MONITORED_CHANNELS:
+            response = await self._create_embed(
+                "⚠️ Channel Limit Exceeded",
+                f"Cannot add {len(new_channels)} channels. Max is {Config.MAX_MONITORED_CHANNELS}.",
+                discord.Color.red(),
+                True
+            )
+            await interaction.response.send_message(**response)
+            return
+
+        self.monitor_channel_ids.update(ch.id for ch in new_channels)
+        
+        response = await self._create_embed(
+            "✅ Channels Added" if not invalid else "⚠️ Partial Success",
+            f"Added {len(new_channels)} channels to monitoring" + 
+            (f"\nCouldn't find: {', '.join(invalid)}" if invalid else ""),
+            discord.Color.green() if not invalid else discord.Color.orange()
+        )
+        await interaction.response.send_message(**response)
+
+    async def remove_channels(self, interaction: discord.Interaction, channels: str):
+        """Remove channels from monitoring"""
+        remove_channels, invalid = await self._process_channels(interaction, channels)
+        removed = []
+        
+        for ch in remove_channels:
+            if ch.id in self.monitor_channel_ids:
+                self.monitor_channel_ids.remove(ch.id)
+                removed.append(ch.name)
+        
+        response = await self._create_embed(
+            "✅ Channels Removed" if removed else "⚠️ No Channels Removed",
+            (f"Stopped monitoring: {', '.join(removed)}" if removed else "No matching channels were being monitored") +
+            (f"\nCouldn't find: {', '.join(invalid)}" if invalid else ""),
+            discord.Color.green() if removed else discord.Color.orange()
+        )
+        await interaction.response.send_message(**response)
+
+    async def list_channels(self, interaction: discord.Interaction):
+        """List currently monitored channels"""
+        if not self.monitor_channel_ids:
+            response = await self._create_embed(
+                "ℹ️ No Channels Monitored",
+                "Currently not monitoring any channels.",
+                discord.Color.blue(),
+                True
+            )
+            await interaction.response.send_message(**response)
+            return
+
+        channel_names = []
+        guild = interaction.guild
+        
+        for channel_id in self.monitor_channel_ids:
+            if channel := guild.get_channel(channel_id):
+                channel_names.append(f"• {channel.mention}")
+        
+        response = await self._create_embed(
+            "📋 Monitored Channels",
+            "\n".join(channel_names) if channel_names else "No channels found",
+            discord.Color.blue(),
+            True
+        )
+        await interaction.response.send_message(**response)
+
+    async def log_reaction(self, payload: discord.RawReactionActionEvent):
+        """Log reactions from monitored channels (only for users with monitoring role)"""
+        # Check if reaction is in monitored channel and is a tracked emoji
+        if (payload.channel_id not in self.monitor_channel_ids or 
+        str(payload.emoji) not in Config.TRACKED_REACTIONS):
+            return
+
+        await self.rate_limiter.wait_if_needed()
+            
         guild = self.bot.get_guild(payload.guild_id)
         if not guild:
             return
 
+        # Get the member who reacted
+        member = guild.get_member(payload.user_id)
+        if not member:
+            return
+
+        # Check if member has the required role
+        monitor_role = guild.get_role(Config.MONITOR_ROLE_ID)
+        if not monitor_role or monitor_role not in member.roles:
+            return
+
         channel = guild.get_channel(payload.channel_id)
-        user = guild.get_member(payload.user_id)
         log_channel = guild.get_channel(self.log_channel_id)
 
-        if not (channel and user and log_channel):
+        if not all((channel, member, log_channel)):
             return
 
         try:
             message = await channel.fetch_message(payload.message_id)
-        except discord.DiscordException:
+            content = (message.content[:100] + "...") if len(message.content) > 100 else message.content
+                
+            embed = discord.Embed(
+                title="📝 Reaction Logged",
+                description=f"{member.mention} (with {monitor_role.name} role) reacted with {payload.emoji}",
+                color=discord.Color.blue()
+                    )
+            
+            embed.add_field(name="Channel", value=channel.mention)
+            embed.add_field(name="Author", value=message.author.mention)
+            embed.add_field(name="Message", value=content, inline=False)
+            embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
+                
+            await log_channel.send(embed=embed)
+        except discord.NotFound:
             return
+        except Exception as e:
+                print(f"[REACTION LOG ERROR] {type(e).__name__}: {str(e)}")
 
-        content = message.content
-        content = (content[:100] + "...") if len(content) > 100 else content
+# --- Bot Initialization ---
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+intents.guilds = True
+intents.reactions = True
 
-        embed = discord.Embed(
-            title="📝 Reaction Logged",
-            description=f"{user.mention} reacted with {payload.emoji}",
-            color=discord.Color.blue()
+bot = commands.Bot(intents=intents, command_prefix="!")
+bot.rate_limiter = RateLimiter(calls_per_minute=45) 
+bot.reaction_logger = ReactionLogger(bot)
+
+# --- Decorators ---
+def has_allowed_role():
+    async def predicate(interaction: discord.Interaction):
+        if interaction.guild is None:
+            return False
+            
+        member = interaction.guild.get_member(interaction.user.id)
+        if not member:
+            return False
+            
+        if member.guild_permissions.administrator:
+            return True
+            
+        allowed_role = interaction.guild.get_role(Config.ALLOWED_ROLE_ID)
+        if allowed_role and allowed_role in member.roles:
+            return True
+            
+        await interaction.response.send_message(
+            "You don't have permission to use this command.",
+            ephemeral=True
         )
-        embed.add_field(name="Channel", value=channel.mention, inline=True)
-        embed.add_field(name="Author", value=message.author.mention, inline=True)
-        embed.add_field(name="Message", value=content, inline=False)
-        embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
-        embed.set_footer(text=f"User ID: {user.id} • Message ID: {message.id}")
+        return False
+    return app_commands.check(predicate)
 
-        await log_channel.send(embed=embed)
-
-
-class Bot(commands.Bot):
-    def __init__(self):
-        intents = discord.Intents.default()
-        intents.message_content = intents.members = intents.guilds = intents.reactions = True
-        super().__init__(command_prefix="!", intents=intents)
-        self.reaction_logger = ReactionLogger(self)
-        self.rate_limiter = RateLimiter(calls_per_minute=45)  # Slightly under Discord's limit
-
-    async def setup_hook(self):
-        from roblox_commands import setup
-        setup(self)
-
-        @self.event
-        async def on_raw_reaction_add(payload):
-            await self.reaction_logger.log_reaction(payload)
-
-        @self.event
-        async def on_raw_reaction_remove(payload):
-            await self.reaction_logger.log_reaction(payload)
-
-    async def check_allowed_role(self, ctx):
-        return any(role.id == ALLOWED_ROLE_ID for role in getattr(ctx.author, "roles", []))
-
-
-bot = Bot()
-
-# --- Commands ---
-@bot.command()
+# --- Slash Commands ---
+@bot.tree.command(name="commands", description="List all available commands")
 @has_allowed_role()
-@min_rank_required("High Command")
-async def SRL(ctx, log_channel: discord.TextChannel, *monitor_channels: discord.TextChannel):
-    await bot.reaction_logger.setup(ctx, log_channel, *monitor_channels)
-
-@bot.command()
-@has_allowed_role()
-@min_rank_required("High Command")
-async def ADC(ctx, *channels: discord.TextChannel):
-    await bot.reaction_logger.add_monitor_channels(ctx, *channels)
-
-@bot.command()
-@has_allowed_role()
-@min_rank_required("High Command")
-async def RMC(ctx, *channels: discord.TextChannel):
-    await bot.reaction_logger.remove_monitor_channels(ctx, *channels)
-
-@bot.command()
-@has_allowed_role()
-@min_rank_required("High Command")
-async def list_monitored_channels(ctx):
-    await bot.reaction_logger.list_monitored_channels(ctx)
-
-@bot.command()
-@has_allowed_role()
-@min_rank_required("High Command")
-async def ping(ctx):
-    await ctx.send("🏓 Pong!")
-
-# --- Command List ---
-@bot.command()
-@has_allowed_role()
-async def commands(ctx):
-    """List all available commands with their descriptions"""
+async def command_list(interaction: discord.Interaction):
+    """Display help menu with all commands"""
     embed = discord.Embed(
         title="📜 Available Commands",
-        description="Here are all the commands you can use:",
         color=discord.Color.blue()
     )
     
-    # Reaction Logger Commands
-    embed.add_field(
-        name="🔍 Reaction Monitoring",
-        value=(
-            "`!SRL <log_channel> <monitor_channel1> ...` - Setup reaction logger (max 6 channels)\n"
-            "`!ADC <channel1> <channel2> ...` - Add channels to monitor\n"
-            "`!RMC <channel1> <channel2> ...` - Remove monitored channels\n"
-            "`!list_monitored_channels` - List currently monitored channels\n"
-        ),
-        inline=False
-    )
+    categories = {
+        "🔍 Reaction Monitoring": [
+            "/reaction-setup - Setup reaction logger",
+            "/reaction-add - Add channels to monitor",
+            "/reaction-remove - Remove monitored channels",
+            "/reaction-list - List monitored channels"
+        ],
+        "🛠️ Utility": [
+            "/ping - Check bot responsiveness",
+            "/commands - Show this help message"
+        ],
+        "🎮 Roblox Tools": [
+            "/sc - Security Check Roblox user"
+        ]
+    }
     
-    # Utility Commands
-    embed.add_field(
-        name="🛠️ Utility",
-        value=(
-            "`!ping` - Check bot responsiveness\n"
-            "`!commands` - Show this help message\n"
-        ),
-        inline=False
-    )
+    for name, value in categories.items():
+        embed.add_field(name=name, value="\n".join(value), inline=False)
     
-    # Roblox Commands (assuming you have the SC command)
-    embed.add_field(
-        name="🎮 Roblox Tools",
-        value=(
-            "`!sc <user_id>` - Security Check Roblox user info\n"
-        ),
-        inline=False
-    )
-    
-    # Permissions Note
-    embed.add_field(
-        name="⚠️ Permissions",
-        value="Most commands require High Command role or special permissions",
-        inline=False
-    )
-    
-    await ctx.send(embed=embed)
+    await interaction.response.send_message(embed=embed)
 
-# --- Events ---
+@bot.tree.command(name="ping", description="Check bot latency")
+async def ping(interaction: discord.Interaction):
+    """Check bot responsiveness"""
+    latency = round(bot.latency * 1000)
+    await interaction.response.send_message(
+        f"🏓 Pong! Latency: {latency}ms",
+        ephemeral=True
+    )
+
+@bot.tree.command(name="reaction-setup", description="Setup reaction monitoring")
+@has_allowed_role()
+async def reaction_setup(
+    interaction: discord.Interaction,
+    log_channel: discord.TextChannel,
+    monitor_channels: str
+):
+    await bot.reaction_logger.setup(interaction, log_channel, monitor_channels)
+
+@bot.tree.command(name="reaction-add", description="Add channels to monitor")
+@has_allowed_role()
+async def reaction_add(
+    interaction: discord.Interaction,
+    channels: str
+):
+    await bot.reaction_logger.add_channels(interaction, channels)
+
+@bot.tree.command(name="reaction-remove", description="Remove channels from monitoring")
+@has_allowed_role()
+async def reaction_remove(
+    interaction: discord.Interaction,
+    channels: str
+):
+    await bot.reaction_logger.remove_channels(interaction, channels)
+
+@bot.tree.command(name="reaction-list", description="List monitored channels")
+@has_allowed_role()
+async def reaction_list(interaction: discord.Interaction):
+    await bot.reaction_logger.list_channels(interaction)
+
+# --- Event Handlers ---
 @bot.event
-async def on_command_error(ctx, error):
-    if isinstance(error, commands.CommandInvokeError) and isinstance(error.original, discord.HTTPException):
-        if error.original.status == 429:
-            retry_after = error.original.response.headers.get('Retry-After', 5)
-            await asyncio.sleep(float(retry_after))
-            await ctx.send(f"⚠️ Rate limited. Please wait {retry_after} seconds before trying again.")
-            return
-            
-    if isinstance(error, commands.CheckFailure):
+async def on_ready():
+    print(f"[✅] logged in as {bot.user}")
+    
+    # Make sure the bot has a rate limiter
+    if not hasattr(bot, 'rate_limiter'):
+        bot.rate_limiter = RateLimiter(calls_per_minute=45)
+
+    # Create and register SC command
+    create_sc_command(bot)
+    
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} commands")
+        print("Commands:", [cmd.name for cmd in bot.tree.get_commands()])
+    except Exception as e:
+        print(f"Command sync error: {e}")
+
+@bot.event
+async def on_member_remove(member: discord.Member):
+    """Handle members leaving with deserter role"""
+    guild = member.guild
+    if not (deserter_role := guild.get_role(Config.DESERTER_ROLE_ID)):
         return
         
-    await ctx.send(f"⚠️ An error occurred: `{error}`")
+    if deserter_role not in member.roles:
+        return
+        
+    if not (alert_channel := guild.get_channel(Config.DESERTER_ALERT_CHANNEL_ID)):
+        return
+        
+    embed = discord.Embed(
+        title="🚨 Deserter Alert",
+        description=f"{member.mention} with role {deserter_role.mention} left!",
+        color=discord.Color.red()
+    )
+    embed.set_thumbnail(url=member.display_avatar.url)
+    
+    await alert_channel.send(
+        content=f"<@&{Config.ALLOWED_ROLE_ID}>",
+        embed=embed
+    )
+
+@bot.event 
+async def on_member_update(before: discord.Member, after: discord.Member):
+    """Send welcome message when RMP role is added"""
+    if not (rmp_role := after.guild.get_role(Config.RMP_ROLE_ID)):
+        return
+        
+    if rmp_role in before.roles or rmp_role not in after.roles:
+        return
+        
+    embed = discord.Embed(
+        title="Welcome to the Royal Military Police",
+         description="**1.** Make sure to read all of the rules found in <#1165368313925353580>\n\n"
+                    "**2.** You can NOT enforce the MSL (Manual of Service Law).\n\n"
+                    "**3.** You can't use your L85 unless you are doing it for Self-Militia. (Self-defence)\n\n"
+                    "**4.** Make sure to follow the Chain Of Command. Inspector > Chief Inspector > Superintendent > Major > Lieutenant Colonel > Colonel > Commander > Provost Marshal\n\n"
+                    "**5.** For phases, you may wait for one to be hosted in <#1207367013698240584> or request the phase you need in <#1270700562433839135>.\n\n"
+                    "**6.** All the information about the Defence School of Policing and Guarding is found in both <#1237062439720452157> and <#1207366893631967262>\n\n"
+                    "**7.** Choose your timezone here https://discord.com/channels/1165368311085809717/1165368313925353578\n\n"
+                    "**8.** You will be ranked Private but if you ever decide to leave RMP you will get your original rank back.\n\n"
+                    "**Besides that, good luck with your phases!**",
+        color=discord.Color.red()
+        )
+    embed.set_thumbnail(url="https://imgur.com/a/6IwbN2z")
+    embed.set_image(url="https://imgur.com/a/rmp-banner-fS1hsjd")
+    
+    try:
+        await after.send(embed=embed)
+    except discord.Forbidden:
+        if welcome_channel := after.guild.get_channel(722002957738180620):
+            await welcome_channel.send(f"{after.mention}", embed=embed)
 
 @bot.event
-async def on_member_remove(member):
-    guild = member.guild
-    deserter_role = guild.get_role(DESERTER_ROLE_ID)
-    notify_role = guild.get_role(ALLOWED_ROLE_ID)
-    alert_channel = guild.get_channel(DESERTER_ALERT_CHANNEL_ID)
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    """Handle reaction events"""
+    await bot.reaction_logger.log_reaction(payload)
 
-    if deserter_role and deserter_role in member.roles and notify_role and alert_channel:
-        embed = discord.Embed(
-            title="🚨 Deserter Alert",
-            description=f"{member.mention} with role {deserter_role.mention} left the server!",
-            color=discord.Color.red()
-        )
-        await alert_channel.send(notify_role.mention, embed=embed)
-
+# --- Flask Setup ---
 app = Flask(__name__)
 keep_alive = True
 
@@ -267,16 +405,12 @@ def shutdown():
     return "Shutting down...", 200
 
 def run_flask():
-    while keep_alive:
-        try:
-            app.run(host='0.0.0.0', port=8080)
-        except Exception as e:
-            print(f"Flask error: {e}")
-            time.sleep(5)
+    """Run Flask in a background thread"""
+    port = int(os.environ.get("PORT", 8080))
+    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 if __name__ == '__main__':
-    flask_thread = threading.Thread(target=run_flask)
-    flask_thread.daemon = True
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     
     try:
