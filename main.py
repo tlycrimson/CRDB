@@ -281,7 +281,7 @@ async def ping(interaction: discord.Interaction):
     )
 
 @bot.tree.command(name="reaction-setup", description="Setup reaction monitoring")
-@has_allowed_role()
+@min_rank_required()
 async def reaction_setup(
     interaction: discord.Interaction,
     log_channel: discord.TextChannel,
@@ -290,7 +290,7 @@ async def reaction_setup(
     await bot.reaction_logger.setup(interaction, log_channel, monitor_channels)
 
 @bot.tree.command(name="reaction-add", description="Add channels to monitor")
-@has_allowed_role()
+@min_rank_required()
 async def reaction_add(
     interaction: discord.Interaction,
     channels: str
@@ -298,7 +298,7 @@ async def reaction_add(
     await bot.reaction_logger.add_channels(interaction, channels)
 
 @bot.tree.command(name="reaction-remove", description="Remove channels from monitoring")
-@has_allowed_role()
+@min_rank_required()
 async def reaction_remove(
     interaction: discord.Interaction,
     channels: str
@@ -306,7 +306,7 @@ async def reaction_remove(
     await bot.reaction_logger.remove_channels(interaction, channels)
 
 @bot.tree.command(name="reaction-list", description="List monitored channels")
-@has_allowed_role()
+@min_rank_required()
 async def reaction_list(interaction: discord.Interaction):
     await bot.reaction_logger.list_channels(interaction)
 
@@ -376,8 +376,6 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                     "**Besides that, good luck with your phases!**",
         color=discord.Color.red()
         )
-    embed.set_thumbnail(url="https://imgur.com/a/6IwbN2z")
-    embed.set_image(url="https://imgur.com/a/rmp-banner-fS1hsjd")
     
     try:
         await after.send(embed=embed)
