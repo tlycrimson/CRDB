@@ -367,13 +367,13 @@ async def on_member_remove(member: discord.Member):
         
     embed = discord.Embed(
         title="🚨 Deserter Alert",
-        description=f"{member.mention} with role {deserter_role.mention} left!",
+        description=f"{member.mention} with role the {deserter_role.mention} left the server!",
         color=discord.Color.red()
     )
     embed.set_thumbnail(url=member.display_avatar.url)
     
     await alert_channel.send(
-        content=f"<@&{Config.ALLOWED_ROLE_ID}>",
+        content=f"<@&{Config.HIGH_COMMAND_ROLE_ID}>",
         embed=embed
     )
 
