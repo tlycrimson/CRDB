@@ -17,9 +17,7 @@ from roblox_commands import create_sc_command
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
-
 # --- Utility Classes ---
-
 class ReactionLogger:
     """Handles reaction monitoring and logging"""
     def __init__(self, bot: commands.Bot):
@@ -46,16 +44,41 @@ class ReactionLogger:
         valid_channels = []
         invalid_names = []
         
-        for name in (n.strip() for n in input_str.split(',') if n.strip()):
-            if name.startswith('<#') and name.endswith('>'):
-                channel_id = int(name[2:-1])
-                if channel := interaction.guild.get_channel(channel_id):
+        # Split by commas or spaces, and clean up
+        channel_mentions = []
+        current_mention = ""
+        in_mention = False
+        
+        # Custom parsing to handle malformed mentions
+        for char in input_str:
+            if char == '<' and not in_mention:
+                in_mention = True
+                current_mention = "<"
+            elif char == '>' and in_mention:
+                current_mention += ">"
+                channel_mentions.append(current_mention)
+                current_mention = ""
+                in_mention = False
+            elif in_mention:
+                current_mention += char
+        
+        # Also split by commas for regular names
+        names = [n.strip() for n in input_str.split(',') if n.strip()]
+        names.extend(channel_mentions)
+        
+        for name in names:
+            try:
+                if name.startswith('<#') and name.endswith('>'):
+                    channel_id = int(name[2:-1])
+                    if channel := interaction.guild.get_channel(channel_id):
+                        valid_channels.append(channel)
+                        continue
+                
+                if channel := discord.utils.get(interaction.guild.text_channels, name=name):
                     valid_channels.append(channel)
-                    continue
-            
-            if channel := discord.utils.get(interaction.guild.text_channels, name=name):
-                valid_channels.append(channel)
-            else:
+                else:
+                    invalid_names.append(name)
+            except ValueError:
                 invalid_names.append(name)
                 
         return valid_channels, invalid_names
@@ -64,6 +87,8 @@ class ReactionLogger:
                    log_channel: discord.TextChannel, 
                    monitor_channels: str):
         """Initialize reaction monitoring system"""
+        await interaction.response.defer(ephemeral=True)  # Defer first
+        
         channels, invalid = await self._process_channels(interaction, monitor_channels)
         
         if len(channels) > Config.MAX_MONITORED_CHANNELS:
@@ -73,7 +98,7 @@ class ReactionLogger:
                 discord.Color.red(),
                 True
             )
-            await interaction.response.send_message(**response)
+            await interaction.followup.send(**response)
             return
 
         self.monitor_channel_ids = {ch.id for ch in channels}
@@ -83,12 +108,14 @@ class ReactionLogger:
             "✅ Setup Complete" if not invalid else "⚠️ Partial Setup",
             f"Now monitoring {len(channels)} channels" + 
             (f"\nCouldn't find: {', '.join(invalid)}" if invalid else ""),
-            discord.Color.green() if not invalid else discord.Color.orange()
+            discord.Color.green() if not invalid else discord.Color.orange(),
+            True
         )
-        await interaction.response.send_message(**response)
+        await interaction.followup.send(**response)
 
     async def add_channels(self, interaction: discord.Interaction, channels: str):
         """Add channels to monitor"""
+        await interaction.response.defer(ephemeral=True)
         new_channels, invalid = await self._process_channels(interaction, channels)
         
         if len(self.monitor_channel_ids) + len(new_channels) > Config.MAX_MONITORED_CHANNELS:
@@ -98,7 +125,7 @@ class ReactionLogger:
                 discord.Color.red(),
                 True
             )
-            await interaction.response.send_message(**response)
+            await interaction.followup.send(**response)
             return
 
         self.monitor_channel_ids.update(ch.id for ch in new_channels)
@@ -107,12 +134,14 @@ class ReactionLogger:
             "✅ Channels Added" if not invalid else "⚠️ Partial Success",
             f"Added {len(new_channels)} channels to monitoring" + 
             (f"\nCouldn't find: {', '.join(invalid)}" if invalid else ""),
-            discord.Color.green() if not invalid else discord.Color.orange()
+            discord.Color.green() if not invalid else discord.Color.orange(),
+            True
         )
-        await interaction.response.send_message(**response)
+        await interaction.followup.send(**response)
 
     async def remove_channels(self, interaction: discord.Interaction, channels: str):
         """Remove channels from monitoring"""
+        await interaction.response.defer(ephemeral=True)
         remove_channels, invalid = await self._process_channels(interaction, channels)
         removed = []
         
@@ -125,9 +154,10 @@ class ReactionLogger:
             "✅ Channels Removed" if removed else "⚠️ No Channels Removed",
             (f"Stopped monitoring: {', '.join(removed)}" if removed else "No matching channels were being monitored") +
             (f"\nCouldn't find: {', '.join(invalid)}" if invalid else ""),
-            discord.Color.green() if removed else discord.Color.orange()
+            discord.Color.green() if removed else discord.Color.orange(),
+            True
         )
-        await interaction.response.send_message(**response)
+        await interaction.followup.send(**response)
 
     async def list_channels(self, interaction: discord.Interaction):
         """List currently monitored channels"""
@@ -158,9 +188,8 @@ class ReactionLogger:
 
     async def log_reaction(self, payload: discord.RawReactionActionEvent):
         """Log reactions from monitored channels (only for users with monitoring role)"""
-        # Check if reaction is in monitored channel and is a tracked emoji
         if (payload.channel_id not in self.monitor_channel_ids or 
-        str(payload.emoji) not in Config.TRACKED_REACTIONS):
+            str(payload.emoji) not in Config.TRACKED_REACTIONS):
             return
 
         await self.rate_limiter.wait_if_needed()
@@ -169,12 +198,10 @@ class ReactionLogger:
         if not guild:
             return
 
-        # Get the member who reacted
         member = guild.get_member(payload.user_id)
         if not member:
             return
 
-        # Check if member has the required role
         monitor_role = guild.get_role(Config.MONITOR_ROLE_ID)
         if not monitor_role or monitor_role not in member.roles:
             return
@@ -193,7 +220,7 @@ class ReactionLogger:
                 title="📝 Reaction Logged",
                 description=f"{member.mention} (with {monitor_role.name} role) reacted with {payload.emoji}",
                 color=discord.Color.blue()
-                    )
+            )
             
             embed.add_field(name="Channel", value=channel.mention)
             embed.add_field(name="Author", value=message.author.mention)
@@ -204,7 +231,7 @@ class ReactionLogger:
         except discord.NotFound:
             return
         except Exception as e:
-                print(f"[REACTION LOG ERROR] {type(e).__name__}: {str(e)}")
+            print(f"[REACTION LOG ERROR] {type(e).__name__}: {str(e)}")
 
 # --- Bot Initialization ---
 intents = discord.Intents.default()
@@ -216,30 +243,6 @@ intents.reactions = True
 bot = commands.Bot(intents=intents, command_prefix="!")
 bot.rate_limiter = RateLimiter(calls_per_minute=45) 
 bot.reaction_logger = ReactionLogger(bot)
-
-# --- Decorators ---
-def has_allowed_role():
-    async def predicate(interaction: discord.Interaction):
-        if interaction.guild is None:
-            return False
-            
-        member = interaction.guild.get_member(interaction.user.id)
-        if not member:
-            return False
-            
-        if member.guild_permissions.administrator:
-            return True
-            
-        allowed_role = interaction.guild.get_role(Config.ALLOWED_ROLE_ID)
-        if allowed_role and allowed_role in member.roles:
-            return True
-            
-        await interaction.response.send_message(
-            "You don't have permission to use this command.",
-            ephemeral=True
-        )
-        return False
-    return app_commands.check(predicate)
 
 # --- Slash Commands ---
 @bot.tree.command(name="commands", description="List all available commands")
@@ -316,11 +319,9 @@ async def reaction_list(interaction: discord.Interaction):
 async def on_ready():
     print(f"[✅] logged in as {bot.user}")
     
-    # Make sure the bot has a rate limiter
     if not hasattr(bot, 'rate_limiter'):
         bot.rate_limiter = RateLimiter(calls_per_minute=45)
 
-    # Create and register SC command
     create_sc_command(bot)
     
     try:
@@ -366,23 +367,25 @@ async def on_member_update(before: discord.Member, after: discord.Member):
         
     embed = discord.Embed(
         title="Welcome to the Royal Military Police",
-         description="**1.** Make sure to read all of the rules found in <#1165368313925353580>\n\n"
-                    "**2.** You can NOT enforce the MSL (Manual of Service Law).\n\n"
-                    "**3.** You can't use your L85 unless you are doing it for Self-Militia. (Self-defence)\n\n"
-                    "**4.** Make sure to follow the Chain Of Command. Inspector > Chief Inspector > Superintendent > Major > Lieutenant Colonel > Colonel > Commander > Provost Marshal\n\n"
-                    "**5.** For phases, you may wait for one to be hosted in <#1207367013698240584> or request the phase you need in <#1270700562433839135>.\n\n"
-                    "**6.** All the information about the Defence School of Policing and Guarding is found in both <#1237062439720452157> and <#1207366893631967262>\n\n"
-                    "**7.** Choose your timezone here https://discord.com/channels/1165368311085809717/1165368313925353578\n\n"
-                    "**8.** You will be ranked Private but if you ever decide to leave RMP you will get your original rank back.\n\n"
-                    "**Besides that, good luck with your phases!**",
+        description="**1.** Make sure to read all of the rules found in <#1165368313925353580>\n\n"
+                   "**2.** You can NOT enforce the MSL (Manual of Service Law).\n\n"
+                   "**3.** You can't use your L85 unless you are doing it for Self-Militia. (Self-defence)\n\n"
+                   "**4.** Make sure to follow the Chain Of Command. Inspector > Chief Inspector > Superintendent > Major > Lieutenant Colonel > Colonel > Commander > Provost Marshal\n\n"
+                   "**5.** For phases, you may wait for one to be hosted in <#1207367013698240584> or request the phase you need in <#1270700562433839135>.\n\n"
+                   "**6.** All the information about the Defence School of Policing and Guarding is found in both <#1237062439720452157> and <#1207366893631967262>\n\n"
+                   "**7.** Choose your timezone here https://discord.com/channels/1165368311085809717/1165368313925353578\n\n"
+                   "**8.** You will be ranked Private but if you ever decide to leave RMP you will get your original rank back.\n\n"
+                   "**Besides that, good luck with your phases!**",
         color=discord.Color.red()
-        )
+    )
     
     try:
         await after.send(embed=embed)
     except discord.Forbidden:
         if welcome_channel := after.guild.get_channel(722002957738180620):
             await welcome_channel.send(f"{after.mention}", embed=embed)
+    except discord.HTTPException as e:
+        print(f"Failed to send welcome message: {e}")
 
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
