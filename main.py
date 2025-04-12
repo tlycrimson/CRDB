@@ -282,7 +282,7 @@ async def ping(interaction: discord.Interaction):
     )
 
 @bot.tree.command(name="reaction-setup", description="Setup reaction monitoring")
-@min_rank_required()
+@min_rank_required(Config.MONITOR_ROLE_ID)
 async def reaction_setup(
     interaction: discord.Interaction,
     log_channel: discord.TextChannel,
@@ -291,7 +291,7 @@ async def reaction_setup(
     await bot.reaction_logger.setup(interaction, log_channel, monitor_channels)
 
 @bot.tree.command(name="reaction-add", description="Add channels to monitor")
-@min_rank_required()
+@min_rank_required(Config.MONITOR_ROLE_ID)
 async def reaction_add(
     interaction: discord.Interaction,
     channels: str
@@ -299,7 +299,7 @@ async def reaction_add(
     await bot.reaction_logger.add_channels(interaction, channels)
 
 @bot.tree.command(name="reaction-remove", description="Remove channels from monitoring")
-@min_rank_required()
+@min_rank_required(Config.MONITOR_ROLE_ID)
 async def reaction_remove(
     interaction: discord.Interaction,
     channels: str
@@ -307,7 +307,7 @@ async def reaction_remove(
     await bot.reaction_logger.remove_channels(interaction, channels)
 
 @bot.tree.command(name="reaction-list", description="List monitored channels")
-@min_rank_required()
+@min_rank_required(Config.MONITOR_ROLE_ID)
 async def reaction_list(interaction: discord.Interaction):
     await bot.reaction_logger.list_channels(interaction)
 
