@@ -3,8 +3,7 @@ import time
 import asyncio
 import threading
 import discord
-from decorators import has_allowed_role
-from decorators import min_rank_required
+from decorators import min_rank_required, has_allowed_role
 from rate_limiter import RateLimiter
 from discord import app_commands
 from config import Config
