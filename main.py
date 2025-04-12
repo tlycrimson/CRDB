@@ -22,9 +22,26 @@ class ReactionLogger:
     """Handles reaction monitoring and logging"""
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.monitor_channel_ids: Set[int] = set()
-        self.log_channel_id: Optional[int] = None
+        self.monitor_channel_ids = set(Config.DEFAULT_MONITOR_CHANNELS)
+        self.log_channel_id = Config.DEFAULT_LOG_CHANNEL
         self.rate_limiter = RateLimiter(calls_per_minute=45)
+        
+    async def on_ready_setup(self):
+        """Setup monitoring when bot starts"""
+        guild = self.bot.guilds[0]  # For the first guild the bot is in
+        
+        # Verify channels exist
+        valid_channels = set()
+        for channel_id in self.monitor_channel_ids:
+            if channel := guild.get_channel(channel_id):
+                valid_channels.add(channel.id)
+        
+        self.monitor_channel_ids = valid_channels
+        
+        # Verify log channel exists
+        if not guild.get_channel(self.log_channel_id):
+            print(f"Warning: Default log channel {self.log_channel_id} not found!")
+            self.log_channel_id = None
 
     async def _create_embed(self, title: str, description: str, 
                           color: discord.Color = discord.Color.blue(), 
@@ -319,6 +336,9 @@ async def reaction_list(interaction: discord.Interaction):
 @bot.event
 async def on_ready():
     print(f"[✅] logged in as {bot.user}")
+
+    #Initializes reaction logger default channels
+    await bot.reaction_logger.on_ready_setup()
     
     if not hasattr(bot, 'rate_limiter'):
         bot.rate_limiter = RateLimiter(calls_per_minute=45)
