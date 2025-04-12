@@ -3,6 +3,7 @@ import time
 import asyncio
 import threading
 import discord
+from decorators import has_allowed_role
 from decorators import min_rank_required
 from rate_limiter import RateLimiter
 from discord import app_commands
@@ -276,6 +277,7 @@ async def command_list(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="ping", description="Check bot latency")
+has_allowed_role
 async def ping(interaction: discord.Interaction):
     """Check bot responsiveness"""
     latency = round(bot.latency * 1000)
