@@ -276,7 +276,7 @@ async def command_list(interaction: discord.Interaction):
     await interaction.response.send_message(embed=embed)
 
 @bot.tree.command(name="ping", description="Check bot latency")
-@has_allowed_role
+@has_allowed_role()
 async def ping(interaction: discord.Interaction):
     """Check bot responsiveness"""
     latency = round(bot.latency * 1000)
