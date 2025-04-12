@@ -3,6 +3,7 @@ import time
 import asyncio
 import threading
 import discord
+from decorators import min_rank_required
 from rate_limiter import RateLimiter
 from discord import app_commands
 from config import Config
