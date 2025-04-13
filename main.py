@@ -360,15 +360,8 @@ async def on_ready():
             # Check rate limiter
             await bot.rate_limiter.wait_if_needed()
             
-            # Your existing SC command logic here
-            # Replace with your actual security check implementation
-            result = await perform_security_check(username)
-            
-            embed = discord.Embed(
-                title=f"🔍 Security Check for {username}",
-                description=result,
-                color=discord.Color.green()
-            )
+            # Use the create_sc_command function from roblox_commands
+            embed = await create_sc_command(username)
             
             await interaction.followup.send(embed=embed)
             
@@ -470,11 +463,25 @@ def run_flask():
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
+async def run_bot():
+    while True:
+        try:
+            await bot.start(TOKEN)
+        except discord.errors.HTTPException as e:
+            if e.status == 429:
+                retry_after = e.response.headers.get('Retry-After', 30)
+                print(f"Rate limited during login. Waiting {retry_after} seconds...")
+                await asyncio.sleep(float(retry_after))
+                continue
+            raise
+        except Exception as e:
+            print(f"Unexpected error: {e}")
+            break
+        else:
+            break
+
 if __name__ == '__main__':
     flask_thread = threading.Thread(target=run_flask, daemon=True)
     flask_thread.start()
     
-    try:
-        bot.run(TOKEN)
-    finally:
-        keep_alive = False
+    asyncio.run(run_bot())
