@@ -346,37 +346,13 @@ async def on_ready():
     
     if not hasattr(bot, 'rate_limiter'):
         bot.rate_limiter = RateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
-
-    # Create SC command with rate limiting
-    @bot.tree.command(name="sc", description="Security Check a Roblox user")
-    @app_commands.checks.cooldown(1, COMMAND_COOLDOWN, key=lambda i: (i.guild_id, i.user.id))
-    @has_allowed_role()
-    async def sc(interaction: discord.Interaction, username: str):
-        """Security check command with rate limiting"""
-        try:
-            # Defer the response to give us more time
-            await interaction.response.defer()
-            
-            # Check rate limiter
-            await bot.rate_limiter.wait_if_needed()
-            
-            # Use the create_sc_command function from roblox_commands
-            embed = await create_sc_command(username)
-            
-            await interaction.followup.send(embed=embed)
-            
-        except app_commands.CommandOnCooldown as e:
-            await interaction.response.send_message(
-                f"⏳ Please wait {e.retry_after:.1f} seconds before using this command again.",
-                ephemeral=True
-            )
-        except Exception as e:
-            await interaction.followup.send(
-                f"❌ Error performing security check: {str(e)}",
-                ephemeral=True
-            )
     
     try:
+        # Create SC command with rate limiting
+        from roblox_commands import create_sc_command
+        create_sc_command(bot) 
+    
+    
         synced = await bot.tree.sync()
         print(f"Synced {len(synced)} commands")
         print("Commands:", [cmd.name for cmd in bot.tree.get_commands()])
