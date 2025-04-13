@@ -17,6 +17,10 @@ from roblox_commands import create_sc_command
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
+# Global rate limiter configuration
+GLOBAL_RATE_LIMIT = 25  # requests per minute
+COMMAND_COOLDOWN = 5    # seconds between command uses per user
+
 # --- Utility Classes ---
 class ReactionLogger:
     """Handles reaction monitoring and logging"""
@@ -24,7 +28,7 @@ class ReactionLogger:
         self.bot = bot
         self.monitor_channel_ids = set(Config.DEFAULT_MONITOR_CHANNELS)
         self.log_channel_id = Config.DEFAULT_LOG_CHANNEL
-        self.rate_limiter = RateLimiter(calls_per_minute=45)
+        self.rate_limiter = RateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
         
     async def on_ready_setup(self):
         """Setup monitoring when bot starts"""
@@ -258,7 +262,7 @@ intents.guilds = True
 intents.reactions = True
 
 bot = commands.Bot(intents=intents, command_prefix="!")
-bot.rate_limiter = RateLimiter(calls_per_minute=45) 
+bot.rate_limiter = RateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
 bot.reaction_logger = ReactionLogger(bot)
 
 # --- Slash Commands ---
@@ -337,13 +341,47 @@ async def reaction_list(interaction: discord.Interaction):
 async def on_ready():
     print(f"[✅] logged in as {bot.user}")
 
-    #Initializes reaction logger default channels
+    # Initializes reaction logger default channels
     await bot.reaction_logger.on_ready_setup()
     
     if not hasattr(bot, 'rate_limiter'):
-        bot.rate_limiter = RateLimiter(calls_per_minute=45)
+        bot.rate_limiter = RateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
 
-    create_sc_command(bot)
+    # Create SC command with rate limiting
+    @bot.tree.command(name="sc", description="Security Check a Roblox user")
+    @app_commands.checks.cooldown(1, COMMAND_COOLDOWN, key=lambda i: (i.guild_id, i.user.id))
+    @has_allowed_role()
+    async def sc(interaction: discord.Interaction, username: str):
+        """Security check command with rate limiting"""
+        try:
+            # Defer the response to give us more time
+            await interaction.response.defer()
+            
+            # Check rate limiter
+            await bot.rate_limiter.wait_if_needed()
+            
+            # Your existing SC command logic here
+            # Replace with your actual security check implementation
+            result = await perform_security_check(username)
+            
+            embed = discord.Embed(
+                title=f"🔍 Security Check for {username}",
+                description=result,
+                color=discord.Color.green()
+            )
+            
+            await interaction.followup.send(embed=embed)
+            
+        except app_commands.CommandOnCooldown as e:
+            await interaction.response.send_message(
+                f"⏳ Please wait {e.retry_after:.1f} seconds before using this command again.",
+                ephemeral=True
+            )
+        except Exception as e:
+            await interaction.followup.send(
+                f"❌ Error performing security check: {str(e)}",
+                ephemeral=True
+            )
     
     try:
         synced = await bot.tree.sync()
