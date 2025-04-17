@@ -1,4 +1,5 @@
 import os
+import re
 import time
 import asyncio
 import threading
@@ -12,6 +13,9 @@ from dotenv import load_dotenv
 from flask import Flask
 from typing import Optional, Set, Dict, List, Tuple
 from roblox_commands import create_sc_command
+import gspread
+from oauth2client.service_account import ServiceAccountCredentials
+from datetime import datetime
 
 # --- Configuration ---
 load_dotenv()
@@ -249,11 +253,80 @@ class ReactionLogger:
             embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
                 
             await log_channel.send(embed=embed)
+            await bot.sheets.update_points(member)
         except discord.NotFound:
             return
         except Exception as e:
             print(f"[REACTION LOG ERROR] {type(e).__name__}: {str(e)}")
 
+# --- Google Sheets Logic ---
+class GoogleSheetsLogger:
+    def __init__(self):
+        self.scope = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive"
+        ]
+        # Load from environment variables
+        self.creds = ServiceAccountCredentials.from_json_keyfile_dict({
+            "type": os.getenv("GS_TYPE"),
+            "project_id": os.getenv("GS_PROJECT_ID"),
+            "private_key_id": os.getenv("GS_PRIVATE_KEY_ID"),
+            "private_key": os.getenv("GS_PRIVATE_KEY").replace('\\n', '\n'),
+            "client_email": os.getenv("GS_CLIENT_EMAIL"),
+            "client_id": os.getenv("GS_CLIENT_ID"),
+            "auth_uri": os.getenv("GS_AUTH_URI"),
+            "token_uri": os.getenv("GS_TOKEN_URI"),
+            "auth_provider_x509_cert_url": os.getenv("GS_AUTH_PROVIDER_CERT_URL"),
+            "client_x509_cert_url": os.getenv("GS_CLIENT_CERT_URL")
+        }, self.scope)
+        self.client = gspread.authorize(self.creds)
+
+    async def update_points(self, member: discord.Member):
+        try:
+            sheet = self.client.open_by_key(os.getenv("GOOGLE_SHEET_ID"))
+            worksheet = sheet.worksheet(os.getenv("GOOGLE_SHEET_NAME"))  # Specific sheet
+            
+            # Clean username (remove [brackets])
+            username = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
+            
+            # Find or create user
+            records = worksheet.get_all_records()
+            for i, row in enumerate(records, start=2):  # Skip header
+                if row["Username"].lower() == username.lower():
+                    worksheet.update_cell(i, 2, row["Points"] + 1)  # Column B = Points
+                    worksheet.update_cell(i, 3, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                    return True
+            
+            # New user
+            worksheet.append_row([username, 1, datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
+            return True
+        except Exception as e:
+            print(f"⚠️ Sheets error: {e}")
+            return False
+
+# Initialize in on_ready()
+@bot.event
+async def on_ready():
+    print(f"[✅] logged in as {bot.user}")
+    
+    # Initialize sheets
+    bot.sheets = GoogleSheetsLogger()
+    print("✅ Sheets connected")
+    
+    # Initialize reaction logger
+    await bot.reaction_logger.on_ready_setup()
+    
+    # Register commands
+    from roblox_commands import create_sc_command
+    create_sc_command(bot)
+    
+    # Sync commands
+    try:
+        synced = await bot.tree.sync()
+        print(f"Synced {len(synced)} commands")
+    except Exception as e:
+        print(f"Command sync error: {e}")
+        
 # --- Bot Initialization ---
 intents = discord.Intents.default()
 intents.message_content = True
