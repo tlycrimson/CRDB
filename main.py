@@ -277,6 +277,12 @@ class GoogleSheetsLogger:
             "https://www.googleapis.com/auth/spreadsheets",
             "https://www.googleapis.com/auth/drive"
         ]
+
+        # Get the private key and ensure proper newlines
+            private_key = os.getenv("GS_PRIVATE_KEY")
+            if private_key:
+                private_key = private_key.replace('\\n', '\n')  # Convert escaped newlines
+                
         # Load from environment variables
         self.creds = ServiceAccountCredentials.from_json_keyfile_dict({
             "type": os.getenv("GS_TYPE"),
@@ -291,6 +297,17 @@ class GoogleSheetsLogger:
             "client_x509_cert_url": os.getenv("GS_CLIENT_CERT_URL")
         }, self.scope)
         self.client = gspread.authorize(self.creds)
+        
+        if not all(creds_dict.values()):
+                missing = [k for k, v in creds_dict.items() if not v]
+                raise ValueError(f"Missing Google Sheets config: {missing}")
+                
+            self.creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, self.scope)
+            self.client = gspread.authorize(self.creds)
+            print("✅ Successfully connected to Google Sheets")
+        except Exception as e:
+            print(f"🔴 Google Sheets connection failed: {str(e)}")
+            self.client = None
 
     async def update_points(self, member: discord.Member):
         try:
@@ -320,10 +337,13 @@ class GoogleSheetsLogger:
 async def on_ready():
     print(f"[✅] logged in as {bot.user}")
     
-    # Initialize sheets
+    # Initialize Google Sheets
     bot.sheets = GoogleSheetsLogger()
-    print("✅ Sheets connected")
-    
+    if not bot.sheets.client:
+        print("⚠️ Warning: Google Sheets not initialized properly")
+    else:
+        print("✅ Google Sheets initialized successfully")
+        
     # Initialize reaction logger
     await bot.reaction_logger.on_ready_setup()
     
