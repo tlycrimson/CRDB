@@ -273,32 +273,32 @@ bot.reaction_logger = ReactionLogger(bot)
 # --- Google Sheets Logic ---
 class GoogleSheetsLogger:
     def __init__(self):
-        self.scope = [
-            "https://www.googleapis.com/auth/spreadsheets",
-            "https://www.googleapis.com/auth/drive"
-        ]
-
-        # Get the private key and ensure proper newlines
-        private_key = os.getenv("GS_PRIVATE_KEY")
-        if private_key:
-            private_key = private_key.replace('\\n', '\n')  # Convert escaped newlines
+        try:
+            self.scope = [
+                "https://www.googleapis.com/auth/spreadsheets",
+                "https://www.googleapis.com/auth/drive"
+            ]
+            
+            # Get the private key and ensure proper newlines
+            private_key = os.getenv("GS_PRIVATE_KEY")
+            if private_key:
+                private_key = private_key.replace('\\n', '\n')  # Convert escaped newlines
                 
-        # Load from environment variables
-        self.creds = ServiceAccountCredentials.from_json_keyfile_dict({
-            "type": os.getenv("GS_TYPE"),
-            "project_id": os.getenv("GS_PROJECT_ID"),
-            "private_key_id": os.getenv("GS_PRIVATE_KEY_ID"),
-            "private_key": os.getenv("GS_PRIVATE_KEY").replace('\\n', '\n'),
-            "client_email": os.getenv("GS_CLIENT_EMAIL"),
-            "client_id": os.getenv("GS_CLIENT_ID"),
-            "auth_uri": os.getenv("GS_AUTH_URI"),
-            "token_uri": os.getenv("GS_TOKEN_URI"),
-            "auth_provider_x509_cert_url": os.getenv("GS_AUTH_PROVIDER_CERT_URL"),
-            "client_x509_cert_url": os.getenv("GS_CLIENT_CERT_URL")
-        }, self.scope)
-        self.client = gspread.authorize(self.creds)
-        
-        if not all(creds_dict.values()):
+            creds_dict = {
+                "type": os.getenv("GS_TYPE"),
+                "project_id": os.getenv("GS_PROJECT_ID"),
+                "private_key_id": os.getenv("GS_PRIVATE_KEY_ID"),
+                "private_key": private_key,
+                "client_email": os.getenv("GS_CLIENT_EMAIL"),
+                "client_id": os.getenv("GS_CLIENT_ID"),
+                "auth_uri": os.getenv("GS_AUTH_URI"),
+                "token_uri": os.getenv("GS_TOKEN_URI"),
+                "auth_provider_x509_cert_url": os.getenv("GS_AUTH_PROVIDER_CERT_URL"),
+                "client_x509_cert_url": os.getenv("GS_CLIENT_CERT_URL")
+            }
+            
+            # Validate all required fields are present
+            if not all(creds_dict.values()):
                 missing = [k for k, v in creds_dict.items() if not v]
                 raise ValueError(f"Missing Google Sheets config: {missing}")
                 
