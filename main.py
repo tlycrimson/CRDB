@@ -253,11 +253,22 @@ class ReactionLogger:
             embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
                 
             await log_channel.send(embed=embed)
-            await bot.sheets.update_points(member)
+            await self.bot.sheets.update_points(member)  
         except discord.NotFound:
             return
         except Exception as e:
             print(f"[REACTION LOG ERROR] {type(e).__name__}: {str(e)}")
+            
+# --- Bot Initialization ---
+intents = discord.Intents.default()
+intents.message_content = True
+intents.members = True
+intents.guilds = True
+intents.reactions = True
+
+bot = commands.Bot(intents=intents, command_prefix="!")
+bot.rate_limiter = RateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
+bot.reaction_logger = ReactionLogger(bot)
 
 # --- Google Sheets Logic ---
 class GoogleSheetsLogger:
@@ -327,16 +338,6 @@ async def on_ready():
     except Exception as e:
         print(f"Command sync error: {e}")
         
-# --- Bot Initialization ---
-intents = discord.Intents.default()
-intents.message_content = True
-intents.members = True
-intents.guilds = True
-intents.reactions = True
-
-bot = commands.Bot(intents=intents, command_prefix="!")
-bot.rate_limiter = RateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
-bot.reaction_logger = ReactionLogger(bot)
 
 # --- Slash Commands ---
 @bot.tree.command(name="commands", description="List all available commands")
