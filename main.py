@@ -310,27 +310,54 @@ class GoogleSheetsLogger:
             self.client = None
 
     async def update_points(self, member: discord.Member):
-        try:
-            sheet = self.client.open_by_key(os.getenv("GOOGLE_SHEET_ID"))
-            worksheet = sheet.worksheet(os.getenv("GOOGLE_SHEET_NAME"))  # Specific sheet
-            
-            # Clean username (remove [brackets])
-            username = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
-            
-            # Find or create user
-            records = worksheet.get_all_records()
-            for i, row in enumerate(records, start=2):  # Skip header
-                if row["Username"].lower() == username.lower():
-                    worksheet.update_cell(i, 2, row["Points"] + 1)  # Column B = Points
-                    worksheet.update_cell(i, 3, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-                    return True
-            
-            # New user
-            worksheet.append_row([username, 1, datetime.now().strftime("%Y-%m-%d %H:%M:%S")])
-            return True
-        except Exception as e:
-            print(f"⚠️ Sheets error: {e}")
-            return False
+    if not self.client:
+        print("Google Sheets client not initialized")
+        return False
+
+    try:
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        sheet_name = os.getenv("GOOGLE_SHEET_NAME", "Sheet1")
+        
+        print(f"Opening sheet {sheet_id}...")
+        sheet = self.client.open_by_key(sheet_id)
+        worksheet = sheet.worksheet(sheet_name)
+        
+        # Clean username
+        username = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
+        print(f"Updating points for: {username}")
+        
+        # Get all records
+        records = worksheet.get_all_records()
+        print(f"Found {len(records)} existing records")
+        
+        # Find existing user
+        for i, row in enumerate(records, start=2):  # Skip header
+            if row.get("Username", "").lower() == username.lower():
+                print(f"Found existing user at row {i}, updating points...")
+                current_points = row.get("Points", 0)
+                worksheet.update_cell(i, 2, current_points + 1)  # Column B = Points
+                worksheet.update_cell(i, 3, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                print(f"Updated {username} to {current_points + 1} points")
+                return True
+        
+        # New user
+        print(f"Adding new user {username}...")
+        worksheet.append_row([
+            username, 
+            1, 
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        ])
+        print(f"Added new user {username} with 1 point")
+        return True
+        
+    except gspread.exceptions.APIError as e:
+        print(f"Google Sheets API Error: {e}")
+    except Exception as e:
+        print(f"Unexpected error in update_points: {type(e).__name__}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+    
+    return False
 
 # Initialize in on_ready()
 @bot.event
