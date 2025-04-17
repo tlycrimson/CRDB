@@ -3,6 +3,7 @@ import re
 import time
 import asyncio
 import threading
+import aiohttp
 import discord
 from decorators import min_rank_required, has_allowed_role
 from rate_limiter import RateLimiter
@@ -13,13 +14,12 @@ from dotenv import load_dotenv
 from flask import Flask
 from typing import Optional, Set, Dict, List, Tuple
 from roblox_commands import create_sc_command
-import gspread
-from oauth2client.service_account import ServiceAccountCredentials
 from datetime import datetime
 
 # --- Configuration ---
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
+CLOUDFLARE_WORKER_URL = os.getenv("CLOUDFLARE_WORKER_URL")
 
 # Global rate limiter configuration
 GLOBAL_RATE_LIMIT = 25  # requests per minute
@@ -258,7 +258,46 @@ class ReactionLogger:
             return
         except Exception as e:
             print(f"[REACTION LOG ERROR] {type(e).__name__}: {str(e)}")
-            
+
+# --- SheetDB Logger with Cloudflare Worker ---
+class SheetDBLogger:
+    def __init__(self):
+        self.worker_url = CLOUDFLARE_WORKER_URL
+        if not self.worker_url:
+            print("🔴 Cloudflare Worker URL not configured")
+            self.ready = False
+        else:
+            self.ready = True
+            print("✅ SheetDB Logger configured with Cloudflare Worker")
+
+    async def update_points(self, member: discord.Member):
+        if not self.ready:
+            print("SheetDB Logger not properly configured")
+            return False
+
+        # Clean username
+        username = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
+        
+        try:
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    self.worker_url,
+                    json={"username": username},
+                    timeout=aiohttp.ClientTimeout(total=5)
+                ) as response:
+                    if response.status == 200:
+                        print(f"Successfully updated points for {username}")
+                        return True
+                    else:
+                        print(f"Failed to update points: {response.status} - {await response.text()}")
+                        return False
+        except asyncio.TimeoutError:
+            print("Timeout when calling Cloudflare Worker")
+            return False
+        except Exception as e:
+            print(f"Error updating points: {type(e).__name__}: {str(e)}")
+            return False
+
 # --- Bot Initialization ---
 intents = discord.Intents.default()
 intents.message_content = True
@@ -270,106 +309,17 @@ bot = commands.Bot(intents=intents, command_prefix="!")
 bot.rate_limiter = RateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
 bot.reaction_logger = ReactionLogger(bot)
 
-# --- Google Sheets Logic ---
-class GoogleSheetsLogger:
-    def __init__(self):
-        try:
-            self.scope = [
-                "https://www.googleapis.com/auth/spreadsheets",
-                "https://www.googleapis.com/auth/drive"
-            ]
-            
-            # Get the private key and ensure proper newlines
-            private_key = os.getenv("GS_PRIVATE_KEY")
-            if private_key:
-                private_key = private_key.replace('\\n', '\n')  # Convert escaped newlines
-                
-            creds_dict = {
-                "type": os.getenv("GS_TYPE"),
-                "project_id": os.getenv("GS_PROJECT_ID"),
-                "private_key_id": os.getenv("GS_PRIVATE_KEY_ID"),
-                "private_key": private_key,
-                "client_email": os.getenv("GS_CLIENT_EMAIL"),
-                "client_id": os.getenv("GS_CLIENT_ID"),
-                "auth_uri": os.getenv("GS_AUTH_URI"),
-                "token_uri": os.getenv("GS_TOKEN_URI"),
-                "auth_provider_x509_cert_url": os.getenv("GS_AUTH_PROVIDER_CERT_URL"),
-                "client_x509_cert_url": os.getenv("GS_CLIENT_CERT_URL")
-            }
-            
-            # Validate all required fields are present
-            if not all(creds_dict.values()):
-                missing = [k for k, v in creds_dict.items() if not v]
-                raise ValueError(f"Missing Google Sheets config: {missing}")
-                
-            self.creds = ServiceAccountCredentials.from_json_keyfile_dict(creds_dict, self.scope)
-            self.client = gspread.authorize(self.creds)
-            print("✅ Successfully connected to Google Sheets")
-        except Exception as e:
-            print(f"🔴 Google Sheets connection failed: {str(e)}")
-            self.client = None
-
-    async def update_points(self, member: discord.Member):
-        if not self.client:
-            print("Google Sheets client not initialized")
-            return False
-
-        try:
-            sheet_id = os.getenv("GOOGLE_SHEET_ID")
-            sheet_name = os.getenv("GOOGLE_SHEET_NAME", "Sheet1")
-            
-            print(f"Opening sheet {sheet_id}...")
-            sheet = self.client.open_by_key(sheet_id)
-            worksheet = sheet.worksheet(sheet_name)
-            
-            # Clean username
-            username = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
-            print(f"Updating points for: {username}")
-            
-            # Get all records
-            records = worksheet.get_all_records()
-            print(f"Found {len(records)} existing records")
-            
-            # Find existing user
-            for i, row in enumerate(records, start=2):  # Skip header
-                if row.get("Username", "").lower() == username.lower():
-                    print(f"Found existing user at row {i}, updating points...")
-                    current_points = row.get("Points", 0)
-                    worksheet.update_cell(i, 2, current_points + 1)  # Column B = Points
-                    worksheet.update_cell(i, 3, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-                    print(f"Updated {username} to {current_points + 1} points")
-                    return True
-            
-            # New user
-            print(f"Adding new user {username}...")
-            worksheet.append_row([
-                username, 
-                1, 
-                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            ])
-            print(f"Added new user {username} with 1 point")
-            return True
-            
-        except gspread.exceptions.APIError as e:
-            print(f"Google Sheets API Error: {e}")
-        except Exception as e:
-            print(f"Unexpected error in update_points: {type(e).__name__}: {str(e)}")
-            import traceback
-            traceback.print_exc()
-        
-        return False
-
 # Initialize in on_ready()
 @bot.event
 async def on_ready():
     print(f"[✅] logged in as {bot.user}")
     
-    # Initialize Google Sheets
-    bot.sheets = GoogleSheetsLogger()
-    if not bot.sheets.client:
-        print("⚠️ Warning: Google Sheets not initialized properly")
+    # Initialize SheetDB Logger
+    bot.sheets = SheetDBLogger()
+    if not bot.sheets.ready:
+        print("⚠️ Warning: SheetDB Logger not initialized properly")
     else:
-        print("✅ Google Sheets initialized successfully")
+        print("✅ SheetDB Logger initialized successfully")
         
     # Initialize reaction logger
     await bot.reaction_logger.on_ready_setup()
@@ -404,7 +354,8 @@ async def command_list(interaction: discord.Interaction):
         ],
         "🛠️ Utility": [
             "/ping - Check bot responsiveness",
-            "/commands - Show this help message"
+            "/commands - Show this help message",
+            "/sheetdb-test - Test SheetDB connection"
         ],
         "🎮 Roblox Tools": [
             "/sc - Security Check Roblox user"
@@ -456,33 +407,26 @@ async def reaction_remove(
 async def reaction_list(interaction: discord.Interaction):
     await bot.reaction_logger.list_channels(interaction)
 
-@bot.tree.command(name="sheets-status", description="Check Google Sheets connection status")
-async def sheets_status(interaction: discord.Interaction):
-    """Check if Google Sheets integration is working"""
+@bot.tree.command(name="sheetdb-test", description="Test SheetDB connection")
+async def sheetdb_test(interaction: discord.Interaction):
+    """Test the SheetDB integration"""
     await interaction.response.defer(ephemeral=True)
     
-    if not hasattr(bot, 'sheets') or not bot.sheets.client:
-        await interaction.followup.send("❌ Google Sheets not initialized", ephemeral=True)
+    if not hasattr(bot, 'sheets') or not bot.sheets.ready:
+        await interaction.followup.send("❌ SheetDB Logger not initialized", ephemeral=True)
         return
     
-    try:
-        sheet_id = os.getenv("GOOGLE_SHEET_ID")
-        sheet_name = os.getenv("GOOGLE_SHEET_NAME", "Sheet1")
-        
-        sheet = bot.sheets.client.open_by_key(sheet_id)
-        worksheet = sheet.worksheet(sheet_name)
-        records = worksheet.get_all_records()
-        
+    test_member = interaction.user
+    success = await bot.sheets.update_points(test_member)
+    
+    if success:
         await interaction.followup.send(
-            f"✅ Google Sheets connected successfully\n"
-            f"Spreadsheet: {sheet.title}\n"
-            f"Worksheet: {worksheet.title}\n"
-            f"Records found: {len(records)}",
+            "✅ SheetDB update test successful",
             ephemeral=True
         )
-    except Exception as e:
+    else:
         await interaction.followup.send(
-            f"❌ Google Sheets error: {type(e).__name__}: {str(e)}",
+            "❌ SheetDB update test failed - check logs",
             ephemeral=True
         )
 
