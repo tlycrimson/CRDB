@@ -279,9 +279,9 @@ class GoogleSheetsLogger:
         ]
 
         # Get the private key and ensure proper newlines
-            private_key = os.getenv("GS_PRIVATE_KEY")
-            if private_key:
-                private_key = private_key.replace('\\n', '\n')  # Convert escaped newlines
+        private_key = os.getenv("GS_PRIVATE_KEY")
+        if private_key:
+            private_key = private_key.replace('\\n', '\n')  # Convert escaped newlines
                 
         # Load from environment variables
         self.creds = ServiceAccountCredentials.from_json_keyfile_dict({
