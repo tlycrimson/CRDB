@@ -310,54 +310,54 @@ class GoogleSheetsLogger:
             self.client = None
 
     async def update_points(self, member: discord.Member):
-    if not self.client:
-        print("Google Sheets client not initialized")
-        return False
+        if not self.client:
+            print("Google Sheets client not initialized")
+            return False
 
-    try:
-        sheet_id = os.getenv("GOOGLE_SHEET_ID")
-        sheet_name = os.getenv("GOOGLE_SHEET_NAME", "Sheet1")
+        try:
+            sheet_id = os.getenv("GOOGLE_SHEET_ID")
+            sheet_name = os.getenv("GOOGLE_SHEET_NAME", "Sheet1")
+            
+            print(f"Opening sheet {sheet_id}...")
+            sheet = self.client.open_by_key(sheet_id)
+            worksheet = sheet.worksheet(sheet_name)
+            
+            # Clean username
+            username = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
+            print(f"Updating points for: {username}")
+            
+            # Get all records
+            records = worksheet.get_all_records()
+            print(f"Found {len(records)} existing records")
+            
+            # Find existing user
+            for i, row in enumerate(records, start=2):  # Skip header
+                if row.get("Username", "").lower() == username.lower():
+                    print(f"Found existing user at row {i}, updating points...")
+                    current_points = row.get("Points", 0)
+                    worksheet.update_cell(i, 2, current_points + 1)  # Column B = Points
+                    worksheet.update_cell(i, 3, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
+                    print(f"Updated {username} to {current_points + 1} points")
+                    return True
+            
+            # New user
+            print(f"Adding new user {username}...")
+            worksheet.append_row([
+                username, 
+                1, 
+                datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            ])
+            print(f"Added new user {username} with 1 point")
+            return True
+            
+        except gspread.exceptions.APIError as e:
+            print(f"Google Sheets API Error: {e}")
+        except Exception as e:
+            print(f"Unexpected error in update_points: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
         
-        print(f"Opening sheet {sheet_id}...")
-        sheet = self.client.open_by_key(sheet_id)
-        worksheet = sheet.worksheet(sheet_name)
-        
-        # Clean username
-        username = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
-        print(f"Updating points for: {username}")
-        
-        # Get all records
-        records = worksheet.get_all_records()
-        print(f"Found {len(records)} existing records")
-        
-        # Find existing user
-        for i, row in enumerate(records, start=2):  # Skip header
-            if row.get("Username", "").lower() == username.lower():
-                print(f"Found existing user at row {i}, updating points...")
-                current_points = row.get("Points", 0)
-                worksheet.update_cell(i, 2, current_points + 1)  # Column B = Points
-                worksheet.update_cell(i, 3, datetime.now().strftime("%Y-%m-%d %H:%M:%S"))
-                print(f"Updated {username} to {current_points + 1} points")
-                return True
-        
-        # New user
-        print(f"Adding new user {username}...")
-        worksheet.append_row([
-            username, 
-            1, 
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        ])
-        print(f"Added new user {username} with 1 point")
-        return True
-        
-    except gspread.exceptions.APIError as e:
-        print(f"Google Sheets API Error: {e}")
-    except Exception as e:
-        print(f"Unexpected error in update_points: {type(e).__name__}: {str(e)}")
-        import traceback
-        traceback.print_exc()
-    
-    return False
+        return False
 
 # Initialize in on_ready()
 @bot.event
@@ -384,7 +384,6 @@ async def on_ready():
         print(f"Synced {len(synced)} commands")
     except Exception as e:
         print(f"Command sync error: {e}")
-        
 
 # --- Slash Commands ---
 @bot.tree.command(name="commands", description="List all available commands")
@@ -457,29 +456,37 @@ async def reaction_remove(
 async def reaction_list(interaction: discord.Interaction):
     await bot.reaction_logger.list_channels(interaction)
 
-# --- Event Handlers ---
-@bot.event
-async def on_ready():
-    print(f"[✅] logged in as {bot.user}")
-
-    # Initializes reaction logger default channels
-    await bot.reaction_logger.on_ready_setup()
+@bot.tree.command(name="sheets-status", description="Check Google Sheets connection status")
+async def sheets_status(interaction: discord.Interaction):
+    """Check if Google Sheets integration is working"""
+    await interaction.response.defer(ephemeral=True)
     
-    if not hasattr(bot, 'rate_limiter'):
-        bot.rate_limiter = RateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
+    if not hasattr(bot, 'sheets') or not bot.sheets.client:
+        await interaction.followup.send("❌ Google Sheets not initialized", ephemeral=True)
+        return
     
     try:
-        # Create SC command with rate limiting
-        from roblox_commands import create_sc_command
-        create_sc_command(bot) 
-    
-    
-        synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} commands")
-        print("Commands:", [cmd.name for cmd in bot.tree.get_commands()])
+        sheet_id = os.getenv("GOOGLE_SHEET_ID")
+        sheet_name = os.getenv("GOOGLE_SHEET_NAME", "Sheet1")
+        
+        sheet = bot.sheets.client.open_by_key(sheet_id)
+        worksheet = sheet.worksheet(sheet_name)
+        records = worksheet.get_all_records()
+        
+        await interaction.followup.send(
+            f"✅ Google Sheets connected successfully\n"
+            f"Spreadsheet: {sheet.title}\n"
+            f"Worksheet: {worksheet.title}\n"
+            f"Records found: {len(records)}",
+            ephemeral=True
+        )
     except Exception as e:
-        print(f"Command sync error: {e}")
+        await interaction.followup.send(
+            f"❌ Google Sheets error: {type(e).__name__}: {str(e)}",
+            ephemeral=True
+        )
 
+# --- Event Handlers ---
 @bot.event
 async def on_member_remove(member: discord.Member):
     """Handle members leaving with deserter role"""
