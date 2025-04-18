@@ -19,7 +19,7 @@ from datetime import datetime
 # --- Configuration ---
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
-CLOUDFLARE_WORKER_URL = os.getenv("CLOUDFLARE_WORKER_URL")
+GOOGLE_SCRIPT_URL = os.getenv("GOOGLE_SCRIPT_URL")  # Changed from CLOUDFLARE_WORKER_URL
 
 # Global rate limiter configuration
 GLOBAL_RATE_LIMIT = 25  # requests per minute
@@ -259,17 +259,16 @@ class ReactionLogger:
         except Exception as e:
             print(f"[REACTION LOG ERROR] {type(e).__name__}: {str(e)}")
 
-# --- SheetDB Logger with Cloudflare Worker ---
+# --- Updated SheetDB Logger (Direct to Google Apps Script) ---
 class SheetDBLogger:
     def __init__(self):
-        self.worker_url = os.getenv("CLOUDFLARE_WORKER_URL")
-        self.auth_token = os.getenv("AUTH_TOKEN")  # Load token from env
-        if not self.worker_url or not self.auth_token:
-            print("🔴 Cloudflare Worker URL or AUTH_TOKEN not configured")
+        self.script_url = os.getenv("GOOGLE_SCRIPT_URL")
+        if not self.script_url:
+            print("🔴 Google Script URL not configured")
             self.ready = False
         else:
             self.ready = True
-            print("✅ SheetDB Logger configured with Cloudflare Worker")
+            print("✅ SheetDB Logger configured with direct Google Apps Script")
 
     async def update_points(self, member: discord.Member):
         if not self.ready:
@@ -282,13 +281,9 @@ class SheetDBLogger:
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    self.worker_url,
+                    self.script_url,
                     json={"username": username},
-                    headers={
-                        "Authorization": f"Bearer {self.auth_token}",
-                        "Content-Type": "application/json"
-                    },
-                    timeout=aiohttp.ClientTimeout(total=5)
+                    timeout=aiohttp.ClientTimeout(total=10)
                 ) as response:
                     if response.status == 200:
                         print(f"Successfully updated points for {username}")
@@ -297,7 +292,7 @@ class SheetDBLogger:
                         print(f"Failed to update points: {response.status} - {await response.text()}")
                         return False
         except asyncio.TimeoutError:
-            print("Timeout when calling Cloudflare Worker")
+            print("Timeout when calling Google Script")
             return False
         except Exception as e:
             print(f"Error updating points: {type(e).__name__}: {str(e)}")
