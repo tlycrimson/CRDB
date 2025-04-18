@@ -19,7 +19,7 @@ from datetime import datetime
 # --- Configuration ---
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
-GOOGLE_SCRIPT_URL = os.getenv("GOOGLE_SCRIPT_URL")  # Changed from CLOUDFLARE_WORKER_URL
+GOOGLE_SCRIPT_URL = os.getenv("GOOGLE_SCRIPT_URL")  
 
 # Global rate limiter configuration
 GLOBAL_RATE_LIMIT = 25  # requests per minute
