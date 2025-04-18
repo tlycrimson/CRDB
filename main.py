@@ -77,6 +77,9 @@ class ReactionLogger:
                    f"User: {payload.user_id}\n"
                    f"Emoji: {payload.emoji}\n")
         
+        if payload.channel_id in Config.IGNORED_CHANNELS and str(payload.emoji) in Config.IGNORED_EMOJI:
+            return
+
         if (payload.channel_id not in self.monitor_channel_ids or 
             str(payload.emoji) not in Config.TRACKED_REACTIONS):
             return
