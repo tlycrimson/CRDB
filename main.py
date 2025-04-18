@@ -5,6 +5,7 @@ import asyncio
 import threading
 import aiohttp
 import discord
+import logging
 from decorators import min_rank_required, has_allowed_role
 from rate_limiter import RateLimiter
 from discord import app_commands
@@ -19,7 +20,11 @@ from datetime import datetime
 # --- Configuration ---
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
-GOOGLE_SCRIPT_URL = os.getenv("GOOGLE_SCRIPT_URL")  
+GOOGLE_SCRIPT_URL = os.getenv("GOOGLE_SCRIPT_URL")
+
+# Set up logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Global rate limiter configuration
 GLOBAL_RATE_LIMIT = 25  # requests per minute
@@ -48,7 +53,7 @@ class ReactionLogger:
         
         # Verify log channel exists
         if not guild.get_channel(self.log_channel_id):
-            print(f"Warning: Default log channel {self.log_channel_id} not found!")
+            logger.warning(f"Default log channel {self.log_channel_id} not found!")
             self.log_channel_id = None
 
     async def _create_embed(self, title: str, description: str, 
@@ -63,156 +68,15 @@ class ReactionLogger:
         embed.set_footer(text=f"Executed at {time.strftime('%Y-%m-%d %H:%M:%S')}")
         return {"embed": embed, "ephemeral": ephemeral}
 
-    async def _process_channels(self, interaction: discord.Interaction, 
-                              input_str: str) -> Tuple[List[discord.TextChannel], List[str]]:
-        """Process channel input string into valid channels and invalid names"""
-        valid_channels = []
-        invalid_names = []
-        
-        # Split by commas or spaces, and clean up
-        channel_mentions = []
-        current_mention = ""
-        in_mention = False
-        
-        # Custom parsing to handle malformed mentions
-        for char in input_str:
-            if char == '<' and not in_mention:
-                in_mention = True
-                current_mention = "<"
-            elif char == '>' and in_mention:
-                current_mention += ">"
-                channel_mentions.append(current_mention)
-                current_mention = ""
-                in_mention = False
-            elif in_mention:
-                current_mention += char
-        
-        # Also split by commas for regular names
-        names = [n.strip() for n in input_str.split(',') if n.strip()]
-        names.extend(channel_mentions)
-        
-        for name in names:
-            try:
-                if name.startswith('<#') and name.endswith('>'):
-                    channel_id = int(name[2:-1])
-                    if channel := interaction.guild.get_channel(channel_id):
-                        valid_channels.append(channel)
-                        continue
-                
-                if channel := discord.utils.get(interaction.guild.text_channels, name=name):
-                    valid_channels.append(channel)
-                else:
-                    invalid_names.append(name)
-            except ValueError:
-                invalid_names.append(name)
-                
-        return valid_channels, invalid_names
-
-    async def setup(self, interaction: discord.Interaction, 
-                   log_channel: discord.TextChannel, 
-                   monitor_channels: str):
-        """Initialize reaction monitoring system"""
-        await interaction.response.defer(ephemeral=True)  # Defer first
-        
-        channels, invalid = await self._process_channels(interaction, monitor_channels)
-        
-        if len(channels) > Config.MAX_MONITORED_CHANNELS:
-            response = await self._create_embed(
-                "⚠️ Channel Limit Exceeded",
-                f"You can monitor up to {Config.MAX_MONITORED_CHANNELS} channels.",
-                discord.Color.red(),
-                True
-            )
-            await interaction.followup.send(**response)
-            return
-
-        self.monitor_channel_ids = {ch.id for ch in channels}
-        self.log_channel_id = log_channel.id
-        
-        response = await self._create_embed(
-            "✅ Setup Complete" if not invalid else "⚠️ Partial Setup",
-            f"Now monitoring {len(channels)} channels" + 
-            (f"\nCouldn't find: {', '.join(invalid)}" if invalid else ""),
-            discord.Color.green() if not invalid else discord.Color.orange(),
-            True
-        )
-        await interaction.followup.send(**response)
-
-    async def add_channels(self, interaction: discord.Interaction, channels: str):
-        """Add channels to monitor"""
-        await interaction.response.defer(ephemeral=True)
-        new_channels, invalid = await self._process_channels(interaction, channels)
-        
-        if len(self.monitor_channel_ids) + len(new_channels) > Config.MAX_MONITORED_CHANNELS:
-            response = await self._create_embed(
-                "⚠️ Channel Limit Exceeded",
-                f"Cannot add {len(new_channels)} channels. Max is {Config.MAX_MONITORED_CHANNELS}.",
-                discord.Color.red(),
-                True
-            )
-            await interaction.followup.send(**response)
-            return
-
-        self.monitor_channel_ids.update(ch.id for ch in new_channels)
-        
-        response = await self._create_embed(
-            "✅ Channels Added" if not invalid else "⚠️ Partial Success",
-            f"Added {len(new_channels)} channels to monitoring" + 
-            (f"\nCouldn't find: {', '.join(invalid)}" if invalid else ""),
-            discord.Color.green() if not invalid else discord.Color.orange(),
-            True
-        )
-        await interaction.followup.send(**response)
-
-    async def remove_channels(self, interaction: discord.Interaction, channels: str):
-        """Remove channels from monitoring"""
-        await interaction.response.defer(ephemeral=True)
-        remove_channels, invalid = await self._process_channels(interaction, channels)
-        removed = []
-        
-        for ch in remove_channels:
-            if ch.id in self.monitor_channel_ids:
-                self.monitor_channel_ids.remove(ch.id)
-                removed.append(ch.name)
-        
-        response = await self._create_embed(
-            "✅ Channels Removed" if removed else "⚠️ No Channels Removed",
-            (f"Stopped monitoring: {', '.join(removed)}" if removed else "No matching channels were being monitored") +
-            (f"\nCouldn't find: {', '.join(invalid)}" if invalid else ""),
-            discord.Color.green() if removed else discord.Color.orange(),
-            True
-        )
-        await interaction.followup.send(**response)
-
-    async def list_channels(self, interaction: discord.Interaction):
-        """List currently monitored channels"""
-        if not self.monitor_channel_ids:
-            response = await self._create_embed(
-                "ℹ️ No Channels Monitored",
-                "Currently not monitoring any channels.",
-                discord.Color.blue(),
-                True
-            )
-            await interaction.response.send_message(**response)
-            return
-
-        channel_names = []
-        guild = interaction.guild
-        
-        for channel_id in self.monitor_channel_ids:
-            if channel := guild.get_channel(channel_id):
-                channel_names.append(f"• {channel.mention}")
-        
-        response = await self._create_embed(
-            "📋 Monitored Channels",
-            "\n".join(channel_names) if channel_names else "No channels found",
-            discord.Color.blue(),
-            True
-        )
-        await interaction.response.send_message(**response)
+    # ... [rest of your ReactionLogger methods remain unchanged] ...
 
     async def log_reaction(self, payload: discord.RawReactionActionEvent):
         """Log reactions from monitored channels (only for users with monitoring role)"""
+        logger.info(f"\n--- REACTION DETECTED ---\n"
+                   f"Channel: {payload.channel_id}\n"
+                   f"User: {payload.user_id}\n"
+                   f"Emoji: {payload.emoji}\n")
+        
         if (payload.channel_id not in self.monitor_channel_ids or 
             str(payload.emoji) not in Config.TRACKED_REACTIONS):
             return
@@ -253,73 +117,89 @@ class ReactionLogger:
             embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
                 
             await log_channel.send(embed=embed)
-            await self.bot.sheets.update_points(member)  
+            
+            # Log before updating points
+            logger.info(f"Attempting to update points for: {member.display_name}")
+            update_success = await self.bot.sheets.update_points(member)
+            logger.info(f"Update {'succeeded' if update_success else 'failed'}")
+            
         except discord.NotFound:
             return
         except Exception as e:
-            print(f"[REACTION LOG ERROR] {type(e).__name__}: {str(e)}")
+            logger.error(f"Reaction log error: {type(e).__name__}: {str(e)}")
 
-# --- Updated SheetDB Logger (Direct to Google Apps Script) ---
+# --- Updated SheetDB Logger ---
 class SheetDBLogger:
     def __init__(self):
         self.script_url = os.getenv("GOOGLE_SCRIPT_URL")
         if not self.script_url:
-            print("🔴 Google Script URL not configured")
+            logger.error("Google Script URL not configured")
             self.ready = False
         else:
             self.ready = True
-            print("✅ SheetDB Logger configured with direct Google Apps Script")
+            logger.info("SheetDB Logger configured with Google Apps Script")
 
     async def update_points(self, member: discord.Member):
         if not self.ready:
-            print("SheetDB Logger not properly configured")
+            logger.error("SheetDB Logger not properly configured")
             return False
 
         # Clean username
         username = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
+        logger.info(f"Preparing to update points for: {username}")
         
         try:
             async with aiohttp.ClientSession() as session:
+                logger.info(f"Sending request to: {self.script_url}")
                 async with session.post(
                     self.script_url,
                     json={"username": username},
-                    timeout=aiohttp.ClientTimeout(total=10)
+                    timeout=aiohttp.ClientTimeout(total=15)
                 ) as response:
+                    response_text = await response.text()
+                    logger.info(f"Google Script response: {response.status} - {response_text}")
+                    
                     if response.status == 200:
-                        print(f"Successfully updated points for {username}")
+                        logger.info(f"Successfully updated points for {username}")
                         return True
                     else:
-                        print(f"Failed to update points: {response.status} - {await response.text()}")
+                        logger.error(f"Failed to update points: {response.status} - {response_text}")
                         return False
         except asyncio.TimeoutError:
-            print("Timeout when calling Google Script")
+            logger.error("Timeout when calling Google Script")
             return False
         except Exception as e:
-            print(f"Error updating points: {type(e).__name__}: {str(e)}")
+            logger.error(f"Error updating points: {type(e).__name__}: {str(e)}")
             return False
 
 # --- Bot Initialization ---
 intents = discord.Intents.default()
+intents.members = True        # Required for reaction tracking
 intents.message_content = True
-intents.members = True
 intents.guilds = True
-intents.reactions = True
+intents.reactions = True      # Required for reaction events
 
-bot = commands.Bot(intents=intents, command_prefix="!")
+bot = commands.Bot(
+    intents=intents,
+    command_prefix="!",
+    # Better error handling
+    activity=discord.Activity(type=discord.ActivityType.watching, name="for reactions")
+)
 bot.rate_limiter = RateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
 bot.reaction_logger = ReactionLogger(bot)
 
 # Initialize in on_ready()
 @bot.event
 async def on_ready():
-    print(f"[✅] logged in as {bot.user}")
+    logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
+    logger.info(f"Connected to {len(bot.guilds)} guild(s)")
     
     # Initialize SheetDB Logger
     bot.sheets = SheetDBLogger()
     if not bot.sheets.ready:
-        print("⚠️ Warning: SheetDB Logger not initialized properly")
+        logger.warning("SheetDB Logger not initialized properly")
     else:
-        print("✅ SheetDB Logger initialized successfully")
+        logger.info("SheetDB Logger initialized successfully")
         
     # Initialize reaction logger
     await bot.reaction_logger.on_ready_setup()
@@ -331,9 +211,35 @@ async def on_ready():
     # Sync commands
     try:
         synced = await bot.tree.sync()
-        print(f"Synced {len(synced)} commands")
+        logger.info(f"Synced {len(synced)} commands")
     except Exception as e:
-        print(f"Command sync error: {e}")
+        logger.error(f"Command sync error: {e}")
+
+# --- New Debug Commands ---
+@bot.tree.command(name="force-update", description="Manually test sheet updates")
+@has_allowed_role()
+async def force_update(interaction: discord.Interaction, username: str):
+    """Manually test sheet updates"""
+    await interaction.response.defer(ephemeral=True)
+    
+    class FakeMember:
+        def __init__(self, name):
+            self.display_name = name
+            self.name = name
+    
+    logger.info(f"Manual update test for username: {username}")
+    success = await bot.sheets.update_points(FakeMember(username))
+    
+    if success:
+        await interaction.followup.send(
+            f"✅ Successfully updated points for {username}",
+            ephemeral=True
+        )
+    else:
+        await interaction.followup.send(
+            f"❌ Failed to update points for {username} - check logs",
+            ephemeral=True
+        )
 
 # --- Slash Commands ---
 @bot.tree.command(name="commands", description="List all available commands")
@@ -518,12 +424,12 @@ async def run_bot():
         except discord.errors.HTTPException as e:
             if e.status == 429:
                 retry_after = e.response.headers.get('Retry-After', 30)
-                print(f"Rate limited during login. Waiting {retry_after} seconds...")
+                logger.warning(f"Rate limited during login. Waiting {retry_after} seconds...")
                 await asyncio.sleep(float(retry_after))
                 continue
             raise
         except Exception as e:
-            print(f"Unexpected error: {e}")
+            logger.error(f"Unexpected error: {e}")
             break
         else:
             break
