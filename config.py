@@ -21,5 +21,10 @@ class Config:
         1165368316970405910,
     }
     DEFAULT_LOG_CHANNEL = 1224765477935386676
+    CHANNELS_IDS_TO_IGNORE = { 
+        1165368317532438639,
+        1165368316970405910,
+    }
+    IGNORED_EMOJI = "✅"
                                     
     
