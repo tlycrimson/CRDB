@@ -133,43 +133,56 @@ class SheetDBLogger:
     def __init__(self):
         self.script_url = os.getenv("GOOGLE_SCRIPT_URL")
         if not self.script_url:
-            logger.error("Google Script URL not configured")
+            logger.error("❌ Google Script URL not configured in environment variables")
             self.ready = False
         else:
             self.ready = True
-            logger.info("SheetDB Logger configured with Google Apps Script")
+            logger.info("✅ SheetDB Logger configured with Google Apps Script")
+            logger.debug(f"Script URL: {self.script_url.split('?')[0]}...")  # Log without exposing full URL
 
     async def update_points(self, member: discord.Member):
         if not self.ready:
-            logger.error("SheetDB Logger not properly configured")
+            logger.error("🛑 SheetDB Logger not properly initialized")
             return False
 
         # Clean username
         username = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
-        logger.info(f"Preparing to update points for: {username}")
+        logger.info(f"🔄 Attempting to update points for: {username}")
         
         try:
             async with aiohttp.ClientSession() as session:
-                logger.info(f"Sending request to: {self.script_url}")
                 async with session.post(
                     self.script_url,
                     json={"username": username},
                     timeout=aiohttp.ClientTimeout(total=15)
                 ) as response:
-                    response_text = await response.text()
-                    logger.info(f"Google Script response: {response.status} - {response_text}")
+                    response_text = (await response.text()).strip()
                     
-                    if response.status == 200:
-                        logger.info(f"Successfully updated points for {username}")
+                    # More robust response checking
+                    success_conditions = [
+                        response.status == 200,
+                        "Error" not in response_text,
+                        "Unauthorized" not in response_text,
+                        len(response_text) > 0  # Empty response might indicate failure
+                    ]
+                    
+                    if all(success_conditions):
+                        logger.info(f"✅ Successfully updated points for {username}")
+                        logger.debug(f"Response: {response_text}")
                         return True
                     else:
-                        logger.error(f"Failed to update points: {response.status} - {response_text}")
+                        logger.error(f"❌ Failed to update points - Status: {response.status}")
+                        logger.error(f"Response: {response_text}")
                         return False
+                        
         except asyncio.TimeoutError:
-            logger.error("Timeout when calling Google Script")
+            logger.error("⏰ Timeout while connecting to Google Script")
+            return False
+        except aiohttp.ClientError as e:
+            logger.error(f"🌐 Network error: {type(e).__name__}: {str(e)}")
             return False
         except Exception as e:
-            logger.error(f"Error updating points: {type(e).__name__}: {str(e)}")
+            logger.error(f"⚠️ Unexpected error: {type(e).__name__}: {str(e)}")
             return False
 
 # --- Bot Initialization ---
