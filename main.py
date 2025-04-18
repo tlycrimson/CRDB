@@ -262,9 +262,10 @@ class ReactionLogger:
 # --- SheetDB Logger with Cloudflare Worker ---
 class SheetDBLogger:
     def __init__(self):
-        self.worker_url = CLOUDFLARE_WORKER_URL
-        if not self.worker_url:
-            print("🔴 Cloudflare Worker URL not configured")
+        self.worker_url = os.getenv("CLOUDFLARE_WORKER_URL")
+        self.auth_token = os.getenv("AUTH_TOKEN")  # Load token from env
+        if not self.worker_url or not self.auth_token:
+            print("🔴 Cloudflare Worker URL or AUTH_TOKEN not configured")
             self.ready = False
         else:
             self.ready = True
@@ -283,6 +284,10 @@ class SheetDBLogger:
                 async with session.post(
                     self.worker_url,
                     json={"username": username},
+                    headers={
+                        "Authorization": f"Bearer {self.auth_token}",
+                        "Content-Type": "application/json"
+                    },
                     timeout=aiohttp.ClientTimeout(total=5)
                 ) as response:
                     if response.status == 200:
