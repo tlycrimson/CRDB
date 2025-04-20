@@ -1,3 +1,4 @@
+import discord  
 import time
 from discord.ext import commands
 from discord import app_commands
@@ -239,7 +240,7 @@ def create_sc_command(bot: commands.Bot):
                 await interaction.followup.send(embed=embed)
 
 
-        except app_commands.CommandsOnCooldown as e:
+        except app_commands.CommandOnCooldown as e:
             await interaction.response.send_message(
                 f"⌛ Command on cooldown. Try again in {error.retry_after:.1f}s",
                 ephemeral=True
