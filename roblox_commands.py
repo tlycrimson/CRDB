@@ -89,11 +89,11 @@ async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int
         return 0
 
 def create_sc_command(bot: commands.Bot):
-    @app_commands.checks.cooldown(1, 10.0, key=lambda i: (i.guild_id, i.user.id))
     async def sc(interaction: discord.Interaction, user_id: int):
         try:
             #Immediate deferral
             await interaction.response.defer()
+            
             #Rate Limiting
             await bot.rate_limiter.wait_if_needed(bucket="sc_command")
         
@@ -235,7 +235,14 @@ def create_sc_command(bot: commands.Bot):
                 )
                 embed.set_footer(text=f"Requested by {interaction.user.display_name} | Roblox User ID: {user_id}")
                 await interaction.followup.send(embed=embed)
-                
+
+
+        except app_commands.CommandsOnCooldown:
+            await interaction.followup.send(
+                f"⌛ Command on cooldown. Try again in {error.retry_after:.1f}s",
+                ephemeral=True
+            )
+            
         except Exception as e:
             logger.error(f"[SC COMMAND ERROR]: {e}")
             if not interaction.response.is_done():
@@ -249,14 +256,10 @@ def create_sc_command(bot: commands.Bot):
                     ephemeral=True
                 )
 
-    @sc.error
-    async def sc_error(interaction: discord.Interaction, error):
-        if isinstance(error, app_commands.CommandOnCooldown):
-            await interaction.response.send_message(
-                f"⌛ Command on cooldown. Try again in {error.retry_after:.1f}s",
-                ephemeral=True
-            )
-    # Create and add the command
+    #Cooldown function
+    sc = app_commands.checks.cooldown(1, 10.0, key=lambda i: (i.guild_id, i.user.id))(sc)
+    
+    # Command Registration
     cmd = app_commands.Command(
         name="sc",
         description="Security check a Roblox user",
