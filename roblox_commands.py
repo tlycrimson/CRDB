@@ -92,6 +92,9 @@ def create_sc_command(bot: commands.Bot):
     @app_commands.checks.cooldown(1, 10.0, key=lambda i: (i.guild_id, i.user.id))
     async def sc(interaction: discord.Interaction, user_id: int):
         try:
+            await interaction.response.defer()
+            await bot.rate_limiter.wait_if_needed(bucket="sc_command")
+        
             warning = ""
             if user_id <= 0:
                 await interaction.response.send_message(
