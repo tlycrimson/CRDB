@@ -258,8 +258,6 @@ def create_sc_command(bot: commands.Bot):
                     "⚠️ An error occurred while processing your request.",
                     ephemeral=True
                 )
-    
-    # Add the command to the tree
-    bot.tree.add_command(cmd)
+
     
     return sc
