@@ -6,6 +6,7 @@ import threading
 import aiohttp
 import discord
 import logging
+import random
 from decorators import min_rank_required, has_allowed_role
 from rate_limiter import RateLimiter
 from discord import app_commands
@@ -130,7 +131,7 @@ class ReactionLogger:
         embed.set_footer(text=f"Executed at {time.strftime('%Y-%m-%d %H:%M:%S')}")
         return {"embed": embed, "ephemeral": ephemeral}
 
-  async def log_reaction(self, payload: discord.RawReactionActionEvent):
+    async def log_reaction(self, payload: discord.RawReactionActionEvent):
         """Log reactions from monitored channels with rate limiting"""
         try:
             await self.rate_limiter.wait_if_needed(bucket="reaction_log")
