@@ -37,34 +37,32 @@ class EnhancedRateLimiter:
     def __init__(self, calls_per_minute: int):
         self.calls_per_minute = calls_per_minute
         self.last_call_time = 0
-        self.buckets = {}  # For per-command rate limiting
+        self.buckets = {}
+        self.locks = {}  # Add locks for thread safety
         
     async def wait_if_needed(self, bucket: str = "global"):
-        """Wait if needed to avoid rate limits, with jitter and bucket support"""
-        now = time.time()
-        
+        """Wait if needed to avoid rate limits"""
         # Initialize bucket if not exists
         if bucket not in self.buckets:
             self.buckets[bucket] = {'last_call': 0, 'count': 0}
+            self.locks[bucket] = asyncio.Lock()
             
-        bucket_data = self.buckets[bucket]
-        
-        # Calculate time since last call
-        elapsed = now - bucket_data['last_call']
-        
-        # Add jitter to avoid synchronized requests
-        jitter = random.uniform(0.8, 1.2)
-        required_delay = max(0, (60 / self.calls_per_minute) * jitter - elapsed)
-        
-        if required_delay > 0:
-            logger.debug(f"Rate limit wait: {required_delay:.2f}s for bucket {bucket}")
-            await asyncio.sleep(required_delay)
+        async with self.locks[bucket]:
+            now = time.time()
+            bucket_data = self.buckets[bucket]
             
-        bucket_data['last_call'] = time.time()
-        bucket_data['count'] += 1
-        
-        # Track global rate too
-        self.last_call_time = time.time()
+            # Calculate time since last call
+            elapsed = now - bucket_data['last_call']
+            
+            # Add jitter and minimum delay
+            required_delay = max(1.0, (60 / self.calls_per_minute) - elapsed)
+            
+            if required_delay > 0:
+                logger.debug(f"Rate limit wait: {required_delay:.2f}s for bucket {bucket}")
+                await asyncio.sleep(required_delay)
+                
+            bucket_data['last_call'] = time.time()
+            bucket_data['count'] += 1
 
 # --- API Request Helper with Retry Logic ---
 class DiscordAPI:
@@ -267,7 +265,10 @@ intents.reactions = True
 bot = commands.Bot(
     intents=intents,
     command_prefix="!",
-    activity=discord.Activity(type=discord.ActivityType.watching, name="for reactions")
+    activity=discord.Activity(type=discord.ActivityType.watching, name="out for RMP"),
+    # Add these to handle rate limits better
+    max_messages=None,
+    heartbeat_timeout=60.0
 )
 bot.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
 bot.reaction_logger = ReactionLogger(bot)
@@ -303,10 +304,12 @@ async def on_ready():
         
     # Initialize reaction logger
     await bot.reaction_logger.on_ready_setup()
-    
-    # Register commands
-    from roblox_commands import create_sc_command
-    create_sc_command(bot)
+
+    # Register commands only if not already registered
+    if not any(cmd.name == 'sc' for cmd in bot.tree.get_commands()):
+        from roblox_commands import create_sc_command
+        create_sc_command(bot)
+        logger.info("Registered /sc command")
     
     # Sync commands with retry
     try:
@@ -441,6 +444,17 @@ async def sheetdb_test(interaction: discord.Interaction):
         )
 
 # --- Event Handlers ---
+@bot.event
+async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.CommandInvokeError):
+        if isinstance(error.original, discord.errors.HTTPException) and error.original.status == 429:
+            retry_after = error.original.response.headers.get('Retry-After', 5)
+            await interaction.followup.send(
+                f"⚠️ Too many requests. Please wait {retry_after} seconds before trying again.",
+                ephemeral=True
+            )
+            return
+ 
 @bot.event
 async def on_member_remove(member: discord.Member):
     """Handle members leaving with deserter role"""
