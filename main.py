@@ -28,8 +28,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Global rate limiter configuration
-GLOBAL_RATE_LIMIT = 25  # requests per minute
-COMMAND_COOLDOWN = 5    # seconds between command uses per user
+GLOBAL_RATE_LIMIT = 15  # requests per minute
+COMMAND_COOLDOWN = 10    # seconds between command uses per user
 
 # --- Enhanced Rate Limiter Class ---
 class EnhancedRateLimiter:
