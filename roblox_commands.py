@@ -90,9 +90,8 @@ async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int
         return 0
 
 def create_sc_command(bot: commands.Bot):
-    @app_commands.command(name="sc", description="Security check a Roblox user")
+    @bot.tree.command(name="sc", description="Security check a Roblox user")
     @app_commands.describe(user_id="The Roblox user ID to check")
-    @app_commands.checks.cooldown(1, 10.0, key=lambda i: (i.guild_id, i.user.id))
     @has_allowed_role()
     async def sc(interaction: discord.Interaction, user_id: int):
         try:
