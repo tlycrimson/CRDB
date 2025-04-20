@@ -1,7 +1,7 @@
 import discord
 import time
 from discord.ext import commands
-from discord import app_commands
+from discord import app_commands, AppCommandOptionType
 from rate_limiter import RateLimiter
 from decorators import has_allowed_role
 import aiohttp
@@ -237,8 +237,8 @@ def create_sc_command(bot: commands.Bot):
                 await interaction.followup.send(embed=embed)
 
 
-        except app_commands.CommandsOnCooldown:
-            await interaction.followup.send(
+        except app_commands.CommandsOnCooldown as e:
+            await interaction.response.send_message(
                 f"⌛ Command on cooldown. Try again in {error.retry_after:.1f}s",
                 ephemeral=True
             )
@@ -267,14 +267,19 @@ def create_sc_command(bot: commands.Bot):
     )
     
     # Add parameter description
-    cmd.parameters = [
-        app_commands.Parameter(
-            name="user_id",
-            description="The Roblox user ID to check",
-            type=app_commands.ParameterType.integer,
-            required=True
-        )
-    ]
+    cmd = app_commands.Command(
+        name="sc",
+        description="Security check a Roblox user",
+        callback=sc,
+        parameters=[
+            app_commands.Parameter(
+                name="user_id",
+                description="The Roblox user ID to check",
+                type=discord.AppCommandOptionType.integer,
+                required=True
+         )
+      ]
+   )
     
     # Add the command to the tree
     bot.tree.add_command(cmd)
