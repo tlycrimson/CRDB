@@ -88,9 +88,7 @@ async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int
         return 0
 
 def create_sc_command(bot: commands.Bot):
-    @bot.tree.command(name="sc", description="Security check a Roblox user")
-    @app_commands.describe(user_id="The Roblox user ID to check")
-    @has_allowed_role()
+    # First define the command function without decorator
     async def sc(interaction: discord.Interaction, user_id: int):
         try:
             warning = ""
@@ -98,10 +96,10 @@ def create_sc_command(bot: commands.Bot):
                 await interaction.response.send_message(
                     "❌ Invalid Roblox User ID. Please provide a positive number.",
                     ephemeral=True
-            )
+                )
                 return
             
-        #Initialize rate limiter
+            # Initialize rate limiter
             if not hasattr(bot, 'rate_limiter'):
                 bot.rate_limiter = RateLimiter(calls_per_minute=45)
             
@@ -218,7 +216,6 @@ def create_sc_command(bot: commands.Bot):
                         inline=True
                     )
 
-
                 if banned_groups:
                     embed.add_field(
                         name="🚨 Banned/Main Groups Detected",
@@ -231,7 +228,6 @@ def create_sc_command(bot: commands.Bot):
                         value="User is not in any banned groups or main regiments.",
                         inline=True
                     )
-
                             
                 embed.set_author(
                     name=f"Roblox User Check • {username}",
@@ -253,4 +249,24 @@ def create_sc_command(bot: commands.Bot):
                     ephemeral=True
                 )
 
+    # Create and add the command
+    cmd = app_commands.Command(
+        name="sc",
+        description="Security check a Roblox user",
+        callback=sc
+    )
+    
+    # Add parameter description
+    cmd.parameters = [
+        app_commands.Parameter(
+            name="user_id",
+            description="The Roblox user ID to check",
+            type=app_commands.ParameterType.integer,
+            required=True
+        )
+    ]
+    
+    # Add the command to the tree
+    bot.tree.add_command(cmd)
+    
     return sc
