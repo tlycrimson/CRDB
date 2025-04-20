@@ -8,7 +8,7 @@ import aiohttp
 import asyncio
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
-from discord.ext.commands import CooldownMappi
+from discord.ext.commands import CooldownMapping
 
 
 # Configuration 
@@ -92,24 +92,20 @@ def create_sc_command(bot: commands.Bot):
     @app_commands.checks.cooldown(1, 10.0, key=lambda i: (i.guild_id, i.user.id))
     async def sc(interaction: discord.Interaction, user_id: int):
         try:
+            #Immediate deferral
             await interaction.response.defer()
+            #Rate Limiting
             await bot.rate_limiter.wait_if_needed(bucket="sc_command")
         
-            warning = ""
+        
             if user_id <= 0:
-                await interaction.response.send_message(
+                await interaction.response.followup.send(
                     "❌ Invalid Roblox User ID. Please provide a positive number.",
                     ephemeral=True
                 )
                 return
             
-            # Initialize rate limiter
-            if not hasattr(bot, 'rate_limiter'):
-                bot.rate_limiter = RateLimiter(calls_per_minute=45)
-            
-            await bot.rate_limiter.wait_if_needed()
-            await interaction.response.defer()
-            
+            warning = ""
             async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT) as session:
                 urls = {
                     'profile': f"https://users.roblox.com/v1/users/{user_id}",
@@ -241,7 +237,7 @@ def create_sc_command(bot: commands.Bot):
                 await interaction.followup.send(embed=embed)
                 
         except Exception as e:
-            print(f"[SC COMMAND ERROR] {e}")
+            logger.error(f"[SC COMMAND ERROR]: {e}")
             if not interaction.response.is_done():
                 await interaction.response.send_message(
                     "⚠️ An error occurred while processing your request.",
@@ -253,6 +249,13 @@ def create_sc_command(bot: commands.Bot):
                     ephemeral=True
                 )
 
+    @sc.error
+    async def sc_error(interaction: discord.Interaction, error):
+        if isinstance(error, app_commands.CommandOnCooldown):
+            await interaction.response.send_message(
+                f"⌛ Command on cooldown. Try again in {error.retry_after:.1f}s",
+                ephemeral=True
+            )
     # Create and add the command
     cmd = app_commands.Command(
         name="sc",
