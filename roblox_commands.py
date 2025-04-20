@@ -8,6 +8,7 @@ import aiohttp
 import asyncio
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
+from discord.ext.commands import CooldownMappi
 
 
 # Configuration 
@@ -88,7 +89,7 @@ async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int
         return 0
 
 def create_sc_command(bot: commands.Bot):
-    # First define the command function without decorator
+    @app_commands.checks.cooldown(1, 10.0, key=lambda i: (i.guild_id, i.user.id))
     async def sc(interaction: discord.Interaction, user_id: int):
         try:
             warning = ""
