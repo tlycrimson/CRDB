@@ -1,15 +1,15 @@
-import discord
 import time
 from discord.ext import commands
-from discord import app_commands, AppCommandOptionType
+from discord import app_commands
 from rate_limiter import RateLimiter
 from decorators import has_allowed_role
 import aiohttp
 import asyncio
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
-from discord.ext.commands import CooldownMapping
+import logging
 
+logger = logging.getLogger(__name__)
 
 # Configuration 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -44,7 +44,7 @@ async def fetch_with_cache(session: aiohttp.ClientSession, url: str) -> Optional
                 CACHE[cache_key] = {'data': data, 'timestamp': time.time()}
                 return data
     except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-        print(f"[API ERROR] {url}: {str(e)}")
+        logger.error(f"[API ERROR] {url}: {str(e)}")
     return None
 
 async def fetch_group_rank(session: aiohttp.ClientSession, user_id: int) -> str:
@@ -85,27 +85,29 @@ async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int
             return len(legacy_data)
         return 0
     except Exception as e:
-        print(f"[BADGE COUNT ERROR] {e}")
+        logger.error(f"[BADGE COUNT ERROR] {e}")
         return 0
 
 def create_sc_command(bot: commands.Bot):
+    @app_commands.command(name="sc", description="Security check a Roblox user")
+    @app_commands.describe(user_id="The Roblox user ID to check")
+    @app_commands.checks.cooldown(1, 10.0, key=lambda i: (i.guild_id, i.user.id))
+    @has_allowed_role()
     async def sc(interaction: discord.Interaction, user_id: int):
         try:
-            #Immediate deferral
+            # Immediate deferral
             await interaction.response.defer()
             
-            #Rate Limiting
+            # Rate limiting
             await bot.rate_limiter.wait_if_needed(bucket="sc_command")
-        
-        
+            
             if user_id <= 0:
-                await interaction.response.followup.send(
+                await interaction.followup.send(
                     "❌ Invalid Roblox User ID. Please provide a positive number.",
                     ephemeral=True
                 )
                 return
-            
-            warning = ""
+                
             async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT) as session:
                 urls = {
                     'profile': f"https://users.roblox.com/v1/users/{user_id}",
@@ -255,31 +257,6 @@ def create_sc_command(bot: commands.Bot):
                     "⚠️ An error occurred while processing your request.",
                     ephemeral=True
                 )
-
-    #Cooldown function
-    sc = app_commands.checks.cooldown(1, 10.0, key=lambda i: (i.guild_id, i.user.id))(sc)
-    
-    # Command Registration
-    cmd = app_commands.Command(
-        name="sc",
-        description="Security check a Roblox user",
-        callback=sc
-    )
-    
-    # Add parameter description
-    cmd = app_commands.Command(
-        name="sc",
-        description="Security check a Roblox user",
-        callback=sc,
-        parameters=[
-            app_commands.Parameter(
-                name="user_id",
-                description="The Roblox user ID to check",
-                type=discord.AppCommandOptionType.integer,
-                required=True
-         )
-      ]
-   )
     
     # Add the command to the tree
     bot.tree.add_command(cmd)
