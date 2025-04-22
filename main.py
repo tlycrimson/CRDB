@@ -264,7 +264,7 @@ intents.reactions = True
 
 bot = commands.Bot(
     intents=intents,
-    command_prefix="!",
+    command_prefix="!.",
     activity=discord.Activity(type=discord.ActivityType.watching, name="out for RMP"),
     # Add these to handle rate limits better
     max_messages=None,
