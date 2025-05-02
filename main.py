@@ -144,6 +144,10 @@ class ReactionLogger:
                    f"User: {payload.user_id}\n"
                    f"Emoji: {payload.emoji}\n")
         
+        monitor_role = guild.get_role(Config.MONITOR_ROLE_ID)
+        if not monitor_role or monitor_role not in member.roles:
+            return
+        
         if payload.channel_id in Config.IGNORED_CHANNELS and str(payload.emoji) in Config.IGNORED_EMOJI:
             return
 
@@ -157,10 +161,6 @@ class ReactionLogger:
 
         member = guild.get_member(payload.user_id)
         if not member:
-            return
-
-        monitor_role = guild.get_role(Config.MONITOR_ROLE_ID)
-        if not monitor_role or monitor_role not in member.roles:
             return
 
         channel = guild.get_channel(payload.channel_id)
