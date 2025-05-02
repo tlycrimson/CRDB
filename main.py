@@ -492,13 +492,13 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     embed = discord.Embed(
         title="Welcome to the Royal Military Police",
         description="**1.** Make sure to read all of the rules found in <#1165368313925353580>\n\n"
-                   "**2.** You can NOT enforce the MSL (Manual of Service Law).\n\n"
+                   "**2.** You **MUST** read the RMP main guide and MSL before starting your duties.\n\n"
                    "**3.** You can't use your L85 unless you are doing it for Self-Militia. (Self-defence)\n\n"
                    "**4.** Make sure to follow the Chain Of Command. Inspector > Chief Inspector > Superintendent > Major > Lieutenant Colonel > Colonel > Commander > Provost Marshal\n\n"
                    "**5.** For phases, you may wait for one to be hosted in <#1207367013698240584> or request the phase you need in <#1270700562433839135>.\n\n"
                    "**6.** All the information about the Defence School of Policing and Guarding is found in both <#1237062439720452157> and <#1207366893631967262>\n\n"
                    "**7.** Choose your timezone here https://discord.com/channels/1165368311085809717/1165368313925353578\n\n"
-                   "**8.** You will be ranked Private but if you ever decide to leave RMP you will get your original rank back.\n\n"
+                   "**8.** Please read the following announcements if you're unsure on some stuff: [TC Mini Guide ](https://discord.com/channels/1165368311085809717/1237062439720452157/1363987177394143354), [PD and Stage Rules](https://discord.com/channels/1165368311085809717/1165368314462212158/1365042797052432384) and [Uniform policy](https://discord.com/channels/1165368311085809717/1165368314462212158/1366080537638342729).\n\n"
                    "**Besides that, good luck with your phases!**",
         color=discord.Color.red()
     )
