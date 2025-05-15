@@ -143,7 +143,15 @@ class ReactionLogger:
                    f"Channel: {payload.channel_id}\n"
                    f"User: {payload.user_id}\n"
                    f"Emoji: {payload.emoji}\n")
-        
+
+        guild = self.bot.get_guild(payload.guild_id)
+        if not guild:
+            return
+
+        member = guild.get_member(payload.user_id)
+        if not member:
+            return
+            
         monitor_role = guild.get_role(Config.MONITOR_ROLE_ID)
         if not monitor_role or monitor_role not in member.roles:
             return
@@ -154,14 +162,7 @@ class ReactionLogger:
         if (payload.channel_id not in self.monitor_channel_ids or 
             str(payload.emoji) not in Config.TRACKED_REACTIONS):
             return
-            
-        guild = self.bot.get_guild(payload.guild_id)
-        if not guild:
-            return
 
-        member = guild.get_member(payload.user_id)
-        if not member:
-            return
 
         channel = guild.get_channel(payload.channel_id)
         log_channel = guild.get_channel(self.log_channel_id)
