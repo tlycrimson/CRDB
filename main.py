@@ -8,6 +8,8 @@ import discord
 import logging
 import random
 import aiodns
+import socket
+from typing import Optional, Set, Dict, List, Tuple, Any
 from decorators import min_rank_required, has_allowed_role
 from rate_limiter import RateLimiter
 from discord import app_commands
@@ -15,7 +17,6 @@ from config import Config
 from discord.ext import commands
 from dotenv import load_dotenv
 from flask import Flask
-from typing import Optional, Set, Dict, List, Tuple
 from roblox_commands import create_sc_command
 from datetime import datetime
 
@@ -27,25 +28,89 @@ USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTM
 TIMEOUT = aiohttp.ClientTimeout(total=10)
 
 # Set up logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('bot.log', encoding='utf-8')
+    ]
+)
 logger = logging.getLogger(__name__)
 
 # Global rate limiter configuration
 GLOBAL_RATE_LIMIT = 15  # requests per minute
 COMMAND_COOLDOWN = 10    # seconds between command uses per user
 
-# --- Enhanced Rate Limiter Class ---
+async def check_dns_connectivity() -> bool:
+    """DNS resolution with multiple fallback methods"""
+    domains = ['api.roblox.com', 'www.roblox.com']
+    dns_servers = [
+        '1.1.1.1',  # Cloudflare
+        '8.8.8.8',  # Google
+        '208.67.222.222'  # OpenDNS
+    ]
+    
+    # Try public DNS servers first
+    for server in dns_servers:
+        try:
+            resolver = aiodns.DNSResolver()
+            resolver.nameservers = [server]
+            
+            for domain in domains:
+                try:
+                    result = await resolver.query(domain, 'A')
+                    logger.info(f"DNS {server} resolved {domain} to {result}")
+                    return True
+                except aiodns.error.DNSError as e:
+                    logger.warning(f"DNS {server} failed for {domain}: {str(e)}")
+                    continue
+        except Exception as e:
+            logger.warning(f"DNS server {server} failed: {str(e)}")
+            continue
+    
+    # Fallback to system DNS
+    try:
+        resolver = aiodns.DNSResolver()
+        for domain in domains:
+            try:
+                result = await resolver.query(domain, 'A')
+                logger.info(f"System DNS resolved {domain} to {result}")
+                return True
+            except aiodns.error.DNSError as e:
+                logger.warning(f"System DNS query failed for {domain}: {str(e)}")
+                continue
+    except Exception as e:
+        logger.warning(f"System DNS resolver failed: {str(e)}")
+
+    # Final fallback to socket (sync)
+    def sync_resolve():
+        try:
+            for domain in domains:
+                try:
+                    ip = socket.gethostbyname(domain)
+                    logger.info(f"Socket resolved {domain} to {ip}")
+                    return True
+                except socket.gaierror as e:
+                    logger.warning(f"Socket resolution failed for {domain}: {str(e)}")
+                    continue
+            return False
+        except Exception as e:
+            logger.error(f"Socket resolution error: {str(e)}")
+            return False
+    
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, sync_resolve)
+
 class EnhancedRateLimiter:
     """Improved rate limiter with jitter and bucket support"""
     def __init__(self, calls_per_minute: int):
         self.calls_per_minute = calls_per_minute
-        self.last_call_time = 0
         self.buckets = {}
-        self.locks = {}  # Add locks for thread safety
+        self.locks = {}
         
     async def wait_if_needed(self, bucket: str = "global"):
         """Wait if needed to avoid rate limits"""
-        # Initialize bucket if not exists
         if bucket not in self.buckets:
             self.buckets[bucket] = {'last_call': 0, 'count': 0}
             self.locks[bucket] = asyncio.Lock()
@@ -54,10 +119,7 @@ class EnhancedRateLimiter:
             now = time.time()
             bucket_data = self.buckets[bucket]
             
-            # Calculate time since last call
             elapsed = now - bucket_data['last_call']
-            
-            # Add jitter and minimum delay
             required_delay = max(1.0, (60 / self.calls_per_minute) - elapsed)
             
             if required_delay > 0:
@@ -67,7 +129,52 @@ class EnhancedRateLimiter:
             bucket_data['last_call'] = time.time()
             bucket_data['count'] += 1
 
-# --- API Request Helper with Retry Logic ---
+    async def setup(self, interaction: discord.Interaction, log_channel: discord.TextChannel, monitor_channels: str):
+        """Setup reaction monitoring"""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            channel_ids = [int(cid.strip()) for cid in monitor_channels.split(',')]
+            self.monitor_channel_ids = set(channel_ids)
+            self.log_channel_id = log_channel.id
+            await interaction.followup.send("✅ Reaction monitoring setup complete", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Setup failed: {str(e)}", ephemeral=True)
+
+    async def add_channels(self, interaction: discord.Interaction, channels: str):
+        """Add channels to monitor"""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
+            self.monitor_channel_ids.update(channel_ids)
+            await interaction.followup.send(f"✅ Added {len(channel_ids)} channels to monitoring", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Failed to add channels: {str(e)}", ephemeral=True)
+
+    async def remove_channels(self, interaction: discord.Interaction, channels: str):
+        """Remove channels from monitoring"""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
+            self.monitor_channel_ids.difference_update(channel_ids)
+            await interaction.followup.send(f"✅ Removed {len(channel_ids)} channels from monitoring", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Failed to remove channels: {str(e)}", ephemeral=True)
+
+    async def list_channels(self, interaction: discord.Interaction):
+        """List monitored channels"""
+        await interaction.response.defer(ephemeral=True)
+        if not self.monitor_channel_ids:
+            await interaction.followup.send("❌ No channels being monitored", ephemeral=True)
+            return
+            
+        channel_list = "\n".join(f"• <#{cid}>" for cid in self.monitor_channel_ids)
+        embed = discord.Embed(
+            title="Monitored Channels",
+            description=channel_list,
+            color=discord.Color.blue()
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
 class DiscordAPI:
     """Helper class for Discord API requests with retry logic"""
     @staticmethod
@@ -91,9 +198,8 @@ class DiscordAPI:
         
         raise Exception(f"Failed after {max_retries} attempts")
 
-# --- Utility Classes ---
 class ReactionLogger:
-    """Handles reaction monitoring and logging with improved rate limiting"""
+    """Handles reaction monitoring and logging"""
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.monitor_channel_ids = set(Config.DEFAULT_MONITOR_CHANNELS)
@@ -105,9 +211,7 @@ class ReactionLogger:
         await DiscordAPI.execute_with_retry(self._on_ready_setup_impl())
         
     async def _on_ready_setup_impl(self):
-        guild = self.bot.guilds[0]  # For the first guild the bot is in
-        
-        # Verify channels exist
+        guild = self.bot.guilds[0]
         valid_channels = set()
         for channel_id in self.monitor_channel_ids:
             if channel := guild.get_channel(channel_id):
@@ -115,25 +219,12 @@ class ReactionLogger:
         
         self.monitor_channel_ids = valid_channels
         
-        # Verify log channel exists
         if not guild.get_channel(self.log_channel_id):
             logger.warning(f"Default log channel {self.log_channel_id} not found!")
             self.log_channel_id = None
 
-    async def _create_embed(self, title: str, description: str, 
-                          color: discord.Color = discord.Color.blue(), 
-                          ephemeral: bool = False) -> Dict:
-        """Helper to create consistent embeds"""
-        embed = discord.Embed(
-            title=title,
-            description=description,
-            color=color
-        )
-        embed.set_footer(text=f"Executed at {time.strftime('%Y-%m-%d %H:%M:%S')}")
-        return {"embed": embed, "ephemeral": ephemeral}
-
     async def log_reaction(self, payload: discord.RawReactionActionEvent):
-        """Log reactions from monitored channels with rate limiting"""
+        """Log reactions from monitored channels"""
         try:
             await self.rate_limiter.wait_if_needed(bucket="reaction_log")
             await self._log_reaction_impl(payload)
@@ -141,12 +232,6 @@ class ReactionLogger:
             logger.error(f"Failed to log reaction: {type(e).__name__}: {str(e)}")
 
     async def _log_reaction_impl(self, payload: discord.RawReactionActionEvent):
-        """Actual reaction logging implementation"""
-        logger.info(f"\n--- REACTION DETECTED ---\n"
-                   f"Channel: {payload.channel_id}\n"
-                   f"User: {payload.user_id}\n"
-                   f"Emoji: {payload.emoji}\n")
-
         guild = self.bot.get_guild(payload.guild_id)
         if not guild:
             return
@@ -165,7 +250,6 @@ class ReactionLogger:
         if (payload.channel_id not in self.monitor_channel_ids or 
             str(payload.emoji) not in Config.TRACKED_REACTIONS):
             return
-
 
         channel = guild.get_channel(payload.channel_id)
         log_channel = guild.get_channel(self.log_channel_id)
@@ -203,8 +287,6 @@ class ReactionLogger:
         except Exception as e:
             logger.error(f"Reaction log error: {type(e).__name__}: {str(e)}")
 
-
-# --- SheetDB Logger with rate limiting ---
 class SheetDBLogger:
     def __init__(self):
         self.script_url = os.getenv("GOOGLE_SCRIPT_URL")
@@ -214,7 +296,6 @@ class SheetDBLogger:
         else:
             self.ready = True
             logger.info("✅ SheetDB Logger configured with Google Apps Script")
-            logger.debug(f"Script URL: {self.script_url.split('?')[0]}...")
 
     async def update_points(self, member: discord.Member):
         if not self.ready:
@@ -242,18 +323,13 @@ class SheetDBLogger:
                     
                     if all(success_conditions):
                         logger.info(f"✅ Successfully updated points for {username}")
-                        logger.debug(f"Response: {response_text}")
                         return True
                     else:
                         logger.error(f"❌ Failed to update points - Status: {response.status}")
-                        logger.error(f"Response: {response_text}")
                         return False
                         
         except asyncio.TimeoutError:
             logger.error("⏰ Timeout while connecting to Google Script")
-            return False
-        except aiohttp.ClientError as e:
-            logger.error(f"🌐 Network error: {type(e).__name__}: {str(e)}")
             return False
         except Exception as e:
             logger.error(f"⚠️ Unexpected error: {type(e).__name__}: {str(e)}")
@@ -270,13 +346,12 @@ bot = commands.Bot(
     intents=intents,
     command_prefix="!.",
     activity=discord.Activity(type=discord.ActivityType.watching, name="out for RMP"),
-    # Add these to handle rate limits better
     max_messages=None,
     heartbeat_timeout=60.0
 )
 bot.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
 bot.reaction_logger = ReactionLogger(bot)
-bot.api = DiscordAPI()  # Add our API helper
+bot.api = DiscordAPI()
 
 # --- Command Error Handler ---
 @bot.event
@@ -293,43 +368,31 @@ async def on_command_error(ctx, error):
         await ctx.send("❌ An error occurred while processing your command.", ephemeral=True)
 
 # Creating Sc command
-from roblox_commands import create_sc_command
 create_sc_command(bot)
 
-# Initialize in on_ready()
 @bot.event
 async def on_ready():
     logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
     logger.info(f"Connected to {len(bot.guilds)} guild(s)")
 
-    # Initialize SheetDB Logger
     bot.sheets = SheetDBLogger()
     if not bot.sheets.ready:
         logger.warning("SheetDB Logger not initialized properly")
     else:
         logger.info("SheetDB Logger initialized successfully")
         
-    # Initialize reaction logger
     await bot.reaction_logger.on_ready_setup()
     
-    # Initialize shared session
     bot.shared_session = aiohttp.ClientSession(
         headers={"User-Agent": USER_AGENT},
         timeout=TIMEOUT,
         connector=aiohttp.TCPConnector(
             force_close=True,
             enable_cleanup_closed=True,
-            # Bypass DNS for known Roblox IPs if DNS fails
             resolver=aiohttp.AsyncResolver() if await check_dns_connectivity() else None
         )
     )
 
-    # DNS Resolver
-    global dns_resolver
-    dns_resolver = aiodns.DNSResolver()
-    logger.info("DNS resolver initialized")
-    
-    # Sync commands with retry
     try:
         synced = await bot.api.execute_with_retry(
             bot.tree.sync(),
@@ -339,26 +402,17 @@ async def on_ready():
         logger.info(f"Synced {len(synced)} commands")
     except Exception as e:
         logger.error(f"Command sync error: {e}")
-        
-        # Debug: List all registered commands
-        registered_commands = await bot.tree.fetch_commands()
-        logger.info(f"Registered commands: {[cmd.name for cmd in registered_commands]}")
-        
 
 @bot.event
-async def on_close():
+async def on_disconnect():
     if hasattr(bot, 'shared_session') and bot.shared_session:
         await bot.shared_session.close()
         logger.info("Closed shared HTTP session")
-    if hasattr(bot, 'sheets') and hasattr(bot.sheets, 'session') and bot.sheets.session:
-        await bot.sheets.session.close()
-        logger.info("Closed sheets session")
         
-# --- New Debug Commands ---
+# --- Commands ---
 @bot.tree.command(name="force-update", description="Manually test sheet updates")
 @has_allowed_role()
 async def force_update(interaction: discord.Interaction, username: str):
-    """Manually test sheet updates"""
     await interaction.response.defer(ephemeral=True)
     
     class FakeMember:
@@ -380,11 +434,9 @@ async def force_update(interaction: discord.Interaction, username: str):
             ephemeral=True
         )
 
-# --- Slash Commands ---
 @bot.tree.command(name="commands", description="List all available commands")
 @has_allowed_role()
 async def command_list(interaction: discord.Interaction):
-    """Display help menu with all commands"""
     embed = discord.Embed(
         title="📜 Available Commands",
         color=discord.Color.blue()
@@ -415,7 +467,6 @@ async def command_list(interaction: discord.Interaction):
 @bot.tree.command(name="ping", description="Check bot latency")
 @has_allowed_role()
 async def ping(interaction: discord.Interaction):
-    """Check bot responsiveness"""
     latency = round(bot.latency * 1000)
     await interaction.response.send_message(
         f"🏓 Pong! Latency: {latency}ms",
@@ -429,7 +480,7 @@ async def reaction_setup(
     log_channel: discord.TextChannel,
     monitor_channels: str
 ):
-    await bot.reaction_logger.setup(interaction, log_channel, monitor_channels)
+    await bot.reaction_logger.rate_limiter.setup(interaction, log_channel, monitor_channels)
 
 @bot.tree.command(name="reaction-add", description="Add channels to monitor")
 @min_rank_required(Config.MONITOR_ROLE_ID)
@@ -437,7 +488,7 @@ async def reaction_add(
     interaction: discord.Interaction,
     channels: str
 ):
-    await bot.reaction_logger.add_channels(interaction, channels)
+    await bot.reaction_logger.rate_limiter.add_channels(interaction, channels)
 
 @bot.tree.command(name="reaction-remove", description="Remove channels from monitoring")
 @min_rank_required(Config.MONITOR_ROLE_ID)
@@ -445,16 +496,15 @@ async def reaction_remove(
     interaction: discord.Interaction,
     channels: str
 ):
-    await bot.reaction_logger.remove_channels(interaction, channels)
+    await bot.reaction_logger.rate_limiter.remove_channels(interaction, channels)
 
 @bot.tree.command(name="reaction-list", description="List monitored channels")
 @min_rank_required(Config.MONITOR_ROLE_ID)
 async def reaction_list(interaction: discord.Interaction):
-    await bot.reaction_logger.list_channels(interaction)
+    await bot.reaction_logger.rate_limiter.list_channels(interaction)
 
 @bot.tree.command(name="sheetdb-test", description="Test SheetDB connection")
 async def sheetdb_test(interaction: discord.Interaction):
-    """Test the SheetDB integration"""
     await interaction.response.defer(ephemeral=True)
     
     if not hasattr(bot, 'sheets') or not bot.sheets.ready:
@@ -489,7 +539,6 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
  
 @bot.event
 async def on_member_remove(member: discord.Member):
-    """Handle members leaving with deserter role"""
     guild = member.guild
     if not (deserter_role := guild.get_role(Config.DESERTER_ROLE_ID)):
         return
@@ -514,7 +563,6 @@ async def on_member_remove(member: discord.Member):
 
 @bot.event 
 async def on_member_update(before: discord.Member, after: discord.Member):
-    """Send welcome message when RMP role is added"""
     if not (rmp_role := after.guild.get_role(Config.RMP_ROLE_ID)):
         return
         
@@ -545,7 +593,6 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    """Handle reaction events"""
     await bot.reaction_logger.log_reaction(payload)
 
 # --- Flask Setup ---
@@ -563,7 +610,6 @@ def shutdown():
     return "Shutting down...", 200
 
 def run_flask():
-    """Run Flask in a background thread"""
     port = int(os.environ.get("PORT", 8080))
     app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
