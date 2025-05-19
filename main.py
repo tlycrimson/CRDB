@@ -302,7 +302,7 @@ async def on_ready():
     logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
     logger.info(f"Connected to {len(bot.guilds)} guild(s)")
 
-     # Initialize SheetDB Logger
+    # Initialize SheetDB Logger
     bot.sheets = SheetDBLogger()
     if not bot.sheets.ready:
         logger.warning("SheetDB Logger not initialized properly")
@@ -314,15 +314,15 @@ async def on_ready():
     
     # Initialize shared session
     bot.shared_session = aiohttp.ClientSession(
-    headers={"User-Agent": USER_AGENT},
+        headers={"User-Agent": USER_AGENT},
         timeout=TIMEOUT
     )
+    logger.info("Initialized shared HTTP session")
 
-    #DNS Resolver
+    # DNS Resolver
     global dns_resolver
     dns_resolver = aiodns.DNSResolver()
     logger.info("DNS resolver initialized")
-    
     
     # Sync commands with retry
     try:
@@ -334,6 +334,10 @@ async def on_ready():
         logger.info(f"Synced {len(synced)} commands")
     except Exception as e:
         logger.error(f"Command sync error: {e}")
+        
+        # Debug: List all registered commands
+        registered_commands = await bot.tree.fetch_commands()
+        logger.info(f"Registered commands: {[cmd.name for cmd in registered_commands]}")
         
 
 @bot.event
