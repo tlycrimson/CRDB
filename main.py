@@ -7,6 +7,7 @@ import aiohttp
 import discord
 import logging
 import random
+import aiodns
 from decorators import min_rank_required, has_allowed_role
 from rate_limiter import RateLimiter
 from discord import app_commands
