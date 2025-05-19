@@ -342,9 +342,12 @@ async def on_ready():
 
 @bot.event
 async def on_close():
-    if hasattr(bot, 'shared_session') and bot.shared_session:  
+    if hasattr(bot, 'shared_session') and bot.shared_session:
         await bot.shared_session.close()
         logger.info("Closed shared HTTP session")
+    if hasattr(bot, 'sheets') and hasattr(bot.sheets, 'session') and bot.sheets.session:
+        await bot.sheets.session.close()
+        logger.info("Closed sheets session")
         
 # --- New Debug Commands ---
 @bot.tree.command(name="force-update", description="Manually test sheet updates")
