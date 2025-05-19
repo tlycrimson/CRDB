@@ -315,9 +315,14 @@ async def on_ready():
     # Initialize shared session
     bot.shared_session = aiohttp.ClientSession(
         headers={"User-Agent": USER_AGENT},
-        timeout=TIMEOUT
+        timeout=TIMEOUT,
+        connector=aiohttp.TCPConnector(
+            force_close=True,
+            enable_cleanup_closed=True,
+            # Bypass DNS for known Roblox IPs if DNS fails
+            resolver=aiohttp.AsyncResolver() if await check_dns_connectivity() else None
+        )
     )
-    logger.info("Initialized shared HTTP session")
 
     # DNS Resolver
     global dns_resolver
