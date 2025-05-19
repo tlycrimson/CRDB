@@ -14,11 +14,29 @@ import logging
 
 
 logger = logging.getLogger(__name__)
-# DNS resolver setup
+
 dns_resolver = aiodns.DNSResolver()
 
+# Configuration
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+BGROUP_IDS = {32578828, 6447250, 4973512, 14286518, 32014700, 15229694, 15224554, 14557406, 14609194, 5029915}
+BRITISH_ARMY_GROUP_ID = 4972535
+TIMEOUT = aiohttp.ClientTimeout(total=10)
+REQUIREMENTS = {'age': 90, 'friends': 7, 'groups': 5, 'badges': 120}
+CACHE = {}
+CACHE_TTL = 300
+REQUEST_RETRIES = 3
+REQUEST_RETRY_DELAY = 1.0
+
+# Global concurrency limiter
+MAX_CONCURRENT_REQUESTS = 5
+request_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+
+# Aiohttp session to be initialized in bot startup
+shared_session: Optional[aiohttp.ClientSession] = None
+
+
 async def check_dns_connectivity():
-    """Check if we can resolve Roblox domains"""
     try:
         await dns_resolver.query('api.roblox.com', 'A')
         await dns_resolver.query('www.roblox.com', 'A')
@@ -27,18 +45,7 @@ async def check_dns_connectivity():
         logger.error(f"[DNS ERROR] Failed to resolve Roblox domains: {str(e)}")
         return False
 
-# Configuration 
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-BGROUP_IDS = {32578828, 6447250, 4973512, 14286518, 32014700, 15229694, 15224554, 14557406, 14609194, 5029915}
-BRITISH_ARMY_GROUP_ID = 4972535
-TIMEOUT = aiohttp.ClientTimeout(total=10)
-REQUIREMENTS = {'age': 90, 'friends': 7, 'groups': 5, 'badges': 120}
-CACHE = {}
-CACHE_TTL = 300  # 5 minutes cache
-REQUEST_RETRIES = 3
-REQUEST_RETRY_DELAY = 1.0  # Base delay in seconds
 
-# Helper functions 
 def widen_text(text: str) -> str:
     return text.upper().translate(
         str.maketrans(
@@ -50,7 +57,7 @@ def widen_text(text: str) -> str:
 def create_progress_bar(percentage: float, meets_req: bool) -> str:
     filled = min(10, round(percentage / 10))
     return (("🟩" if meets_req else "🟥") * filled) + ("⬜" * (10 - filled))
-    
+
 async def fetch_group_rank(session: aiohttp.ClientSession, user_id: int) -> str:
     url = f"https://groups.roblox.com/v2/users/{user_id}/groups/roles"
     data = await fetch_with_cache(session, url)
@@ -61,11 +68,9 @@ async def fetch_group_rank(session: aiohttp.ClientSession, user_id: int) -> str:
     return 'Not in Group'
 
 
-
 async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries: int = 3) -> Optional[Dict[str, Any]]:
     for attempt in range(max_retries):
         try:
-            # First check DNS connectivity
             if not await check_dns_connectivity():
                 if attempt == max_retries - 1:
                     logger.error(f"[DNS FAILURE] Cannot resolve Roblox domains for {url}")
@@ -73,14 +78,15 @@ async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries
                 await asyncio.sleep(2 ** attempt)
                 continue
 
-            async with session.get(url) as response:
-                if response.status == 429:
-                    retry_after = float(response.headers.get('Retry-After', 1.0))
-                    await asyncio.sleep(retry_after)
-                    continue
-                if response.status == 200:
-                    return await response.json()
-                return None
+            async with request_semaphore:
+                async with session.get(url) as response:
+                    if response.status == 429:
+                        retry_after = float(response.headers.get('Retry-After', 1.0))
+                        await asyncio.sleep(retry_after)
+                        continue
+                    if response.status == 200:
+                        return await response.json()
+                    return None
         except (aiohttp.ClientConnectorError, socket.gaierror) as e:
             if attempt == max_retries - 1:
                 logger.error(f"[CONNECTION ERROR] {url}: {str(e)}")
@@ -105,14 +111,11 @@ async def fetch_with_cache(session: aiohttp.ClientSession, url: str) -> Optional
     except Exception as e:
         logger.error(f"[CACHE ERROR] {url}: {str(e)}")
     return None
-    
+
 async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int:
     endpoints = [
-        # Modern endpoints (try first)
         lambda: f"https://badges.roblox.com/v1/users/{user_id}/badges?limit=100&sortOrder=Asc",
         lambda: f"https://inventory.roblox.com/v1/users/{user_id}/items/Collectible/1?limit=100",
-        
-        # Legacy endpoints (fallbacks)
         lambda: f"https://accountinformation.roblox.com/v1/users/{user_id}/roblox-badges",
         lambda: f"https://api.roblox.com/users/{user_id}/badges"
     ]
@@ -120,37 +123,36 @@ async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int
     for endpoint in endpoints:
         url = endpoint()
         try:
-            if "badges?" in url:  # Paginated endpoint
+            if "badges?" in url:
                 badge_count = 0
                 cursor = ""
-                while True:
+                pages = 0
+                while pages < 10:  # Cap max pages to 10
                     paginated_url = f"{url}&cursor={cursor}" if cursor else url
                     data = await fetch_with_cache(session, paginated_url)
                     if not data or "data" not in data:
                         break
                     badge_count += len(data["data"])
-                    if not data.get("nextPageCursor"):
+                    cursor = data.get("nextPageCursor")
+                    if not cursor:
                         break
-                    cursor = data["nextPageCursor"]
+                    pages += 1
                 if badge_count > 0:
                     return badge_count
-            else:  # Regular endpoint
+            else:
                 data = await fetch_with_cache(session, url)
                 if data and isinstance(data, list):
                     return len(data)
-                if data and "data" in data:  # Some endpoints wrap in data object
+                if data and "data" in data:
                     return len(data["data"])
         except Exception as e:
             logger.warning(f"[BADGE ENDPOINT FALLBACK] Failed {url}: {str(e)}")
             continue
 
     logger.error(f"[BADGE COUNT FAILURE] All endpoints failed for user {user_id}")
-    return 0  # Graceful fallback
-
-
+    return 0
 
 async def safe_followup(interaction: discord.Interaction, *args, **kwargs):
-    """Wrapper for followup.send with rate limit handling"""
     try:
         await interaction.client.rate_limiter.wait_if_needed('followup_messages')
         return await interaction.followup.send(*args, **kwargs)
@@ -161,18 +163,17 @@ async def safe_followup(interaction: discord.Interaction, *args, **kwargs):
             return await interaction.followup.send(*args, **kwargs)
         raise
 
+
 def create_sc_command(bot: commands.Bot):
     @bot.tree.command(name="sc", description="Security check a Roblox user")
     @app_commands.describe(user_id="The Roblox user ID to check")
+    @app_commands.checks.cooldown(rate=1, per=10.0)  # Added cooldown: 1 use per 10 seconds
     @has_allowed_role()
     async def sc(interaction: discord.Interaction, user_id: int):
         try:
-            # Immediate deferral
             await interaction.response.defer()
-            
-            # Rate limiting for command execution
             await bot.rate_limiter.wait_if_needed(bucket="sc_command")
-            
+
             if user_id <= 0:
                 await safe_followup(
                     interaction,
@@ -180,160 +181,101 @@ def create_sc_command(bot: commands.Bot):
                     ephemeral=True
                 )
                 return
-                
-            async with aiohttp.ClientSession(
-                headers={"User-Agent": USER_AGENT}, 
-                timeout=TIMEOUT,
-                connector=aiohttp.TCPConnector(limit_per_host=5)  # Limit concurrent connections
-            ) as session:
-                urls = {
-                    'profile': f"https://users.roblox.com/v1/users/{user_id}",
-                    'groups': f"https://groups.roblox.com/v2/users/{user_id}/groups/roles",
-                    'friends': f"https://friends.roblox.com/v1/users/{user_id}/friends/count",
-                    'avatar': f"https://thumbnails.roblox.com/v1/users/avatar?userIds={user_id}&size=150x150&format=Png"
-                }
-                
-                tasks = {
-                    'profile': fetch_with_cache(session, urls['profile']),
-                    'groups': fetch_with_cache(session, urls['groups']),
-                    'friends': fetch_with_cache(session, urls['friends']),
-                    'avatar': fetch_with_cache(session, urls['avatar']),
-                    'badges': fetch_badge_count(session, user_id),
-                    'rank': fetch_group_rank(session, user_id)
-                }
-                
-                results = await asyncio.gather(*tasks.values(), return_exceptions=True)
-                data = dict(zip(tasks.keys(), results))
-                
-                if not data['profile'] or isinstance(data['profile'], Exception):
-                    embed = discord.Embed(
-                        title="🔴 User Not Found",
-                        description="The specified Roblox user could not be found.",
-                        color=discord.Color.red()
-                    )
-                    await safe_followup(interaction, embed=embed)
-                    return
-                
-                username = data['profile'].get('name', 'Unknown')
-                created_at = datetime.fromisoformat(data['profile']['created'].replace('Z', '+00:00')) if data['profile'].get('created') else None
-                age_days = (datetime.now(timezone.utc) - created_at).days if created_at else 0
-                
-                friends_count = data['friends'].get('count', 0) if data['friends'] and not isinstance(data['friends'], Exception) else 0
-                groups_count = len(data['groups'].get('data', [])) if data['groups'] and not isinstance(data['groups'], Exception) else 0
-                if isinstance(data['badges'], Exception):
-                    badge_count = 0
-                    warning = "⚠️ Badges may be private or user has none"
-                else:
-                    badge_count = data['badges']
-                    warning = "⚠️ Badges may be private or user has none" if badge_count == 0 else ""
-                british_army_rank = data['rank'] if not isinstance(data['rank'], Exception) else 'Unknown'
-                
-                metrics = {
-                    'age': {
-                        'value': age_days,
-                        'percentage': min(100, (age_days / REQUIREMENTS['age']) * 100),
-                        'meets_req': age_days >= REQUIREMENTS['age']
-                    },
-                    'friends': {
-                        'value': friends_count,
-                        'percentage': min(100, (friends_count / REQUIREMENTS['friends']) * 100),
-                        'meets_req': friends_count >= REQUIREMENTS['friends']
-                    },
-                    'groups': {
-                        'value': groups_count,
-                        'percentage': min(100, (groups_count / REQUIREMENTS['groups']) * 100),
-                        'meets_req': groups_count >= REQUIREMENTS['groups']
-                    },
-                    'badges': {
-                        'value': badge_count,
-                        'percentage': min(100, (badge_count / max(1, REQUIREMENTS['badges'])) * 100),
-                        'meets_req': badge_count >= REQUIREMENTS['badges']
-                    }
-                }
-                
-                banned_groups = []
-                if data['groups'] and not isinstance(data['groups'], Exception):
-                    banned_groups = [
-                        f"• {group['group']['name']}" 
-                        for group in data['groups'].get('data', []) 
-                        if group and group['group']['id'] in BGROUP_IDS
-                    ]
-                
-                emoji_map = {
-                    "age": "📅",
-                    "friends": "👥",
-                    "groups": "🏘️",
-                    "badges": "🎖️"
-                }
 
+            session = shared_session  # Use global session
+            urls = {
+                'profile': f"https://users.roblox.com/v1/users/{user_id}",
+                'groups': f"https://groups.roblox.com/v2/users/{user_id}/groups/roles",
+                'friends': f"https://friends.roblox.com/v1/users/{user_id}/friends/count",
+                'avatar': f"https://thumbnails.roblox.com/v1/users/avatar?userIds={user_id}&size=150x150&format=Png"
+            }
+
+            tasks = {
+                'profile': fetch_with_cache(session, urls['profile']),
+                'groups': fetch_with_cache(session, urls['groups']),
+                'friends': fetch_with_cache(session, urls['friends']),
+                'avatar': fetch_with_cache(session, urls['avatar']),
+                'badges': fetch_badge_count(session, user_id),
+                'rank': fetch_group_rank(session, user_id)
+            }
+
+            results = await asyncio.gather(*tasks.values(), return_exceptions=True)
+            data = dict(zip(tasks.keys(), results))
+
+            if not data['profile'] or isinstance(data['profile'], Exception):
                 embed = discord.Embed(
-                    title=f"{widen_text(username)}",
-                    url=f"https://www.roblox.com/users/{user_id}/profile",
-                    color=discord.Color.red() if banned_groups else discord.Color.green(),
-                    description=(
-                        f"📅 **Created Account:** (<t:{int(created_at.timestamp())}:R>)\n"
-                        f"🎖️ **British Army Rank:** {british_army_rank}"
-                    ),
-                    timestamp=datetime.utcnow()
+                    title="🔴 User Not Found",
+                    description="The specified Roblox user could not be found.",
+                    color=discord.Color.red()
                 )
-
-                if data['avatar'] and not isinstance(data['avatar'], Exception) and data['avatar'].get('data'):
-                    embed.set_thumbnail(url=data['avatar']['data'][0]['imageUrl'])
-
-                for name, metric in metrics.items():
-                    emoji = emoji_map.get(name.lower(), "")
-                    status_icon = "✅" if metric['meets_req'] else "❌"
-                    progress_bar = create_progress_bar(metric['percentage'], metric['meets_req'])
-
-                    field_value = f"{progress_bar} {metric['value']}/{REQUIREMENTS[name]}\nProgress: {round(metric['percentage'])}%"
-                    if name == 'badges' and warning:
-                        field_value += f"\n{warning}"
-                    
-                    embed.add_field(
-                        name=f"{emoji} {name.capitalize()} {status_icon}",
-                        value=field_value,
-                        inline=True
-                    )
-
-                if banned_groups:
-                    embed.add_field(
-                        name="🚨 Banned/Main Groups Detected",
-                        value="\n".join(banned_groups),
-                        inline=False
-                    )
-                else:
-                    embed.add_field(
-                        name="✅",
-                        value="User is not in any banned groups or main regiments.",
-                        inline=True
-                    )
-                            
-                embed.set_author(
-                    name=f"Roblox User Check • {username}",
-                    icon_url=interaction.user.avatar.url if interaction.user.avatar else None
-                )
-                embed.set_footer(text=f"Requested by {interaction.user.display_name} | Roblox User ID: {user_id}")
                 await safe_followup(interaction, embed=embed)
+                return
+
+            username = data['profile'].get('name', 'Unknown')
+            created_at = datetime.fromisoformat(data['profile']['created'].replace('Z', '+00:00')) if data['profile'].get('created') else None
+            age_days = (datetime.now(timezone.utc) - created_at).days if created_at else 0
+
+            friends_count = data['friends'].get('count', 0) if data['friends'] and not isinstance(data['friends'], Exception) else 0
+            groups_count = len(data['groups'].get('data', [])) if data['groups'] and not isinstance(data['groups'], Exception) else 0
+            badge_count = data['badges'] if not isinstance(data['badges'], Exception) else 0
+            warning = "⚠️ Badges may be private or user has none" if badge_count == 0 else ""
+            british_army_rank = data['rank'] if not isinstance(data['rank'], Exception) else 'Unknown'
+
+            metrics = {
+                'age': {'value': age_days, 'percentage': min(100, (age_days / REQUIREMENTS['age']) * 100), 'meets_req': age_days >= REQUIREMENTS['age']},
+                'friends': {'value': friends_count, 'percentage': min(100, (friends_count / REQUIREMENTS['friends']) * 100), 'meets_req': friends_count >= REQUIREMENTS['friends']},
+                'groups': {'value': groups_count, 'percentage': min(100, (groups_count / REQUIREMENTS['groups']) * 100), 'meets_req': groups_count >= REQUIREMENTS['groups']},
+                'badges': {'value': badge_count, 'percentage': min(100, (badge_count / max(1, REQUIREMENTS['badges'])) * 100), 'meets_req': badge_count >= REQUIREMENTS['badges']}
+            }
+
+            banned_groups = []
+            if data['groups'] and not isinstance(data['groups'], Exception):
+                banned_groups = [
+                    f"• {group['group']['name']}" 
+                    for group in data['groups'].get('data', []) 
+                    if group and group['group']['id'] in BGROUP_IDS
+                ]
+
+            emoji_map = {"age": "📅", "friends": "👥", "groups": "🏘️", "badges": "🎖️"}
+
+            embed = discord.Embed(
+                title=f"{widen_text(username)}",
+                url=f"https://www.roblox.com/users/{user_id}/profile",
+                color=discord.Color.red() if banned_groups else discord.Color.green(),
+                description=f"📅 **Created Account:** <t:{int(created_at.timestamp())}:R>\n🎖️ **British Army Rank:** {british_army_rank}",
+                timestamp=datetime.utcnow()
+            )
+
+            if data['avatar'] and not isinstance(data['avatar'], Exception) and data['avatar'].get('data'):
+                embed.set_thumbnail(url=data['avatar']['data'][0]['imageUrl'])
+
+            for name, metric in metrics.items():
+                emoji = emoji_map.get(name.lower(), "")
+                status_icon = "✅" if metric['meets_req'] else "❌"
+                progress_bar = create_progress_bar(metric['percentage'], metric['meets_req'])
+
+                field_value = f"{progress_bar} {metric['value']}/{REQUIREMENTS[name]}\nProgress: {round(metric['percentage'])}%"
+                if name == 'badges' and warning:
+                    field_value += f"\n{warning}"
+
+                embed.add_field(name=f"{emoji} {name.capitalize()} {status_icon}", value=field_value, inline=True)
+
+            if banned_groups:
+                embed.add_field(name="🚨 Banned/Main Groups Detected", value="\n".join(banned_groups), inline=False)
+            else:
+                embed.add_field(name="✅", value="User is not in any banned groups or main regiments.", inline=True)
+
+            embed.set_author(name=f"Roblox User Check • {username}", icon_url=interaction.user.avatar.url if interaction.user.avatar else None)
+            embed.set_footer(text=f"Requested by {interaction.user.display_name} | Roblox User ID: {user_id}")
+            await safe_followup(interaction, embed=embed)
 
         except app_commands.CommandOnCooldown as e:
-            await safe_followup(
-                interaction,
-                f"⌛ Command on cooldown. Try again in {e.retry_after:.1f}s",
-                ephemeral=True
-            )
-            
+            await safe_followup(interaction, f"⌛ Command on cooldown. Try again in {e.retry_after:.1f}s", ephemeral=True)
         except Exception as e:
             logger.error(f"[SC COMMAND ERROR]: {str(e)}", exc_info=True)
             if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    "⚠️ An error occurred while processing your request.",
-                    ephemeral=True
-                )
+                await interaction.response.send_message("⚠️ An error occurred while processing your request.", ephemeral=True)
             else:
-                await safe_followup(
-                    interaction,
-                    "⚠️ An error occurred while processing your request.",
-                    ephemeral=True
-                )
-    
+                await safe_followup(interaction, "⚠️ An error occurred while processing your request.", ephemeral=True)
+
     return sc
