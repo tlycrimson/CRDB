@@ -7,11 +7,25 @@ from decorators import has_allowed_role
 import aiohttp
 import asyncio
 from datetime import datetime, timezone
+import socket
+import aiodns
 from typing import Optional, Dict, Any
 import logging
-import socket
+
 
 logger = logging.getLogger(__name__)
+# DNS resolver setup
+dns_resolver = aiodns.DNSResolver()
+
+async def check_dns_connectivity():
+    """Check if we can resolve Roblox domains"""
+    try:
+        await dns_resolver.query('api.roblox.com', 'A')
+        await dns_resolver.query('www.roblox.com', 'A')
+        return True
+    except Exception as e:
+        logger.error(f"[DNS ERROR] Failed to resolve Roblox domains: {str(e)}")
+        return False
 
 # Configuration 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -37,12 +51,20 @@ def create_progress_bar(percentage: float, meets_req: bool) -> str:
     filled = min(10, round(percentage / 10))
     return (("🟩" if meets_req else "🟥") * filled) + ("⬜" * (10 - filled))
 
-async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries: int = REQUEST_RETRIES) -> Optional[Dict[str, Any]]:
+async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries: int = 3) -> Optional[Dict[str, Any]]:
     for attempt in range(max_retries):
         try:
+            # First check DNS connectivity
+            if not await check_dns_connectivity():
+                if attempt == max_retries - 1:
+                    logger.error(f"[DNS FAILURE] Cannot resolve Roblox domains for {url}")
+                    return None
+                await asyncio.sleep(2 ** attempt)
+                continue
+
             async with session.get(url) as response:
                 if response.status == 429:
-                    retry_after = float(response.headers.get('Retry-After', REQUEST_RETRY_DELAY))
+                    retry_after = float(response.headers.get('Retry-After', 1.0))
                     await asyncio.sleep(retry_after)
                     continue
                 if response.status == 200:
@@ -52,14 +74,12 @@ async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries
             if attempt == max_retries - 1:
                 logger.error(f"[CONNECTION ERROR] {url}: {str(e)}")
                 return None
-            wait_time = (2 ** attempt) * REQUEST_RETRY_DELAY
-            await asyncio.sleep(wait_time)
+            await asyncio.sleep(2 ** attempt)
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             if attempt == max_retries - 1:
                 logger.error(f"[API ERROR] {url}: {str(e)}")
                 raise
-            wait_time = (2 ** attempt) * REQUEST_RETRY_DELAY
-            await asyncio.sleep(wait_time)
+            await asyncio.sleep(2 ** attempt)
     return None
 
 async def fetch_with_cache(session: aiohttp.ClientSession, url: str) -> Optional[Dict[str, Any]]:
@@ -76,50 +96,45 @@ async def fetch_with_cache(session: aiohttp.ClientSession, url: str) -> Optional
     return None
     
 async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int:
-    try:
-        badge_count = 0
-        cursor = ""
-        while True:
-            url = f"https://badges.roblox.com/v1/users/{user_id}/badges?limit=100&sortOrder=Asc"
-            if cursor:
-                url += f"&cursor={cursor}"
-            data = await fetch_with_cache(session, url)
-            if not data or "data" not in data:
-                break
-            badge_count += len(data["data"])
-            if not data.get("nextPageCursor"):
-                break
-            cursor = data["nextPageCursor"]
-        if badge_count > 0:
-            return badge_count
-            
-        inventory_url = f"https://inventory.roblox.com/v1/users/{user_id}/items/Collectible/1?limit=100"
-        inventory_data = await fetch_with_cache(session, inventory_url)
-        if inventory_data and "data" in inventory_data:
-            return len(inventory_data["data"])
-            
-        # Try legacy API as fallback, but don't fail if it's unavailable
-        try:
-            legacy_url = f"https://api.roblox.com/users/{user_id}/badges"
-            legacy_data = await fetch_with_cache(session, legacy_url)
-            if legacy_data and isinstance(legacy_data, list):
-                return len(legacy_data)
-        except Exception as e:
-            logger.warning(f"[LEGACY API FALLBACK ERROR] {e}")
-            
-        return 0
-    except Exception as e:
-        logger.error(f"[BADGE COUNT ERROR] {e}")
-        return 0
+    endpoints = [
+        # Modern endpoints (try first)
+        lambda: f"https://badges.roblox.com/v1/users/{user_id}/badges?limit=100&sortOrder=Asc",
+        lambda: f"https://inventory.roblox.com/v1/users/{user_id}/items/Collectible/1?limit=100",
+        
+        # Legacy endpoints (fallbacks)
+        lambda: f"https://accountinformation.roblox.com/v1/users/{user_id}/roblox-badges",
+        lambda: f"https://api.roblox.com/users/{user_id}/badges"
+    ]
 
-async def fetch_group_rank(session: aiohttp.ClientSession, user_id: int) -> str:
-    url = f"https://groups.roblox.com/v2/users/{user_id}/groups/roles"
-    data = await fetch_with_cache(session, url)
-    if data and 'data' in data:
-        for group in data['data']:
-            if group.get('group', {}).get('id') == BRITISH_ARMY_GROUP_ID:
-                return group.get('role', {}).get('name', 'Guest')
-    return 'Not in Group'
+    for endpoint in endpoints:
+        url = endpoint()
+        try:
+            if "badges?" in url:  # Paginated endpoint
+                badge_count = 0
+                cursor = ""
+                while True:
+                    paginated_url = f"{url}&cursor={cursor}" if cursor else url
+                    data = await fetch_with_cache(session, paginated_url)
+                    if not data or "data" not in data:
+                        break
+                    badge_count += len(data["data"])
+                    if not data.get("nextPageCursor"):
+                        break
+                    cursor = data["nextPageCursor"]
+                if badge_count > 0:
+                    return badge_count
+            else:  # Regular endpoint
+                data = await fetch_with_cache(session, url)
+                if data and isinstance(data, list):
+                    return len(data)
+                if data and "data" in data:  # Some endpoints wrap in data object
+                    return len(data["data"])
+        except Exception as e:
+            logger.warning(f"[BADGE ENDPOINT FALLBACK] Failed {url}: {str(e)}")
+            continue
+
+    logger.error(f"[BADGE COUNT FAILURE] All endpoints failed for user {user_id}")
+    return 0  # Graceful fallback
 
 
 
