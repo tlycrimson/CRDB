@@ -290,6 +290,9 @@ async def on_command_error(ctx, error):
         logger.error(f"Command error: {type(error).__name__}: {str(error)}")
         await ctx.send("❌ An error occurred while processing your command.", ephemeral=True)
 
+# Creating Sc command
+from roblox_commands import create_sc_command
+create_sc_command(bot)
 
 # Initialize in on_ready()
 @bot.event
@@ -311,12 +314,6 @@ async def on_ready():
         
     # Initialize reaction logger
     await bot.reaction_logger.on_ready_setup()
-
-    # Register commands only if not already registered
-    if not any(cmd.name == 'sc' for cmd in bot.tree.get_commands()):
-        from roblox_commands import create_sc_command
-        create_sc_command(bot)
-        logger.info("Registered /sc command")
     
     # Sync commands with retry
     try:
@@ -328,6 +325,13 @@ async def on_ready():
         logger.info(f"Synced {len(synced)} commands")
     except Exception as e:
         logger.error(f"Command sync error: {e}")
+        
+        # Debug: List all registered commands
+        registered_commands = await bot.tree.fetch_commands()
+        logger.info(f"Registered commands: {[cmd.name for cmd in registered_commands]}")
+    except Exception as e:
+        logger.error(f"Command sync error: {e}")
+
 
 # --- New Debug Commands ---
 @bot.tree.command(name="force-update", description="Manually test sheet updates")
