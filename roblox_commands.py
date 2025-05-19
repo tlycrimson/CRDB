@@ -5,6 +5,7 @@ from discord.ext import commands
 from discord import app_commands
 from rate_limiter import RateLimiter
 from decorators import has_allowed_role
+import urllib.parse
 import aiohttp
 import asyncio
 from datetime import datetime, timezone
@@ -33,31 +34,67 @@ DNS_RETRIES = 2
 MAX_CONCURRENT_REQUESTS = 5
 request_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
-async def check_dns_connectivity():
-    """Improved DNS resolution with multiple fallback methods"""
+async def check_dns_connectivity() -> bool:
+    """DNS resolution with multiple fallback methods"""
     domains = ['api.roblox.com', 'www.roblox.com']
-    try:
-        # Method 1: Try aiodns first
+    dns_servers = [
+        '1.1.1.1',  # Cloudflare
+        '8.8.8.8',  # Google
+        '208.67.222.222'  # OpenDNS
+    ]
+    
+    # Try public DNS servers first
+    for server in dns_servers:
         try:
-            resolver = aiodns.DNSResolver(loop=asyncio.get_running_loop())
-            await asyncio.gather(*[resolver.query(domain, 'A') for domain in domains])
-            return True
-        except Exception:
-            # Method 2: Fallback to socket (sync in thread)
-            def sync_resolve():
-                try:
-                    for domain in domains:
-                        socket.gethostbyname(domain)
-                    return True
-                except socket.gaierror:
-                    return False
+            resolver = aiodns.DNSResolver()
+            resolver.nameservers = [server]
             
-            loop = asyncio.get_running_loop()
-            return await loop.run_in_executor(None, sync_resolve)
+            for domain in domains:
+                try:
+                    result = await resolver.query(domain, 'A')
+                    logger.info(f"DNS {server} resolved {domain} to {result}")
+                    return True
+                except aiodns.error.DNSError as e:
+                    logger.warning(f"DNS {server} failed for {domain}: {str(e)}")
+                    continue
+        except Exception as e:
+            logger.warning(f"DNS server {server} failed: {str(e)}")
+            continue
+    
+    # Fallback to system DNS
+    try:
+        resolver = aiodns.DNSResolver()
+        for domain in domains:
+            try:
+                result = await resolver.query(domain, 'A')
+                logger.info(f"System DNS resolved {domain} to {result}")
+                return True
+            except aiodns.error.DNSError as e:
+                logger.warning(f"System DNS query failed for {domain}: {str(e)}")
+                continue
     except Exception as e:
-        logger.error(f"[DNS ERROR] All resolution methods failed: {str(e)}")
-        return False
+        logger.warning(f"System DNS resolver failed: {str(e)}")
 
+    # Final fallback to socket (sync)
+    def sync_resolve():
+        try:
+            for domain in domains:
+                try:
+                    ip = socket.gethostbyname(domain)
+                    logger.info(f"Socket resolved {domain} to {ip}")
+                    return True
+                except socket.gaierror as e:
+                    logger.warning(f"Socket resolution failed for {domain}: {str(e)}")
+                    continue
+            return False
+        except Exception as e:
+            logger.error(f"Socket resolution error: {str(e)}")
+            return False
+    
+    loop = asyncio.get_running_loop()
+    return await loop.run_in_executor(None, sync_resolve)
+
+        
 def widen_text(text: str) -> str:
     return text.upper().translate(
         str.maketrans(
@@ -78,37 +115,58 @@ async def fetch_group_rank(session: aiohttp.ClientSession, user_id: int) -> str:
             if group.get('group', {}).get('id') == BRITISH_ARMY_GROUP_ID:
                 return group.get('role', {}).get('name', 'Guest')
     return 'Not in Group'
+    
+ROBLOX_API_IPS: Dict[str, str] = {
+    'api.roblox.com': '172.67.209.252',
+    'www.roblox.com': '172.67.209.252',
+    'groups.roblox.com': '172.67.209.252',
+    'friends.roblox.com': '172.67.209.252',
+    'thumbnails.roblox.com': '172.67.209.252',
+    'accountinformation.roblox.com': '172.67.209.252',
+    'inventory.roblox.com': '172.67.209.252',
+    'badges.roblox.com': '172.67.209.252'
+}
 
-async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries: int = 3) -> Optional[Dict[str, Any]]:
+async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries: int = 3):
     last_error = None
     for attempt in range(max_retries):
         try:
-            # Verify DNS connectivity first
-            if not await check_dns_connectivity():
-                raise Exception("DNS resolution failed")
+            # Try original URL first
+            try:
+                return await _fetch_url(session, url)
+            except Exception as e:
+                logger.warning(f"Attempt {attempt+1} failed for {url}: {str(e)}")
                 
-            async with request_semaphore:
-                async with session.get(url, headers={"User-Agent": USER_AGENT}) as response:
-                    if response.status == 429:
-                        retry_after = float(response.headers.get('Retry-After', 1.0)) * (1 + random.random())
-                        logger.warning(f"Rate limited on {url}, retrying in {retry_after:.2f}s")
-                        await asyncio.sleep(retry_after)
-                        continue
-                    
-                    if response.status != 200:
-                        logger.warning(f"Non-200 status {response.status} for {url}")
-                        return None
-                        
-                    return await response.json()
-                    
+                # If DNS fails, try with hardcoded IP
+                if any(err in str(e).lower() for err in ["dns", "name resolution"]):
+                    parsed = urllib.parse.urlparse(url)
+                    if parsed.hostname in ROBLOX_API_IPS:
+                        ip_url = url.replace(
+                            f"{parsed.scheme}://{parsed.hostname}",
+                            f"{parsed.scheme}://{ROBLOX_API_IPS[parsed.hostname]}"
+                        )
+                        logger.info(f"Trying with IP fallback: {ip_url}")
+                        headers = {'Host': parsed.hostname}
+                        if session._default_headers:
+                            headers.update(session._default_headers)
+                        return await _fetch_url(session, ip_url, headers=headers)
+                
+                raise
+                
         except Exception as e:
             last_error = e
             wait_time = (2 ** attempt) * (0.5 + random.random())
-            logger.warning(f"Attempt {attempt + 1} failed for {url}: {str(e)}")
             await asyncio.sleep(wait_time)
     
     logger.error(f"Max retries exceeded for {url}: {str(last_error)}")
     return None
+
+async def _fetch_url(session, url, headers=None):
+    async with request_semaphore:
+        async with session.get(url, headers=headers) as response:
+            if response.status != 200:
+                raise Exception(f"HTTP {response.status}")
+            return await response.json()
 
 async def fetch_with_cache(session: aiohttp.ClientSession, url: str) -> Optional[Dict[str, Any]]:
     cache_key = f"req_{hash(url)}"
