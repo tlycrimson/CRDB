@@ -295,6 +295,11 @@ async def on_command_error(ctx, error):
 async def on_ready():
     logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
     logger.info(f"Connected to {len(bot.guilds)} guild(s)")
+
+    #DNS Resolver
+    global dns_resolver
+    dns_resolver = aiodns.DNSResolver()
+    logger.info("DNS resolver initialized")
     
     # Initialize SheetDB Logger
     bot.sheets = SheetDBLogger()
