@@ -300,6 +300,18 @@ async def on_ready():
     logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
     logger.info(f"Connected to {len(bot.guilds)} guild(s)")
 
+    global shared_session
+    shared_session = aiohttp.ClientSession(
+        headers={"User-Agent": USER_AGENT},
+        timeout=TIMEOUT,
+        connector=aiohttp.TCPConnector(
+            limit_per_host=5,
+            force_close=False,
+            enable_cleanup_closed=True
+        )
+    )
+    logger.info("Initialized shared HTTP session")
+
     #DNS Resolver
     global dns_resolver
     dns_resolver = aiodns.DNSResolver()
@@ -332,7 +344,12 @@ async def on_ready():
     except Exception as e:
         logger.error(f"Command sync error: {e}")
 
-
+@bot.event
+async def on_close():
+    if shared_session:
+        await shared_session.close()
+        logger.info("Closed shared HTTP session")
+        
 # --- New Debug Commands ---
 @bot.tree.command(name="force-update", description="Manually test sheet updates")
 @has_allowed_role()
