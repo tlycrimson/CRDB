@@ -26,6 +26,9 @@ CACHE = {}
 CACHE_TTL = 300
 REQUEST_RETRIES = 3
 REQUEST_RETRY_DELAY = 1.0
+REQUEST_TIMEOUT = 10  # seconds
+MAX_PAGES = 3  # For paginated endpoints
+DNS_RETRIES = 2
 
 # Global concurrency limiter
 MAX_CONCURRENT_REQUESTS = 5
@@ -115,15 +118,18 @@ async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries
 
 async def fetch_with_cache(session: aiohttp.ClientSession, url: str) -> Optional[Dict[str, Any]]:
     cache_key = f"req_{hash(url)}"
-    if cache_key in CACHE and (time.time() - CACHE[cache_key]['timestamp']) < CACHE_TTL:
-        return CACHE[cache_key]['data']
+    if cache_key in CACHE:
+        if time.time() - CACHE[cache_key]['timestamp'] < CACHE_TTL:
+            return CACHE[cache_key]['data']
+        del CACHE[cache_key]  # Remove stale cache
+
     try:
         data = await fetch_with_retry(session, url)
         if data:
             CACHE[cache_key] = {'data': data, 'timestamp': time.time()}
             return data
     except Exception as e:
-        logger.error(f"[CACHE ERROR] {url}: {str(e)}")
+        logger.error(f"Cache failed for {url}: {str(e)}")
     return None
 
 async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int:
