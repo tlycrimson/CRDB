@@ -50,6 +50,26 @@ def widen_text(text: str) -> str:
 def create_progress_bar(percentage: float, meets_req: bool) -> str:
     filled = min(10, round(percentage / 10))
     return (("🟩" if meets_req else "🟥") * filled) + ("⬜" * (10 - filled))
+    
+async def fetch_group_rank(session: aiohttp.ClientSession, user_id: int) -> str:
+    url = f"https://groups.roblox.com/v2/users/{user_id}/groups/roles"
+    data = await fetch_with_cache(session, url)
+    if data and 'data' in data:
+        for group in data['data']:
+            if group.get('group', {}).get('id') == BRITISH_ARMY_GROUP_ID:
+                return group.get('role', {}).get('name', 'Guest')
+    return 'Not in Group'
+
+# Then modify the tasks dictionary in the sc command to properly await coroutines:
+tasks = {
+    'profile': fetch_with_cache(session, urls['profile']),
+    'groups': fetch_with_cache(session, urls['groups']),
+    'friends': fetch_with_cache(session, urls['friends']),
+    'avatar': fetch_with_cache(session, urls['avatar']),
+    'badges': fetch_badge_count(session, user_id),
+    'rank': fetch_group_rank(session, user_id)
+}
+
 
 async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries: int = 3) -> Optional[Dict[str, Any]]:
     for attempt in range(max_retries):
