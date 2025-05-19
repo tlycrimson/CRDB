@@ -60,15 +60,6 @@ async def fetch_group_rank(session: aiohttp.ClientSession, user_id: int) -> str:
                 return group.get('role', {}).get('name', 'Guest')
     return 'Not in Group'
 
-# Then modify the tasks dictionary in the sc command to properly await coroutines:
-tasks = {
-    'profile': fetch_with_cache(session, urls['profile']),
-    'groups': fetch_with_cache(session, urls['groups']),
-    'friends': fetch_with_cache(session, urls['friends']),
-    'avatar': fetch_with_cache(session, urls['avatar']),
-    'badges': fetch_badge_count(session, user_id),
-    'rank': fetch_group_rank(session, user_id)
-}
 
 
 async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries: int = 3) -> Optional[Dict[str, Any]]:
