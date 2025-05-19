@@ -23,6 +23,8 @@ from datetime import datetime
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 GOOGLE_SCRIPT_URL = os.getenv("GOOGLE_SCRIPT_URL")
+USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+TIMEOUT = aiohttp.ClientTimeout(total=10)
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -300,6 +302,17 @@ async def on_ready():
     logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
     logger.info(f"Connected to {len(bot.guilds)} guild(s)")
 
+     # Initialize SheetDB Logger
+    bot.sheets = SheetDBLogger()
+    if not bot.sheets.ready:
+        logger.warning("SheetDB Logger not initialized properly")
+    else:
+        logger.info("SheetDB Logger initialized successfully")
+        
+    # Initialize reaction logger
+    await bot.reaction_logger.on_ready_setup()
+    
+    # Initialize shared session
     global shared_session
     shared_session = aiohttp.ClientSession(
         headers={"User-Agent": USER_AGENT},
@@ -317,15 +330,6 @@ async def on_ready():
     dns_resolver = aiodns.DNSResolver()
     logger.info("DNS resolver initialized")
     
-    # Initialize SheetDB Logger
-    bot.sheets = SheetDBLogger()
-    if not bot.sheets.ready:
-        logger.warning("SheetDB Logger not initialized properly")
-    else:
-        logger.info("SheetDB Logger initialized successfully")
-        
-    # Initialize reaction logger
-    await bot.reaction_logger.on_ready_setup()
     
     # Sync commands with retry
     try:
