@@ -316,6 +316,7 @@ async def on_ready():
     bot.shared_session = aiohttp.ClientSession(
     headers={"User-Agent": USER_AGENT},
         timeout=TIMEOUT
+    )
 
     #DNS Resolver
     global dns_resolver
@@ -334,16 +335,11 @@ async def on_ready():
     except Exception as e:
         logger.error(f"Command sync error: {e}")
         
-        # Debug: List all registered commands
-        registered_commands = await bot.tree.fetch_commands()
-        logger.info(f"Registered commands: {[cmd.name for cmd in registered_commands]}")
-    except Exception as e:
-        logger.error(f"Command sync error: {e}")
 
 @bot.event
 async def on_close():
-    if shared_session:
-        await shared_session.close()
+    if hasattr(bot, 'shared_session') and bot.shared_session:  
+        await bot.shared_session.close()
         logger.info("Closed shared HTTP session")
         
 # --- New Debug Commands ---
