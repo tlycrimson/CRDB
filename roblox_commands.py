@@ -9,6 +9,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 import logging
+import socket
 
 logger = logging.getLogger(__name__)
 
@@ -47,11 +48,17 @@ async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries
                 if response.status == 200:
                     return await response.json()
                 return None
+        except (aiohttp.ClientConnectorError, socket.gaierror) as e:
+            if attempt == max_retries - 1:
+                logger.error(f"[CONNECTION ERROR] {url}: {str(e)}")
+                return None
+            wait_time = (2 ** attempt) * REQUEST_RETRY_DELAY
+            await asyncio.sleep(wait_time)
         except (aiohttp.ClientError, asyncio.TimeoutError) as e:
             if attempt == max_retries - 1:
                 logger.error(f"[API ERROR] {url}: {str(e)}")
                 raise
-            wait_time = (2 ** attempt) * REQUEST_RETRY_DELAY  # Exponential backoff
+            wait_time = (2 ** attempt) * REQUEST_RETRY_DELAY
             await asyncio.sleep(wait_time)
     return None
 
@@ -67,16 +74,7 @@ async def fetch_with_cache(session: aiohttp.ClientSession, url: str) -> Optional
     except Exception as e:
         logger.error(f"[CACHE ERROR] {url}: {str(e)}")
     return None
-
-async def fetch_group_rank(session: aiohttp.ClientSession, user_id: int) -> str:
-    url = f"https://groups.roblox.com/v2/users/{user_id}/groups/roles"
-    data = await fetch_with_cache(session, url)
-    if data and 'data' in data:
-        for group in data['data']:
-            if group.get('group', {}).get('id') == BRITISH_ARMY_GROUP_ID:
-                return group.get('role', {}).get('name', 'Guest')
-    return 'Not in Group'
-
+    
 async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int:
     try:
         badge_count = 0
@@ -100,14 +98,30 @@ async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int
         if inventory_data and "data" in inventory_data:
             return len(inventory_data["data"])
             
-        legacy_url = f"https://api.roblox.com/users/{user_id}/badges"
-        legacy_data = await fetch_with_cache(session, legacy_url)
-        if legacy_data and isinstance(legacy_data, list):
-            return len(legacy_data)
+        # Try legacy API as fallback, but don't fail if it's unavailable
+        try:
+            legacy_url = f"https://api.roblox.com/users/{user_id}/badges"
+            legacy_data = await fetch_with_cache(session, legacy_url)
+            if legacy_data and isinstance(legacy_data, list):
+                return len(legacy_data)
+        except Exception as e:
+            logger.warning(f"[LEGACY API FALLBACK ERROR] {e}")
+            
         return 0
     except Exception as e:
         logger.error(f"[BADGE COUNT ERROR] {e}")
         return 0
+
+async def fetch_group_rank(session: aiohttp.ClientSession, user_id: int) -> str:
+    url = f"https://groups.roblox.com/v2/users/{user_id}/groups/roles"
+    data = await fetch_with_cache(session, url)
+    if data and 'data' in data:
+        for group in data['data']:
+            if group.get('group', {}).get('id') == BRITISH_ARMY_GROUP_ID:
+                return group.get('role', {}).get('name', 'Guest')
+    return 'Not in Group'
+
+
 
 async def safe_followup(interaction: discord.Interaction, *args, **kwargs):
     """Wrapper for followup.send with rate limit handling"""
