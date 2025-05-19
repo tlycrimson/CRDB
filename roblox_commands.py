@@ -1,10 +1,8 @@
-import discord  
+import discord
 import time
 import random
 from discord.ext import commands
 from discord import app_commands
-from rate_limiter import RateLimiter
-from decorators import has_allowed_role
 import urllib.parse
 import aiohttp
 import asyncio
@@ -26,75 +24,25 @@ CACHE = {}
 CACHE_TTL = 300
 REQUEST_RETRIES = 3
 REQUEST_RETRY_DELAY = 1.0
-REQUEST_TIMEOUT = 10  # seconds
-MAX_PAGES = 3  # For paginated endpoints
+REQUEST_TIMEOUT = 10
+MAX_PAGES = 3
 DNS_RETRIES = 2
 
 # Global concurrency limiter
 MAX_CONCURRENT_REQUESTS = 5
 request_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
 
-async def check_dns_connectivity() -> bool:
-    """DNS resolution with multiple fallback methods"""
-    domains = ['api.roblox.com', 'www.roblox.com']
-    dns_servers = [
-        '1.1.1.1',  # Cloudflare
-        '8.8.8.8',  # Google
-        '208.67.222.222'  # OpenDNS
-    ]
-    
-    # Try public DNS servers first
-    for server in dns_servers:
-        try:
-            resolver = aiodns.DNSResolver()
-            resolver.nameservers = [server]
-            
-            for domain in domains:
-                try:
-                    result = await resolver.query(domain, 'A')
-                    logger.info(f"DNS {server} resolved {domain} to {result}")
-                    return True
-                except aiodns.error.DNSError as e:
-                    logger.warning(f"DNS {server} failed for {domain}: {str(e)}")
-                    continue
-        except Exception as e:
-            logger.warning(f"DNS server {server} failed: {str(e)}")
-            continue
-    
-    # Fallback to system DNS
-    try:
-        resolver = aiodns.DNSResolver()
-        for domain in domains:
-            try:
-                result = await resolver.query(domain, 'A')
-                logger.info(f"System DNS resolved {domain} to {result}")
-                return True
-            except aiodns.error.DNSError as e:
-                logger.warning(f"System DNS query failed for {domain}: {str(e)}")
-                continue
-    except Exception as e:
-        logger.warning(f"System DNS resolver failed: {str(e)}")
+ROBLOX_API_IPS = {
+    'api.roblox.com': '172.67.209.252',
+    'www.roblox.com': '172.67.209.252',
+    'groups.roblox.com': '172.67.209.252',
+    'friends.roblox.com': '172.67.209.252',
+    'thumbnails.roblox.com': '172.67.209.252',
+    'accountinformation.roblox.com': '172.67.209.252',
+    'inventory.roblox.com': '172.67.209.252',
+    'badges.roblox.com': '172.67.209.252'
+}
 
-    # Final fallback to socket (sync)
-    def sync_resolve():
-        try:
-            for domain in domains:
-                try:
-                    ip = socket.gethostbyname(domain)
-                    logger.info(f"Socket resolved {domain} to {ip}")
-                    return True
-                except socket.gaierror as e:
-                    logger.warning(f"Socket resolution failed for {domain}: {str(e)}")
-                    continue
-            return False
-        except Exception as e:
-            logger.error(f"Socket resolution error: {str(e)}")
-            return False
-    
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, sync_resolve)
-
-        
 def widen_text(text: str) -> str:
     return text.upper().translate(
         str.maketrans(
@@ -115,29 +63,14 @@ async def fetch_group_rank(session: aiohttp.ClientSession, user_id: int) -> str:
             if group.get('group', {}).get('id') == BRITISH_ARMY_GROUP_ID:
                 return group.get('role', {}).get('name', 'Guest')
     return 'Not in Group'
-    
-ROBLOX_API_IPS: Dict[str, str] = {
-    'api.roblox.com': '172.67.209.252',
-    'www.roblox.com': '172.67.209.252',
-    'groups.roblox.com': '172.67.209.252',
-    'friends.roblox.com': '172.67.209.252',
-    'thumbnails.roblox.com': '172.67.209.252',
-    'accountinformation.roblox.com': '172.67.209.252',
-    'inventory.roblox.com': '172.67.209.252',
-    'badges.roblox.com': '172.67.209.252'
-}
 
 async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries: int = 3):
     last_error = None
     for attempt in range(max_retries):
         try:
-            # Try original URL first
             try:
                 return await _fetch_url(session, url)
             except Exception as e:
-                logger.warning(f"Attempt {attempt+1} failed for {url}: {str(e)}")
-                
-                # If DNS fails, try with hardcoded IP
                 if any(err in str(e).lower() for err in ["dns", "name resolution"]):
                     parsed = urllib.parse.urlparse(url)
                     if parsed.hostname in ROBLOX_API_IPS:
@@ -145,14 +78,11 @@ async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries
                             f"{parsed.scheme}://{parsed.hostname}",
                             f"{parsed.scheme}://{ROBLOX_API_IPS[parsed.hostname]}"
                         )
-                        logger.info(f"Trying with IP fallback: {ip_url}")
                         headers = {'Host': parsed.hostname}
                         if session._default_headers:
                             headers.update(session._default_headers)
                         return await _fetch_url(session, ip_url, headers=headers)
-                
                 raise
-                
         except Exception as e:
             last_error = e
             wait_time = (2 ** attempt) * (0.5 + random.random())
@@ -221,37 +151,22 @@ async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int
             continue
 
     logger.error("All badge endpoints failed")
-    return 0  
-
-async def safe_followup(interaction: discord.Interaction, *args, **kwargs):
-    try:
-        await interaction.client.rate_limiter.wait_if_needed('followup_messages')
-        return await interaction.followup.send(*args, **kwargs)
-    except discord.errors.HTTPException as e:
-        if e.status == 429:
-            retry_after = float(e.response.headers.get('Retry-After', REQUEST_RETRY_DELAY))
-            await asyncio.sleep(retry_after)
-            return await interaction.followup.send(*args, **kwargs)
-        raise
+    return 0
 
 def create_sc_command(bot: commands.Bot):
     @bot.tree.command(name="sc", description="Security check a Roblox user")
     @app_commands.describe(user_id="The Roblox user ID to check")
     @app_commands.checks.cooldown(rate=1, per=10.0)
-    @has_allowed_role()
     async def sc(interaction: discord.Interaction, user_id: int):
         try:
-            # Defer immediately to prevent timeout
             await interaction.response.defer(thinking=True)
             
-            # Validate user ID
-            if user_id <= 0:
+            if user_id <= 0 or user_id > 2**31:
                 return await interaction.followup.send(
-                    "❌ Invalid Roblox User ID. Please provide a positive number.",
+                    "❌ Invalid Roblox User ID. Please provide a valid ID between 1 and 2,147,483,647.",
                     ephemeral=True
                 )
 
-            # Get shared session
             session = bot.shared_session if hasattr(bot, 'shared_session') else None
             if not session:
                 return await interaction.followup.send(
@@ -259,7 +174,6 @@ def create_sc_command(bot: commands.Bot):
                     ephemeral=True
                 )
 
-            # API endpoints
             urls = {
                 'profile': f"https://users.roblox.com/v1/users/{user_id}",
                 'groups': f"https://groups.roblox.com/v2/users/{user_id}/groups/roles",
@@ -267,7 +181,6 @@ def create_sc_command(bot: commands.Bot):
                 'avatar': f"https://thumbnails.roblox.com/v1/users/avatar?userIds={user_id}&size=150x150&format=Png"
             }
 
-            # Fetch all data with timeout
             try:
                 tasks = {
                     'profile': fetch_with_cache(session, urls['profile']),
@@ -289,7 +202,6 @@ def create_sc_command(bot: commands.Bot):
                     ephemeral=True
                 )
 
-            # Handle user not found
             if not data['profile'] or isinstance(data['profile'], Exception):
                 embed = discord.Embed(
                     title="🔴 User Not Found",
@@ -298,7 +210,6 @@ def create_sc_command(bot: commands.Bot):
                 )
                 return await interaction.followup.send(embed=embed)
 
-            # Process data
             username = data['profile'].get('name', 'Unknown')
             created_at = datetime.fromisoformat(data['profile']['created'].replace('Z', '+00:00')) if data['profile'].get('created') else None
             age_days = (datetime.now(timezone.utc) - created_at).days if created_at else 0
@@ -309,7 +220,6 @@ def create_sc_command(bot: commands.Bot):
             warning = "⚠️ Badges may be private or user has none" if badge_count == 0 else ""
             british_army_rank = data['rank'] if not isinstance(data['rank'], Exception) else 'Unknown'
 
-            # Prepare metrics
             metrics = {
                 'age': {'value': age_days, 'percentage': min(100, (age_days / REQUIREMENTS['age']) * 100), 'meets_req': age_days >= REQUIREMENTS['age']},
                 'friends': {'value': friends_count, 'percentage': min(100, (friends_count / REQUIREMENTS['friends']) * 100), 'meets_req': friends_count >= REQUIREMENTS['friends']},
@@ -317,7 +227,6 @@ def create_sc_command(bot: commands.Bot):
                 'badges': {'value': badge_count, 'percentage': min(100, (badge_count / max(1, REQUIREMENTS['badges'])) * 100), 'meets_req': badge_count >= REQUIREMENTS['badges']}
             }
 
-            # Check banned groups
             banned_groups = []
             if data['groups'] and not isinstance(data['groups'], Exception):
                 banned_groups = [
@@ -326,7 +235,6 @@ def create_sc_command(bot: commands.Bot):
                     if group and group['group']['id'] in BGROUP_IDS
                 ]
 
-            # Create embed
             embed = discord.Embed(
                 title=f"{widen_text(username)}",
                 url=f"https://www.roblox.com/users/{user_id}/profile",
@@ -335,11 +243,9 @@ def create_sc_command(bot: commands.Bot):
                 timestamp=datetime.utcnow()
             )
 
-            # Add thumbnail if available
             if data['avatar'] and not isinstance(data['avatar'], Exception) and data['avatar'].get('data'):
                 embed.set_thumbnail(url=data['avatar']['data'][0]['imageUrl'])
 
-            # Add metrics fields
             emoji_map = {"age": "📅", "friends": "👥", "groups": "🏘️", "badges": "🎖️"}
             for name, metric in metrics.items():
                 emoji = emoji_map.get(name.lower(), "")
@@ -352,20 +258,17 @@ def create_sc_command(bot: commands.Bot):
 
                 embed.add_field(name=f"{emoji} {name.capitalize()} {status_icon}", value=field_value, inline=True)
 
-            # Add banned groups if found
             if banned_groups:
                 embed.add_field(name="🚨 Banned/Main Groups Detected", value="\n".join(banned_groups), inline=False)
             else:
                 embed.add_field(name="✅", value="User is not in any banned groups or main regiments.", inline=True)
 
-            # Set author and footer
             embed.set_author(
                 name=f"Roblox User Check • {username}",
                 icon_url=interaction.user.avatar.url if interaction.user.avatar else None
             )
             embed.set_footer(text=f"Requested by {interaction.user.display_name} | Roblox User ID: {user_id}")
 
-            # Send final response
             await interaction.followup.send(embed=embed)
 
         except app_commands.CommandOnCooldown as e:
@@ -381,6 +284,6 @@ def create_sc_command(bot: commands.Bot):
                     ephemeral=True
                 )
             except:
-                pass  # If all response methods fail
+                pass
 
     return sc
