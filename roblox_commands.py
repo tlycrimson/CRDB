@@ -21,12 +21,12 @@ BGROUP_IDS = {32578828, 6447250, 4973512, 14286518, 32014700, 15229694, 15224554
 BRITISH_ARMY_GROUP_ID = 4972535
 REQUIREMENTS = {'age': 90, 'friends': 7, 'groups': 5, 'badges': 120}
 CACHE = {}
-CACHE_TTL = 300
+CACHE_TTL = 300  # 5 minutes cache
+BAD_REQUEST_CACHE_TTL = 60  # 1 minute for failed requests
 REQUEST_RETRIES = 3
 REQUEST_RETRY_DELAY = 1.0
 REQUEST_TIMEOUT = 10
 MAX_PAGES = 3
-DNS_RETRIES = 2
 
 # Global concurrency limiter
 MAX_CONCURRENT_REQUESTS = 5
@@ -39,8 +39,12 @@ ROBLOX_API_IPS = {
     'friends.roblox.com': '172.67.209.252',
     'thumbnails.roblox.com': '172.67.209.252',
     'accountinformation.roblox.com': '172.67.209.252',
-    'inventory.roblox.com': '172.67.209.252',
     'badges.roblox.com': '172.67.209.252'
+}
+
+DEFAULT_HEADERS = {
+    "User-Agent": USER_AGENT,
+    "Accept": "application/json"
 }
 
 def widen_text(text: str) -> str:
@@ -79,8 +83,7 @@ async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries
                             f"{parsed.scheme}://{ROBLOX_API_IPS[parsed.hostname]}"
                         )
                         headers = {'Host': parsed.hostname}
-                        if session._default_headers:
-                            headers.update(session._default_headers)
+                        headers.update(DEFAULT_HEADERS)
                         return await _fetch_url(session, ip_url, headers=headers)
                 raise
         except Exception as e:
@@ -93,16 +96,33 @@ async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries
 
 async def _fetch_url(session, url, headers=None):
     async with request_semaphore:
-        async with session.get(url, headers=headers) as response:
-            if response.status != 200:
-                raise Exception(f"HTTP {response.status}")
-            return await response.json()
+        try:
+            final_headers = DEFAULT_HEADERS.copy()
+            if headers:
+                final_headers.update(headers)
+                
+            async with session.get(
+                url, 
+                headers=final_headers,
+                raise_for_status=True
+            ) as response:
+                return await response.json()
+        except aiohttp.ClientResponseError as e:
+            if e.status == 400:
+                logger.warning(f"Roblox API rejected request to {url} - may require authentication")
+            raise
+        except Exception as e:
+            logger.error(f"Request to {url} failed: {str(e)}")
+            raise
 
 async def fetch_with_cache(session: aiohttp.ClientSession, url: str) -> Optional[Dict[str, Any]]:
     cache_key = f"req_{hash(url)}"
     if cache_key in CACHE:
-        if time.time() - CACHE[cache_key]['timestamp'] < CACHE_TTL:
-            return CACHE[cache_key]['data']
+        cache_data = CACHE[cache_key]
+        if time.time() - cache_data['timestamp'] < (BAD_REQUEST_CACHE_TTL if cache_data.get('error') else CACHE_TTL):
+            if cache_data.get('error'):
+                raise Exception("Cached error")
+            return cache_data['data']
         del CACHE[cache_key]
 
     try:
@@ -112,40 +132,30 @@ async def fetch_with_cache(session: aiohttp.ClientSession, url: str) -> Optional
             return data
     except Exception as e:
         logger.error(f"Cache failed for {url}: {str(e)}")
-    return None
+        CACHE[cache_key] = {'timestamp': time.time(), 'error': True}
+        raise
 
 async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int:
     endpoints = [
+        # Primary endpoint - badges API
         lambda: f"https://badges.roblox.com/v1/users/{user_id}/badges?limit=100",
-        lambda: f"https://inventory.roblox.com/v1/users/{user_id}/items/Collectible/1?limit=100",
+        # Fallback endpoint - account info API
         lambda: f"https://accountinformation.roblox.com/v1/users/{user_id}/roblox-badges",
+        # Legacy endpoint
         lambda: f"https://api.roblox.com/users/{user_id}/badges"
     ]
-
+    
     for endpoint in endpoints:
         url = endpoint()
         try:
-            if "badges?" in url:
-                badge_count = 0
-                cursor = ""
-                for _ in range(3):
-                    current_url = f"{url}&cursor={cursor}" if cursor else url
-                    data = await fetch_with_cache(session, current_url)
-                    if not data or not data.get("data"):
-                        break
-                    badge_count += len(data["data"])
-                    cursor = data.get("nextPageCursor")
-                    if not cursor:
-                        break
-                if badge_count > 0:
-                    return badge_count
-            else:
-                data = await fetch_with_cache(session, url)
-                if data:
-                    if isinstance(data, list):
-                        return len(data)
-                    if isinstance(data.get("data"), list):
-                        return len(data["data"])
+            data = await fetch_with_cache(session, url)
+            if data:
+                if isinstance(data, list):
+                    return len(data)
+                if isinstance(data.get("data"), list):
+                    return len(data["data"])
+                if isinstance(data.get("robloxBadges"), list):  # Handle account info format
+                    return len(data["robloxBadges"])
         except Exception as e:
             logger.warning(f"Badge endpoint {url} failed: {str(e)}")
             continue
@@ -217,7 +227,8 @@ def create_sc_command(bot: commands.Bot):
             friends_count = data['friends'].get('count', 0) if data['friends'] and not isinstance(data['friends'], Exception) else 0
             groups_count = len(data['groups'].get('data', [])) if data['groups'] and not isinstance(data['groups'], Exception) else 0
             badge_count = data['badges'] if not isinstance(data['badges'], Exception) else 0
-            warning = "⚠️ Badges may be private or user has none" if badge_count == 0 else ""
+            warning = "⚠️ Could not verify badges (API limits)" if isinstance(data['badges'], Exception) else (
+                "⚠️ Badges may be private or user has none" if badge_count == 0 else "")
             british_army_rank = data['rank'] if not isinstance(data['rank'], Exception) else 'Unknown'
 
             metrics = {
