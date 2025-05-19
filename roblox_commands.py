@@ -36,17 +36,29 @@ shared_session: Optional[aiohttp.ClientSession] = None
 
 
 async def check_dns_connectivity():
-      """Check if we can resolve Roblox domains"""
+    """Improved DNS resolution with multiple fallback methods"""
+    domains = ['api.roblox.com', 'www.roblox.com']
     try:
-         # Create a new resolver instance each time with the current event loop
-        resolver = aiodns.DNSResolver(loop=asyncio.get_running_loop())
-        await dns_resolver.query('api.roblox.com', 'A')
-        await dns_resolver.query('www.roblox.com', 'A')
-        return True
+        # Method 1: Try aiodns first
+        try:
+            resolver = aiodns.DNSResolver(loop=asyncio.get_running_loop())
+            await asyncio.gather(*[resolver.query(domain, 'A') for domain in domains])
+            return True
+        except Exception:
+            # Method 2: Fallback to socket (sync in thread)
+            def sync_resolve():
+                try:
+                    for domain in domains:
+                        socket.gethostbyname(domain)
+                    return True
+                except socket.gaierror:
+                    return False
+            
+            loop = asyncio.get_running_loop()
+            return await loop.run_in_executor(None, sync_resolve)
     except Exception as e:
-        logger.error(f"[DNS ERROR] Failed to resolve Roblox domains: {str(e)}")
+        logger.error(f"[DNS ERROR] All resolution methods failed: {str(e)}")
         return False
-
 
 def widen_text(text: str) -> str:
     return text.upper().translate(
@@ -71,35 +83,34 @@ async def fetch_group_rank(session: aiohttp.ClientSession, user_id: int) -> str:
 
 
 async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries: int = 3) -> Optional[Dict[str, Any]]:
+    last_error = None
     for attempt in range(max_retries):
         try:
-            # First Check DNS connectivity with proper loop handling
+            # Verify DNS connectivity first
             if not await check_dns_connectivity():
-                if attempt == max_retries - 1:
-                    logger.error(f"[DNS FAILURE] Cannot resolve Roblox domains for {url}")
-                    return None
-                await asyncio.sleep(2 ** attempt)
-                continue
-
+                raise Exception("DNS resolution failed")
+                
             async with request_semaphore:
                 async with session.get(url) as response:
                     if response.status == 429:
-                        retry_after = float(response.headers.get('Retry-After', 1.0))
+                        retry_after = float(response.headers.get('Retry-After', 1.0)) * (1 + random.random())  # Add jitter
+                        logger.warning(f"Rate limited on {url}, retrying in {retry_after:.2f}s")
                         await asyncio.sleep(retry_after)
                         continue
-                    if response.status == 200:
-                        return await response.json()
-                    return None
-        except (aiohttp.ClientConnectorError, socket.gaierror) as e:
-            if attempt == max_retries - 1:
-                logger.error(f"[CONNECTION ERROR] {url}: {str(e)}")
-                return None
-            await asyncio.sleep(2 ** attempt)
-        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-            if attempt == max_retries - 1:
-                logger.error(f"[API ERROR] {url}: {str(e)}")
-                raise
-            await asyncio.sleep(2 ** attempt)
+                    
+                    if response.status != 200:
+                        logger.warning(f"Non-200 status {response.status} for {url}")
+                        return None
+                        
+                    return await response.json()
+                    
+        except Exception as e:
+            last_error = e
+            wait_time = (2 ** attempt) * (0.5 + random.random())  # Exponential backoff with jitter
+            logger.warning(f"Attempt {attempt + 1} failed for {url}: {str(e)}")
+            await asyncio.sleep(wait_time)
+    
+    logger.error(f"Max retries exceeded for {url}: {str(last_error)}")
     return None
 
 async def fetch_with_cache(session: aiohttp.ClientSession, url: str) -> Optional[Dict[str, Any]]:
@@ -117,9 +128,11 @@ async def fetch_with_cache(session: aiohttp.ClientSession, url: str) -> Optional
 
 async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int:
     endpoints = [
-        lambda: f"https://badges.roblox.com/v1/users/{user_id}/badges?limit=100&sortOrder=Asc",
+        # Ordered by reliability
+        lambda: f"https://badges.roblox.com/v1/users/{user_id}/badges?limit=100",
         lambda: f"https://inventory.roblox.com/v1/users/{user_id}/items/Collectible/1?limit=100",
         lambda: f"https://accountinformation.roblox.com/v1/users/{user_id}/roblox-badges",
+        # Legacy endpoint last
         lambda: f"https://api.roblox.com/users/{user_id}/badges"
     ]
 
@@ -127,33 +140,34 @@ async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int
         url = endpoint()
         try:
             if "badges?" in url:
+                # Paginated endpoint handling
                 badge_count = 0
                 cursor = ""
-                pages = 0
-                while pages < 10:  # Cap max pages to 10
-                    paginated_url = f"{url}&cursor={cursor}" if cursor else url
-                    data = await fetch_with_cache(session, paginated_url)
-                    if not data or "data" not in data:
+                for _ in range(3):  # Max 3 pages to avoid rate limits
+                    current_url = f"{url}&cursor={cursor}" if cursor else url
+                    data = await fetch_with_cache(session, current_url)
+                    if not data or not data.get("data"):
                         break
                     badge_count += len(data["data"])
                     cursor = data.get("nextPageCursor")
                     if not cursor:
                         break
-                    pages += 1
                 if badge_count > 0:
                     return badge_count
             else:
+                # Simple endpoint
                 data = await fetch_with_cache(session, url)
-                if data and isinstance(data, list):
-                    return len(data)
-                if data and "data" in data:
-                    return len(data["data"])
+                if data:
+                    if isinstance(data, list):
+                        return len(data)
+                    if isinstance(data.get("data"), list):
+                        return len(data["data"])
         except Exception as e:
-            logger.warning(f"[BADGE ENDPOINT FALLBACK] Failed {url}: {str(e)}")
+            logger.warning(f"Badge endpoint {url} failed: {str(e)}")
             continue
 
-    logger.error(f"[BADGE COUNT FAILURE] All endpoints failed for user {user_id}")
-    return 0
+    logger.error("All badge endpoints failed")
+    return 0  
 
 async def safe_followup(interaction: discord.Interaction, *args, **kwargs):
     try:
