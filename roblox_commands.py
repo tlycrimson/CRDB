@@ -17,10 +17,8 @@ logger = logging.getLogger(__name__)
 
 
 # Configuration
-USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 BGROUP_IDS = {32578828, 6447250, 4973512, 14286518, 32014700, 15229694, 15224554, 14557406, 14609194, 5029915}
 BRITISH_ARMY_GROUP_ID = 4972535
-TIMEOUT = aiohttp.ClientTimeout(total=10)
 REQUIREMENTS = {'age': 90, 'friends': 7, 'groups': 5, 'badges': 120}
 CACHE = {}
 CACHE_TTL = 300
