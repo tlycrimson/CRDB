@@ -19,7 +19,9 @@ BRITISH_ARMY_GROUP_ID = 4972535
 TIMEOUT = aiohttp.ClientTimeout(total=10)
 REQUIREMENTS = {'age': 90, 'friends': 7, 'groups': 5, 'badges': 120}
 CACHE = {}
-CACHE_TTL = 300
+CACHE_TTL = 300  # 5 minutes cache
+REQUEST_RETRIES = 3
+REQUEST_RETRY_DELAY = 1.0  # Base delay in seconds
 
 # Helper functions 
 def widen_text(text: str) -> str:
@@ -34,18 +36,36 @@ def create_progress_bar(percentage: float, meets_req: bool) -> str:
     filled = min(10, round(percentage / 10))
     return (("🟩" if meets_req else "🟥") * filled) + ("⬜" * (10 - filled))
 
+async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries: int = REQUEST_RETRIES) -> Optional[Dict[str, Any]]:
+    for attempt in range(max_retries):
+        try:
+            async with session.get(url) as response:
+                if response.status == 429:
+                    retry_after = float(response.headers.get('Retry-After', REQUEST_RETRY_DELAY))
+                    await asyncio.sleep(retry_after)
+                    continue
+                if response.status == 200:
+                    return await response.json()
+                return None
+        except (aiohttp.ClientError, asyncio.TimeoutError) as e:
+            if attempt == max_retries - 1:
+                logger.error(f"[API ERROR] {url}: {str(e)}")
+                raise
+            wait_time = (2 ** attempt) * REQUEST_RETRY_DELAY  # Exponential backoff
+            await asyncio.sleep(wait_time)
+    return None
+
 async def fetch_with_cache(session: aiohttp.ClientSession, url: str) -> Optional[Dict[str, Any]]:
     cache_key = f"req_{hash(url)}"
     if cache_key in CACHE and (time.time() - CACHE[cache_key]['timestamp']) < CACHE_TTL:
         return CACHE[cache_key]['data']
     try:
-        async with session.get(url) as response:
-            if response.status == 200:
-                data = await response.json()
-                CACHE[cache_key] = {'data': data, 'timestamp': time.time()}
-                return data
-    except (aiohttp.ClientError, asyncio.TimeoutError) as e:
-        logger.error(f"[API ERROR] {url}: {str(e)}")
+        data = await fetch_with_retry(session, url)
+        if data:
+            CACHE[cache_key] = {'data': data, 'timestamp': time.time()}
+            return data
+    except Exception as e:
+        logger.error(f"[CACHE ERROR] {url}: {str(e)}")
     return None
 
 async def fetch_group_rank(session: aiohttp.ClientSession, user_id: int) -> str:
@@ -89,6 +109,18 @@ async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int
         logger.error(f"[BADGE COUNT ERROR] {e}")
         return 0
 
+async def safe_followup(interaction: discord.Interaction, *args, **kwargs):
+    """Wrapper for followup.send with rate limit handling"""
+    try:
+        await interaction.client.rate_limiter.wait_if_needed('followup_messages')
+        return await interaction.followup.send(*args, **kwargs)
+    except discord.errors.HTTPException as e:
+        if e.status == 429:
+            retry_after = float(e.response.headers.get('Retry-After', REQUEST_RETRY_DELAY))
+            await asyncio.sleep(retry_after)
+            return await interaction.followup.send(*args, **kwargs)
+        raise
+
 def create_sc_command(bot: commands.Bot):
     @bot.tree.command(name="sc", description="Security check a Roblox user")
     @app_commands.describe(user_id="The Roblox user ID to check")
@@ -98,17 +130,22 @@ def create_sc_command(bot: commands.Bot):
             # Immediate deferral
             await interaction.response.defer()
             
-            # Rate limiting
+            # Rate limiting for command execution
             await bot.rate_limiter.wait_if_needed(bucket="sc_command")
             
             if user_id <= 0:
-                await interaction.followup.send(
+                await safe_followup(
+                    interaction,
                     "❌ Invalid Roblox User ID. Please provide a positive number.",
                     ephemeral=True
                 )
                 return
                 
-            async with aiohttp.ClientSession(headers={"User-Agent": USER_AGENT}, timeout=TIMEOUT) as session:
+            async with aiohttp.ClientSession(
+                headers={"User-Agent": USER_AGENT}, 
+                timeout=TIMEOUT,
+                connector=aiohttp.TCPConnector(limit_per_host=5)  # Limit concurrent connections
+            ) as session:
                 urls = {
                     'profile': f"https://users.roblox.com/v1/users/{user_id}",
                     'groups': f"https://groups.roblox.com/v2/users/{user_id}/groups/roles",
@@ -134,7 +171,7 @@ def create_sc_command(bot: commands.Bot):
                         description="The specified Roblox user could not be found.",
                         color=discord.Color.red()
                     )
-                    await interaction.followup.send(embed=embed)
+                    await safe_followup(interaction, embed=embed)
                     return
                 
                 username = data['profile'].get('name', 'Unknown')
@@ -236,27 +273,27 @@ def create_sc_command(bot: commands.Bot):
                     icon_url=interaction.user.avatar.url if interaction.user.avatar else None
                 )
                 embed.set_footer(text=f"Requested by {interaction.user.display_name} | Roblox User ID: {user_id}")
-                await interaction.followup.send(embed=embed)
-
+                await safe_followup(interaction, embed=embed)
 
         except app_commands.CommandOnCooldown as e:
-            await interaction.response.send_message(
-                f"⌛ Command on cooldown. Try again in {error.retry_after:.1f}s",
+            await safe_followup(
+                interaction,
+                f"⌛ Command on cooldown. Try again in {e.retry_after:.1f}s",
                 ephemeral=True
             )
             
         except Exception as e:
-            logger.error(f"[SC COMMAND ERROR]: {e}")
+            logger.error(f"[SC COMMAND ERROR]: {str(e)}", exc_info=True)
             if not interaction.response.is_done():
                 await interaction.response.send_message(
                     "⚠️ An error occurred while processing your request.",
                     ephemeral=True
                 )
             else:
-                await interaction.followup.send(
+                await safe_followup(
+                    interaction,
                     "⚠️ An error occurred while processing your request.",
                     ephemeral=True
                 )
-
     
     return sc
