@@ -15,7 +15,6 @@ import logging
 
 logger = logging.getLogger(__name__)
 
-dns_resolver = aiodns.DNSResolver()
 
 # Configuration
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -37,7 +36,10 @@ shared_session: Optional[aiohttp.ClientSession] = None
 
 
 async def check_dns_connectivity():
+      """Check if we can resolve Roblox domains"""
     try:
+         # Create a new resolver instance each time with the current event loop
+        resolver = aiodns.DNSResolver(loop=asyncio.get_running_loop())
         await dns_resolver.query('api.roblox.com', 'A')
         await dns_resolver.query('www.roblox.com', 'A')
         return True
@@ -71,6 +73,7 @@ async def fetch_group_rank(session: aiohttp.ClientSession, user_id: int) -> str:
 async def fetch_with_retry(session: aiohttp.ClientSession, url: str, max_retries: int = 3) -> Optional[Dict[str, Any]]:
     for attempt in range(max_retries):
         try:
+            # First Check DNS connectivity with proper loop handling
             if not await check_dns_connectivity():
                 if attempt == max_retries - 1:
                     logger.error(f"[DNS FAILURE] Cannot resolve Roblox domains for {url}")
