@@ -313,17 +313,9 @@ async def on_ready():
     await bot.reaction_logger.on_ready_setup()
     
     # Initialize shared session
-    global shared_session
-    shared_session = aiohttp.ClientSession(
-        headers={"User-Agent": USER_AGENT},
-        timeout=TIMEOUT,
-        connector=aiohttp.TCPConnector(
-            limit_per_host=5,
-            force_close=False,
-            enable_cleanup_closed=True
-        )
-    )
-    logger.info("Initialized shared HTTP session")
+    bot.shared_session = aiohttp.ClientSession(
+    headers={"User-Agent": USER_AGENT},
+        timeout=TIMEOUT
 
     #DNS Resolver
     global dns_resolver
