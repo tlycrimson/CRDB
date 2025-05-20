@@ -9,6 +9,7 @@ import logging
 import random
 import aiodns
 import socket
+import minetypes
 from typing import Optional, Set, Dict, List, Tuple, Any, Literal
 from decorators import min_rank_required, has_allowed_role
 from rate_limiter import RateLimiter
