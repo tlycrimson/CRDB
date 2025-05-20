@@ -171,11 +171,6 @@ def create_sc_command(bot: commands.Bot):
         try:
             await interaction.response.defer(thinking=True)
             
-            if user_id <= 0 or user_id > 2**31:
-                return await interaction.followup.send(
-                    "❌ Invalid Roblox User ID. Please provide a valid ID between 1 and 2,147,483,647.",
-                    ephemeral=True
-                )
 
             session = bot.shared_session if hasattr(bot, 'shared_session') else None
             if not session:
