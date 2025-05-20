@@ -700,8 +700,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
             )
             return
             
-  async def send_hr_welcome(member: discord.Member):
-    """Send HR welcome message to designated channel"""
+async def send_hr_welcome(member: discord.Member):
     if not (welcome_channel := member.guild.get_channel(Config.DESERTER_ALERT_CHANNEL_ID)):
         logger.warning("HR welcome channel not found!")
         return
@@ -731,6 +730,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
         logger.error(f"Missing permissions to send HR welcome for {member.id}")
     except Exception as e:
         logger.error(f"Failed to send HR welcome: {str(e)}")          
+        
  @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
    
