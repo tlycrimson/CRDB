@@ -169,7 +169,12 @@ def create_sc_command(bot: commands.Bot):
     @app_commands.checks.cooldown(rate=1, per=10.0)
     async def sc(interaction: discord.Interaction, user_id: int):
         try:
-            await interaction.response.defer(thinking=True)
+            #Immediate deferral
+            try:
+                await interaction.response.defer(thinking=True)
+            except discord.errors.NotFound:
+                logger.error("Interaction already expired")
+                return
             
 
             session = bot.shared_session if hasattr(bot, 'shared_session') else None
@@ -276,6 +281,7 @@ def create_sc_command(bot: commands.Bot):
             embed.set_footer(text=f"Requested by {interaction.user.display_name} | Roblox User ID: {user_id}")
 
             await interaction.followup.send(embed=embed)
+    
 
         except app_commands.CommandOnCooldown as e:
             await interaction.followup.send(
