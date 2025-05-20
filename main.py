@@ -9,7 +9,7 @@ import logging
 import random
 import aiodns
 import socket
-from typing import Optional, Set, Dict, List, Tuple, Any
+from typing import Optional, Set, Dict, List, Tuple, Any, Literal
 from decorators import min_rank_required, has_allowed_role
 from rate_limiter import RateLimiter
 from discord import app_commands
@@ -540,16 +540,14 @@ async def on_disconnect():
         await bot.shared_session.close()
         logger.info("Closed shared HTTP session")
         
-# --- Commands ---
-# Discharge Log Command
-# --- Fixed Discharge Command ---
+# --- Commands --- 
 @bot.tree.command(name="discharge", description="Notify members of honorable/dishonorable discharge")
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def discharge(
     interaction: discord.Interaction,
     members: str,  # Comma-separated user mentions/IDs
-    discharge_type: str = commands.Choices(["Honorable", "Dishonorable"]),
     reason: str,
+    discharge_type: Literal["Honourable", "Dishonorable"] = "Honourable",
     evidence: Optional[discord.Attachment] = None
 ):
     view = ConfirmView()
@@ -558,7 +556,6 @@ async def discharge(
     if not view.value:
         return
         
-    # Parse member mentions/IDs
     try:
         # Reason Character check   
         if len(reason) > 1000:
@@ -572,21 +569,17 @@ async def discharge(
         for mention in members.split(','):
             mention = mention.strip()
             if mention.startswith('<@') and mention.endswith('>'):
-                # User mention
                 member_id = int(mention[2:-1].replace('!', ''))  # Handle nicknames
             else:
-                # Raw user ID
                 member_id = int(mention)
             member_ids.append(member_id)
             
-        await interaction.response.defer(ephemeral=True)
+        await interaction.followup.defer(ephemeral=True)
         await bot.rate_limiter.wait_if_needed(bucket="discharge")
         
-        # Get member objects
         discharged_members = []
         for member_id in member_ids:
-            member = interaction.guild.get_member(member_id)
-            if member:
+            if member := interaction.guild.get_member(member_id):
                 discharged_members.append(member)
             else:
                 logger.warning(f"Member {member_id} not found in guild")
@@ -595,124 +588,64 @@ async def discharge(
             await interaction.followup.send("❌ No valid members found.", ephemeral=True)
             return
 
-        # Create embed
-        color = discord.Color.green() if discharge_type == "Honorable" else discord.Color.red()
+        color = discord.Color.green() if discharge_type == "Honourable" else discord.Color.red()
         embed = discord.Embed(
             title=f"{discharge_type} Discharge Notification",
             color=color,
             timestamp=datetime.now(timezone.utc)
-        )
-
-        embed.add_field(
-            name="Reason",
-            value=reason,
-            inline=False
-        )
-
+        embed.add_field(name="Reason", value=reason, inline=False)
+        
         if evidence:
-            embed.add_field(
-                name="Evidence",
-                value=f"[Attachment Link]({evidence.url})",
-                inline=False
-            )
+            embed.add_field(name="Evidence", value=f"[Attachment Link]({evidence.url})", inline=False)
+            if evidence.url.lower().endswith(('png', 'jpg', 'jpeg', 'gif')):
+                embed.set_image(url=evidence.url)
 
         embed.set_footer(text=f"Discharged by {interaction.user.display_name}")
 
-        # Send notifications
         success_count = 0
         failed_members = []
-
+        
         for member in discharged_members:
             try:
-                # Try DM first
                 try:
                     await member.send(embed=embed)
                 except discord.Forbidden:
-                    # Fallback to public channel if DMs are closed
-                    channel = interaction.guild.get_channel(1165368316970405917)
-                    if channel:
+                    if channel := interaction.guild.get_channel(1165368316970405917):
                         await channel.send(f"{member.mention}", embed=embed)
-                
                 success_count += 1
             except Exception as e:
                 logger.error(f"Failed to notify {member.display_name}: {str(e)}")
                 failed_members.append(member.mention)
 
-        # Send summary to HI-COM
-        result_embed = discord.Embed(
-            title="Discharge Summary",
-            color=color
-        )
-        
-        result_embed.add_field(
-            name="Action",
-            value=f"{discharge_type} Discharge",
-            inline=False
-        )
-        
-        result_embed.add_field(
-            name="Results",
-            value=f"✅ Successfully notified: {success_count}\n❌ Failed: {len(failed_members)}",
-            inline=False
-        )
-        
+        result_embed = discord.Embed(title="Discharge Summary", color=color)
+        result_embed.add_field(name="Action", value=f"{discharge_type} Discharge", inline=False)
+        result_embed.add_field(name="Results", 
+                             value=f"✅ Successfully notified: {success_count}\n❌ Failed: {len(failed_members)}", 
+                             inline=False)
         if failed_members:
-            result_embed.add_field(
-                name="Failed Members",
-                value=", ".join(failed_members),
-                inline=False
-            )
+            result_embed.add_field(name="Failed Members", value=", ".join(failed_members), inline=False)
 
         await interaction.followup.send(embed=result_embed, ephemeral=True)
 
-        # Log to discharge logs
         if d_log := interaction.guild.get_channel(Config.D_LOG_CHANNEL_ID):
             log_embed = discord.Embed(
                 title=f"{discharge_type} Discharge Log",
-                color=discord.Color.green() if discharge_type == "Honorable" else discord.Color.red(),
-                timestamp=datetime.now(timezone.utc)
+                color=color,
+                timestamp=datetime.now(timezone.utc))
             
-            # Discharge details at top
             log_embed.add_field(
                 name="Type",
-                value=f"🔰 {discharge_type} Discharge" if discharge_type == "Honorable" else f"⚠️ {discharge_type} Discharge",
-                inline=False
-            )
-            
-            log_embed.add_field(
-                name="Reason",
-                value=f"```{reason}```",
-                inline=False
-            )
-            
-            # Members and evidence
-            log_embed.add_field(
-                name="Affected Members",
-                value="\n".join(m.mention for m in discharged_members) or "None",
-                inline=False
-            )
-            
+                value=f"🔰 {discharge_type} Discharge" if discharge_type == "Honourable" else f"⚠️ {discharge_type} Discharge",
+                inline=False)
+            log_embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
+            log_embed.add_field(name="Affected Members", 
+                               value="\n".join(m.mention for m in discharged_members) or "None", 
+                               inline=False)
             if evidence:
-                log_embed.add_field(
-                    name="Evidence",
-                    value=f"[View Attachment]({evidence.url})",
-                    inline=True
-                )
-                if evidence.url.lower().endswith(('png', 'jpg', 'jpeg', 'gif')):
-                    embed.set_image(url=evidence.url)
+                log_embed.add_field(name="Evidence", value=f"[View Attachment]({evidence.url})", inline=True)
             
-            # Metadata
-            log_embed.add_field(
-                name="Processed By",
-                value=interaction.user.mention,
-                inline=True
-            )
-            
-            log_embed.add_field(
-                name="Channel",
-                value=interaction.channel.mention,
-                inline=True
-            )
+            log_embed.add_field(name="Processed By", value=interaction.user.mention, inline=True)
+            log_embed.add_field(name="Channel", value=interaction.channel.mention, inline=True)
             
             await d_log.send(embed=log_embed)
             
