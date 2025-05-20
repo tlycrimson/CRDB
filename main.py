@@ -543,13 +543,13 @@ async def on_disconnect():
         
 # --- Commands --- 
 # Discharge Command
-@bot.tree.command(name="discharge", description="Notify members of honorable/dishonorable discharge")
+@bot.tree.command(name="discharge", description="Notify members of honourable/dishonourable discharge and log it")
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def discharge(
     interaction: discord.Interaction,
     members: str,  # Comma-separated user mentions/IDs
     reason: str,
-    discharge_type: Literal["Honourable", "Dishonorable"] = "Honourable",
+    discharge_type: Literal["Honourable", "Dishonourable "] = "Honourable",
     evidence: Optional[discord.Attachment] = None
 ):
     view = ConfirmView()
@@ -657,20 +657,20 @@ async def discharge(
             )
             log_embed.add_field(
                 name="Type",
-                value=f"🔰 {discharge_type} Discharge" if discharge_type == "Honourable" else f"⚠️ {discharge_type} Discharge",
+                value=f"🔰 {discharge_type} Discharge" if discharge_type == "Honourable" else f"🚨 {discharge_type} Discharge",
                 inline=False
             )
             log_embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
             log_embed.add_field(
-                name="Affected Members",
+                name="Discharged Members",
                 value="\n".join(m.mention for m in discharged_members) or "None",
                 inline=False
             )
             if evidence:
                 log_embed.add_field(name="Evidence", value=f"[View Attachment]({evidence.url})", inline=True)
 
-            log_embed.add_field(name="Processed By", value=interaction.user.mention, inline=True)
-            log_embed.add_field(name="Channel", value=interaction.channel.mention, inline=True)
+            log_embed.add_field(name="Discharged By", value=interaction.user.mention, inline=True)
+            
 
             await d_log.send(embed=log_embed)
 
