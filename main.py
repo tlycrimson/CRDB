@@ -394,7 +394,7 @@ class MessageTracker:
         embed = discord.Embed(
             title="💬 Message Logged",
             description=f"{message.author.mention} (with {tracked_role.name} role) sent a message",
-            color=discord.Color.green(),
+            color=discord.Color.pink(),
             timestamp=message.created_at
         )
         
