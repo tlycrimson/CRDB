@@ -556,28 +556,31 @@ async def discharge(
     await view.wait()
     if not view.value:
         return
-        
+
     try:
-        # Reason Character check   
+        # Reason character limit check
         if len(reason) > 1000:
             await interaction.followup.send(
                 "❌ Reason must be under 1000 characters",
                 ephemeral=True
             )
             return
-            
+
         member_ids = []
         for mention in members.split(','):
             mention = mention.strip()
-            if mention.startswith('<@') and mention.endswith('>'):
-                member_id = int(mention[2:-1].replace('!', ''))  # Handle nicknames
-            else:
-                member_id = int(mention)
-            member_ids.append(member_id)
-            
+            try:
+                if mention.startswith('<@') and mention.endswith('>'):
+                    member_id = int(mention[2:-1].replace('!', ''))  # Handle nicknames
+                else:
+                    member_id = int(mention)
+                member_ids.append(member_id)
+            except ValueError:
+                logger.warning(f"Invalid member identifier: {mention}")
+
         await interaction.followup.defer(ephemeral=True)
         await bot.rate_limiter.wait_if_needed(bucket="discharge")
-        
+
         discharged_members = []
         for member_id in member_ids:
             if member := interaction.guild.get_member(member_id):
@@ -589,24 +592,26 @@ async def discharge(
             await interaction.followup.send("❌ No valid members found.", ephemeral=True)
             return
 
-        # Fixed embed creation - properly closed parentheses
+        # Embed creation
         color = discord.Color.green() if discharge_type == "Honourable" else discord.Color.red()
         embed = discord.Embed(
             title=f"{discharge_type} Discharge Notification",
             color=color,
             timestamp=datetime.now(timezone.utc)
+        )
         embed.add_field(name="Reason", value=reason, inline=False)
-        
+
         if evidence:
             embed.add_field(name="Evidence", value=f"[Attachment Link]({evidence.url})", inline=False)
-            if evidence.url.lower().endswith(('png', 'jpg', 'jpeg', 'gif')):
+            mime, _ = mimetypes.guess_type(evidence.filename)
+            if mime and mime.startswith("image/"):
                 embed.set_image(url=evidence.url)
 
         embed.set_footer(text=f"Discharged by {interaction.user.display_name}")
 
         success_count = 0
         failed_members = []
-        
+
         for member in discharged_members:
             try:
                 try:
@@ -620,13 +625,13 @@ async def discharge(
                 failed_members.append(member.mention)
 
         result_embed = discord.Embed(
-            title="Discharge Summary", 
+            title="Discharge Summary",
             color=color
         )
         result_embed.add_field(name="Action", value=f"{discharge_type} Discharge", inline=False)
         result_embed.add_field(
-            name="Results", 
-            value=f"✅ Successfully notified: {success_count}\n❌ Failed: {len(failed_members)}", 
+            name="Results",
+            value=f"✅ Successfully notified: {success_count}\n❌ Failed: {len(failed_members)}",
             inline=False
         )
         if failed_members:
@@ -634,13 +639,13 @@ async def discharge(
 
         await interaction.followup.send(embed=result_embed, ephemeral=True)
 
+        # Log to D_LOG_CHANNEL_ID
         if d_log := interaction.guild.get_channel(Config.D_LOG_CHANNEL_ID):
             log_embed = discord.Embed(
                 title=f"{discharge_type} Discharge Log",
                 color=color,
                 timestamp=datetime.now(timezone.utc)
             )
-            
             log_embed.add_field(
                 name="Type",
                 value=f"🔰 {discharge_type} Discharge" if discharge_type == "Honourable" else f"⚠️ {discharge_type} Discharge",
@@ -648,18 +653,18 @@ async def discharge(
             )
             log_embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
             log_embed.add_field(
-                name="Affected Members", 
-                value="\n".join(m.mention for m in discharged_members) or "None", 
+                name="Affected Members",
+                value="\n".join(m.mention for m in discharged_members) or "None",
                 inline=False
             )
             if evidence:
                 log_embed.add_field(name="Evidence", value=f"[View Attachment]({evidence.url})", inline=True)
-            
+
             log_embed.add_field(name="Processed By", value=interaction.user.mention, inline=True)
             log_embed.add_field(name="Channel", value=interaction.channel.mention, inline=True)
-            
+
             await d_log.send(embed=log_embed)
-            
+
     except Exception as e:
         logger.error(f"Discharge command failed: {e}")
         await interaction.followup.send("❌ An error occurred while processing the discharge.", ephemeral=True)
