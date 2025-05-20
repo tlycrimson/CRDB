@@ -18,7 +18,7 @@ from discord.ext import commands
 from dotenv import load_dotenv
 from flask import Flask
 from roblox_commands import create_sc_command
-from datetime import datetime
+from datetime import datetime, timezone
 
 # --- Configuration ---
 load_dotenv()
@@ -446,6 +446,23 @@ class MessageTracker:
             color=discord.Color.blue()
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
+        
+class ConfirmView(discord.ui.View):
+    def __init__(self):
+        super().__init__()
+        self.value = None
+
+    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.green)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.value = True
+        await interaction.response.defer()
+        self.stop()
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.red)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        self.value = False
+        await interaction.response.defer()
+        self.stop()
 
 # --- Bot Initialization ---
 intents = discord.Intents.default()
@@ -524,6 +541,8 @@ async def on_disconnect():
         logger.info("Closed shared HTTP session")
         
 # --- Commands ---
+# Discharge Log Command
+# --- Fixed Discharge Command ---
 @bot.tree.command(name="discharge", description="Notify members of honorable/dishonorable discharge")
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def discharge(
@@ -533,11 +552,22 @@ async def discharge(
     reason: str,
     evidence: Optional[discord.Attachment] = None
 ):
-    """Notify members of their discharge with reason and optional evidence"""
-    await interaction.response.defer(ephemeral=True)
-    
+    view = ConfirmView()
+    await interaction.response.send_message("Confirm discharge?", view=view, ephemeral=True)
+    await view.wait()
+    if not view.value:
+        return
+        
     # Parse member mentions/IDs
     try:
+        # Reason Character check   
+        if len(reason) > 1000:
+            await interaction.followup.send(
+                "❌ Reason must be under 1000 characters",
+                ephemeral=True
+            )
+            return
+            
         member_ids = []
         for mention in members.split(','):
             mention = mention.strip()
@@ -548,144 +578,150 @@ async def discharge(
                 # Raw user ID
                 member_id = int(mention)
             member_ids.append(member_id)
-    except ValueError:
-        await interaction.followup.send("❌ Invalid member format. Use mentions or IDs separated by commas.", ephemeral=True)
-        return
-
-    # Get member objects
-    discharged_members = []
-    for member_id in member_ids:
-        member = interaction.guild.get_member(member_id)
-        if member:
-            discharged_members.append(member)
-        else:
-            logger.warning(f"Member {member_id} not found in guild")
-
-    if not discharged_members:
-        await interaction.followup.send("❌ No valid members found.", ephemeral=True)
-        return
-
-    # Create embed
-    color = discord.Color.green() if discharge_type == "Honorable" else discord.Color.red()
-    embed = discord.Embed(
-        title=f"{discharge_type} Discharge Notification",
-        color=color,
-        timestamp=datetime.now(timezone.utc)
-    )
-
-    embed.add_field(
-        name="Reason",
-        value=reason,
-        inline=False
-    )
-
-    if evidence:
-        embed.add_field(
-            name="Evidence",
-            value=f"[Attachment Link]({evidence.url})",
-            inline=False
-        )
-
-    embed.set_footer(text=f"Discharged by {interaction.user.display_name}")
-
-    # Send notifications
-    success_count = 0
-    failed_members = []
-
-    for member in discharged_members:
-        try:
-            # Try DM first
-            try:
-                await member.send(embed=embed)
-            except discord.Forbidden:
-                # Fallback to public channel if DMs are closed
-                channel = interaction.guild.system_channel or interaction.channel
-                await channel.send(f"{member.mention}", embed=embed)
             
-            success_count += 1
-        except Exception as e:
-            logger.error(f"Failed to notify {member.display_name}: {str(e)}")
-            failed_members.append(member.mention)
+        await interaction.response.defer(ephemeral=True)
+        await bot.rate_limiter.wait_if_needed(bucket="discharge")
+        
+        # Get member objects
+        discharged_members = []
+        for member_id in member_ids:
+            member = interaction.guild.get_member(member_id)
+            if member:
+                discharged_members.append(member)
+            else:
+                logger.warning(f"Member {member_id} not found in guild")
 
-    # Send summary to commander
-    result_embed = discord.Embed(
-        title="Discharge Summary",
-        color=color
-    )
-    
-    result_embed.add_field(
-        name="Action",
-        value=f"{discharge_type} Discharge",
-        inline=False
-    )
-    
-    result_embed.add_field(
-        name="Results",
-        value=f"✅ Successfully notified: {success_count}\n❌ Failed: {len(failed_members)}",
-        inline=False
-    )
-    
-    if failed_members:
-        result_embed.add_field(
-            name="Failed Members",
-            value=", ".join(failed_members),
-            inline=False
-        )
+        if not discharged_members:
+            await interaction.followup.send("❌ No valid members found.", ephemeral=True)
+            return
 
-    await interaction.followup.send(embed=result_embed, ephemeral=True)
-
-    # Log to discharge logs
-    if mod_log := interaction.guild.get_channel(Config.D_LOG_CHANNEL_ID):
-        log_embed = discord.Embed(
-            title=f"{discharge_type} Discharge Log",
-            color=discord.Color.green() if discharge_type == "Honorable" else discord.Color.red(),
+        # Create embed
+        color = discord.Color.green() if discharge_type == "Honorable" else discord.Color.red()
+        embed = discord.Embed(
+            title=f"{discharge_type} Discharge Notification",
+            color=color,
             timestamp=datetime.now(timezone.utc)
         )
-        
-        # Discharge details at top
-        log_embed.add_field(
-            name="Type",
-            value=f"🔰 {discharge_type} Discharge" if discharge_type == "Honorable" else f"⚠️ {discharge_type} Discharge",
-            inline=False
-        )
-        
-        log_embed.add_field(
+
+        embed.add_field(
             name="Reason",
-            value=f"```{reason}```",
+            value=reason,
             inline=False
         )
-        
-        # Members and evidence
-        log_embed.add_field(
-            name="Affected Members",
-            value="\n".join(m.mention for m in discharged_members) or "None",
-            inline=False
-        )
-        
+
         if evidence:
-            log_embed.add_field(
+            embed.add_field(
                 name="Evidence",
-                value=f"[View Attachment]({evidence.url})",
+                value=f"[Attachment Link]({evidence.url})",
+                inline=False
+            )
+
+        embed.set_footer(text=f"Discharged by {interaction.user.display_name}")
+
+        # Send notifications
+        success_count = 0
+        failed_members = []
+
+        for member in discharged_members:
+            try:
+                # Try DM first
+                try:
+                    await member.send(embed=embed)
+                except discord.Forbidden:
+                    # Fallback to public channel if DMs are closed
+                    channel = interaction.guild.get_channel(1165368316970405917)
+                    if channel:
+                        await channel.send(f"{member.mention}", embed=embed)
+                
+                success_count += 1
+            except Exception as e:
+                logger.error(f"Failed to notify {member.display_name}: {str(e)}")
+                failed_members.append(member.mention)
+
+        # Send summary to HI-COM
+        result_embed = discord.Embed(
+            title="Discharge Summary",
+            color=color
+        )
+        
+        result_embed.add_field(
+            name="Action",
+            value=f"{discharge_type} Discharge",
+            inline=False
+        )
+        
+        result_embed.add_field(
+            name="Results",
+            value=f"✅ Successfully notified: {success_count}\n❌ Failed: {len(failed_members)}",
+            inline=False
+        )
+        
+        if failed_members:
+            result_embed.add_field(
+                name="Failed Members",
+                value=", ".join(failed_members),
+                inline=False
+            )
+
+        await interaction.followup.send(embed=result_embed, ephemeral=True)
+
+        # Log to discharge logs
+        if d_log := interaction.guild.get_channel(Config.D_LOG_CHANNEL_ID):
+            log_embed = discord.Embed(
+                title=f"{discharge_type} Discharge Log",
+                color=discord.Color.green() if discharge_type == "Honorable" else discord.Color.red(),
+                timestamp=datetime.now(timezone.utc)
+            
+            # Discharge details at top
+            log_embed.add_field(
+                name="Type",
+                value=f"🔰 {discharge_type} Discharge" if discharge_type == "Honorable" else f"⚠️ {discharge_type} Discharge",
+                inline=False
+            )
+            
+            log_embed.add_field(
+                name="Reason",
+                value=f"```{reason}```",
+                inline=False
+            )
+            
+            # Members and evidence
+            log_embed.add_field(
+                name="Affected Members",
+                value="\n".join(m.mention for m in discharged_members) or "None",
+                inline=False
+            )
+            
+            if evidence:
+                log_embed.add_field(
+                    name="Evidence",
+                    value=f"[View Attachment]({evidence.url})",
+                    inline=True
+                )
+                if evidence.url.lower().endswith(('png', 'jpg', 'jpeg', 'gif')):
+                    embed.set_image(url=evidence.url)
+            
+            # Metadata
+            log_embed.add_field(
+                name="Processed By",
+                value=interaction.user.mention,
                 inline=True
             )
-            log_embed.set_image(url=evidence.url) if evidence.url.lower().endswith(('png', 'jpg', 'jpeg', 'gif')) else None
-        
-        # Metadata
-        log_embed.add_field(
-            name="Processed By",
-            value=interaction.user.mention,
-            inline=True
-        )
-        
-        log_embed.add_field(
-            name="Channel",
-            value=interaction.channel.mention,
-            inline=True
-        )
-        
-        await mod_log.send(embed=log_embed)
+            
+            log_embed.add_field(
+                name="Channel",
+                value=interaction.channel.mention,
+                inline=True
+            )
+            
+            await d_log.send(embed=log_embed)
+            
+    except Exception as e:
+        logger.error(f"Discharge command failed: {e}")
+        await interaction.followup.send("❌ An error occurred while processing the discharge.", ephemeral=True)
+    
 
-        
+#LD Reaction Monitor Set-up Command           
 @bot.tree.command(name="message-tracker-setup", description="Setup message monitoring")
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)  
 async def message_tracker_setup(
@@ -779,7 +815,8 @@ async def command_list(interaction: discord.Interaction):
             "/ping - Check bot responsiveness",
             "/commands - Show this help message",
             "/sheetdb-test - Test SheetDB connection",
-            "/sc - Security Check Roblox user"
+            "/sc - Security Check Roblox user",
+            "/discharge - Sends discharge notification to user and logs in discharge logs."
         ]
     }
     
@@ -881,7 +918,7 @@ async def send_hr_welcome(member: discord.Member):
             "• Are you Captain+ in BA? Apply for departments: [Applications](https://discord.com/channels/1165368311085809717/1165368316970405916)"
         ),
         color=discord.Color.gold(),  
-        timestamp=datetime.utcnow()
+        timestamp=datetime.now(timezone.utc)
     )
     
     embed.set_footer(text="We're excited to have you on the team!")
