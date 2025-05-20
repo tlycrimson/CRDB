@@ -335,6 +335,118 @@ class SheetDBLogger:
             logger.error(f"⚠️ Unexpected error: {type(e).__name__}: {str(e)}")
             return False
 
+class MessageTracker:
+    """Tracks messages sent by users with a specific role in specified channels"""
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self.monitor_channel_ids = set(Config.MESSAGE_TRACKER_CHANNELS)
+        self.log_channel_id = Config.MESSAGE_TRACKER_LOG_CHANNEL
+        self.tracked_role_id = Config.MESSAGE_TRACKER_ROLE_ID
+        self.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
+        
+    async def on_ready_setup(self):
+        """Setup monitoring when bot starts"""
+        guild = self.bot.guilds[0]
+        valid_channels = set()
+        for channel_id in self.monitor_channel_ids:
+            if channel := guild.get_channel(channel_id):
+                valid_channels.add(channel.id)
+        
+        self.monitor_channel_ids = valid_channels
+        
+        if not guild.get_channel(self.log_channel_id):
+            logger.warning(f"Message tracker log channel {self.log_channel_id} not found!")
+            self.log_channel_id = None
+
+        if not guild.get_role(self.tracked_role_id):
+            logger.warning(f"Message tracker role {self.tracked_role_id} not found!")
+
+    async def log_message(self, message: discord.Message):
+        """Log messages from monitored channels by users with tracked role"""
+        try:
+            await self.rate_limiter.wait_if_needed(bucket="message_log")
+            await self._log_message_impl(message)
+        except Exception as e:
+            logger.error(f"Failed to log message: {type(e).__name__}: {str(e)}")
+
+    async def _log_message_impl(self, message: discord.Message):
+        if message.author.bot:
+            return
+            
+        if message.channel.id not in self.monitor_channel_ids:
+            return
+            
+        if not isinstance(message.author, discord.Member):
+            return
+            
+        tracked_role = message.guild.get_role(self.tracked_role_id)
+        if not tracked_role or tracked_role not in message.author.roles:
+            return
+            
+        log_channel = message.guild.get_channel(self.log_channel_id)
+        if not log_channel:
+            return
+            
+        content = message.content
+        if len(content) > 1000:
+            content = content[:1000] + "... [truncated]"
+            
+        embed = discord.Embed(
+            title="💬 Message Logged",
+            description=f"{message.author.mention} (with {tracked_role.name} role) sent a message",
+            color=discord.Color.green(),
+            timestamp=message.created_at
+        )
+        
+        embed.add_field(name="Channel", value=message.channel.mention)
+        embed.add_field(name="Message ID", value=message.id)
+        embed.add_field(name="Content", value=content, inline=False)
+        embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
+        
+        if message.attachments:
+            attachment = message.attachments[0]
+            if attachment.url.lower().endswith(('png', 'jpg', 'jpeg', 'gif', 'webp')):
+                embed.set_image(url=attachment.url)
+            else:
+                embed.add_field(name="Attachment", value=f"[{attachment.filename}]({attachment.url})", inline=False)
+        
+        await log_channel.send(embed=embed)
+
+    async def add_channels(self, interaction: discord.Interaction, channels: str):
+        """Add channels to monitor"""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
+            self.monitor_channel_ids.update(channel_ids)
+            await interaction.followup.send(f"✅ Added {len(channel_ids)} channels to monitoring", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Failed to add channels: {str(e)}", ephemeral=True)
+
+    async def remove_channels(self, interaction: discord.Interaction, channels: str):
+        """Remove channels from monitoring"""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
+            self.monitor_channel_ids.difference_update(channel_ids)
+            await interaction.followup.send(f"✅ Removed {len(channel_ids)} channels from monitoring", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Failed to remove channels: {str(e)}", ephemeral=True)
+
+    async def list_channels(self, interaction: discord.Interaction):
+        """List monitored channels"""
+        await interaction.response.defer(ephemeral=True)
+        if not self.monitor_channel_ids:
+            await interaction.followup.send("❌ No channels being monitored", ephemeral=True)
+            return
+            
+        channel_list = "\n".join(f"• <#{cid}>" for cid in self.monitor_channel_ids)
+        embed = discord.Embed(
+            title="Monitored Message Channels",
+            description=channel_list,
+            color=discord.Color.blue()
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+
 # --- Bot Initialization ---
 intents = discord.Intents.default()
 intents.members = True
@@ -351,6 +463,7 @@ bot = commands.Bot(
 )
 bot.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
 bot.reaction_logger = ReactionLogger(bot)
+bot.message_tracker = MessageTracker(bot)
 bot.api = DiscordAPI()
 
 # --- Command Error Handler ---
@@ -382,6 +495,7 @@ async def on_ready():
         logger.info("SheetDB Logger initialized successfully")
         
     await bot.reaction_logger.on_ready_setup()
+    await bot.message_tracker.on_ready_setup()
     
     bot.shared_session = aiohttp.ClientSession(
         headers={"User-Agent": USER_AGENT},
@@ -410,6 +524,50 @@ async def on_disconnect():
         logger.info("Closed shared HTTP session")
         
 # --- Commands ---
+@bot.tree.command(name="message-tracker-setup", description="Setup message monitoring")
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)  
+async def message_tracker_setup(
+    interaction: discord.Interaction,
+    log_channel: discord.TextChannel,
+    monitor_channels: str,
+    role: discord.Role
+):
+    """Setup message tracking"""
+    await interaction.response.defer(ephemeral=True)
+    try:
+        channel_ids = [int(cid.strip()) for cid in monitor_channels.split(',')]
+        bot.message_tracker.monitor_channel_ids = set(channel_ids)
+        bot.message_tracker.log_channel_id = log_channel.id
+        bot.message_tracker.tracked_role_id = role.id
+        await interaction.followup.send("✅ Message tracking setup complete", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Setup failed: {str(e)}", ephemeral=True)
+
+@bot.tree.command(name="message-tracker-add", description="Add channels to message monitoring")
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)  # Or whatever role you want
+async def message_tracker_add(
+    interaction: discord.Interaction,
+    channels: str
+):
+    """Add channels to message tracking"""
+    await bot.message_tracker.add_channels(interaction, channels)
+
+@bot.tree.command(name="message-tracker-remove", description="Remove channels from message monitoring")
+@min_rank_required(Config.ADMIN_ROLE_ID)  # Or whatever role you want
+async def message_tracker_remove(
+    interaction: discord.Interaction,
+    channels: str
+):
+    """Remove channels from message tracking"""
+    await bot.message_tracker.remove_channels(interaction, channels)
+
+@bot.tree.command(name="message-tracker-list", description="List currently monitored channels")
+@min_rank_required(Config.ADMIN_ROLE_ID)  # Or whatever role you want
+async def message_tracker_list(interaction: discord.Interaction):
+    """List channels being tracked for messages"""
+    await bot.message_tracker.list_channels(interaction)
+
+
 @bot.tree.command(name="force-update", description="Manually test sheet updates")
 @has_allowed_role()
 async def force_update(interaction: discord.Interaction, username: str):
@@ -449,12 +607,16 @@ async def command_list(interaction: discord.Interaction):
             "/reaction-remove - Remove monitored channels",
             "/reaction-list - List monitored channels"
         ],
+        "💬 Message Tracking": [
+            "/message-tracker-setup - Setup message tracking",
+            "/message-tracker-add - Add channels to monitor",
+            "/message-tracker-remove - Remove monitored channels",
+            "/message-tracker-list - List monitored channels"
+        ],
         "🛠️ Utility": [
             "/ping - Check bot responsiveness",
             "/commands - Show this help message",
-            "/sheetdb-test - Test SheetDB connection"
-        ],
-        "🎮 Roblox Tools": [
+            "/sheetdb-test - Test SheetDB connection",
             "/sc - Security Check Roblox user"
         ]
     }
@@ -463,6 +625,7 @@ async def command_list(interaction: discord.Interaction):
         embed.add_field(name=name, value="\n".join(value), inline=False)
     
     await interaction.response.send_message(embed=embed)
+    
 
 @bot.tree.command(name="ping", description="Check bot latency")
 @has_allowed_role()
@@ -474,7 +637,7 @@ async def ping(interaction: discord.Interaction):
     )
 
 @bot.tree.command(name="reaction-setup", description="Setup reaction monitoring")
-@min_rank_required(Config.MONITOR_ROLE_ID)
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def reaction_setup(
     interaction: discord.Interaction,
     log_channel: discord.TextChannel,
@@ -483,7 +646,7 @@ async def reaction_setup(
     await bot.reaction_logger.rate_limiter.setup(interaction, log_channel, monitor_channels)
 
 @bot.tree.command(name="reaction-add", description="Add channels to monitor")
-@min_rank_required(Config.MONITOR_ROLE_ID)
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def reaction_add(
     interaction: discord.Interaction,
     channels: str
@@ -491,7 +654,7 @@ async def reaction_add(
     await bot.reaction_logger.rate_limiter.add_channels(interaction, channels)
 
 @bot.tree.command(name="reaction-remove", description="Remove channels from monitoring")
-@min_rank_required(Config.MONITOR_ROLE_ID)
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def reaction_remove(
     interaction: discord.Interaction,
     channels: str
@@ -499,7 +662,7 @@ async def reaction_remove(
     await bot.reaction_logger.rate_limiter.remove_channels(interaction, channels)
 
 @bot.tree.command(name="reaction-list", description="List monitored channels")
-@min_rank_required(Config.MONITOR_ROLE_ID)
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def reaction_list(interaction: discord.Interaction):
     await bot.reaction_logger.rate_limiter.list_channels(interaction)
 
@@ -668,6 +831,14 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     await bot.reaction_logger.log_reaction(payload)
+
+@bot.event
+async def on_message(message: discord.Message):
+    # Process commands first
+    await bot.process_commands(message)
+    
+    # Then track messages
+    await bot.message_tracker.log_message(message)
 
 # --- Flask Setup ---
 app = Flask(__name__)
