@@ -729,7 +729,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     if not (rmp_role := after.guild.get_role(Config.RMP_ROLE_ID)):
         return
         
-    if rmp_role in before.roles and rmp_role not in after.roles:
+    if rmp_role not in before.roles and rmp_role not in after.roles:
         return
         
    # First embed (welcome message)
@@ -825,6 +825,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     except discord.Forbidden:
         if welcome_channel := after.guild.get_channel(722002957738180620):
             await welcome_channel.send(f"{after.mention}", embeds=[embed1, embed2])
+            logger.info(f"Sending welcome message to {after.display_name} ({after.id})")
     except discord.HTTPException as e:
         print(f"Failed to send welcome message: {e}")
     
