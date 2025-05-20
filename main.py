@@ -553,7 +553,7 @@ async def message_tracker_add(
     await bot.message_tracker.add_channels(interaction, channels)
 
 @bot.tree.command(name="message-tracker-remove", description="Remove channels from message monitoring")
-@min_rank_required(Config.ADMIN_ROLE_ID)  # Or whatever role you want
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID) 
 async def message_tracker_remove(
     interaction: discord.Interaction,
     channels: str
@@ -562,7 +562,7 @@ async def message_tracker_remove(
     await bot.message_tracker.remove_channels(interaction, channels)
 
 @bot.tree.command(name="message-tracker-list", description="List currently monitored channels")
-@min_rank_required(Config.ADMIN_ROLE_ID)  # Or whatever role you want
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)  
 async def message_tracker_list(interaction: discord.Interaction):
     """List channels being tracked for messages"""
     await bot.message_tracker.list_channels(interaction)
