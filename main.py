@@ -566,7 +566,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     if not (rmp_role := after.guild.get_role(Config.RMP_ROLE_ID)):
         return
         
-    if rmp_role in before.roles or rmp_role not in after.roles:
+    if rmp_role in before.roles and rmp_role not in after.roles:
         return
         
    # First embed (welcome message)
@@ -586,11 +586,11 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 
     # Second embed (detailed rules)
     embed2 = discord.Embed(
-        title=":RMP~1: | Trainee Constable Brochure",
+        title="Trainee Constable Brochure",
         color=discord.Color.blue()
     )
     
-    # Add fields to the second embed
+    
     embed2.add_field(
         name="__TOP 5 RULES__",
         value="> **1**. You **MUST** read the RMP main guide and MSL before starting your duties.\n"
