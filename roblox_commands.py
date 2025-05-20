@@ -169,20 +169,16 @@ def create_sc_command(bot: commands.Bot):
     @app_commands.checks.cooldown(rate=1, per=10.0)
     async def sc(interaction: discord.Interaction, user_id: int):
         try:
-            #Immediate deferral
-            try:
-                await interaction.response.defer(thinking=True)
-            except discord.errors.NotFound:
-                logger.error("Interaction already expired")
-                return
             
-
             session = bot.shared_session if hasattr(bot, 'shared_session') else None
             if not session:
-                return await interaction.followup.send(
+                return await interaction.response.send_message(
                     "⚠️ Bot is not ready yet. Please try again in a moment.",
                     ephemeral=True
                 )
+                
+            #Deferral
+            await interaction.response.defer(thinking=True)
 
             urls = {
                 'profile': f"https://users.roblox.com/v1/users/{user_id}",
@@ -283,11 +279,6 @@ def create_sc_command(bot: commands.Bot):
             await interaction.followup.send(embed=embed)
     
 
-        except app_commands.CommandOnCooldown as e:
-            await interaction.followup.send(
-                f"⌛ Command on cooldown. Try again in {e.retry_after:.1f}s",
-                ephemeral=True
-            )
         except Exception as e:
             logger.error(f"[SC COMMAND ERROR]: {str(e)}", exc_info=True)
             try:
@@ -297,5 +288,34 @@ def create_sc_command(bot: commands.Bot):
                 )
             except:
                 pass
-
+    @sc.error
+    async def sc_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+        if isinstance(error, app_commands.CommandOnCooldown):
+            # Send the cooldown message as a new response
+            if interaction.response.is_done():
+                await interaction.followup.send(
+                    f"⌛ Command on cooldown. Try again in {error.retry_after:.1f}s",
+                    ephemeral=True
+                )
+            else:
+                await interaction.response.send_message(
+                    f"⌛ Command on cooldown. Try again in {error.retry_after:.1f}s",
+                    ephemeral=True
+                )
+        else:
+            logger.error("Unhandled error in sc command:", exc_info=error)
+            try:
+                if interaction.response.is_done():
+                    await interaction.followup.send(
+                        "⚠️ An unexpected error occurred.",
+                        ephemeral=True
+                    )
+                else:
+                    await interaction.response.send_message(
+                        "⚠️ An unexpected error occurred.",
+                        ephemeral=True
+                    )
+            except:
+                pass
+    
     return sc
