@@ -719,7 +719,7 @@ async def send_hr_welcome(member: discord.Member):
             "• Are you Captain+ in BA rank? Apply for departments: [Applications](https://discord.com/channels/1165368311085809717/1165368316970405916)"
         ),
         color=discord.Color.gold(),  # Gold color for HR
-        timestamp=datetime.datetime.now()
+        timestamp=datetime.utcnow()
     )
     
     embed.set_footer(text="We're excited to have you on the team!")
