@@ -541,6 +541,7 @@ async def on_disconnect():
         logger.info("Closed shared HTTP session")
         
 # --- Commands --- 
+# Discharge Command
 @bot.tree.command(name="discharge", description="Notify members of honorable/dishonorable discharge")
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def discharge(
@@ -588,6 +589,7 @@ async def discharge(
             await interaction.followup.send("❌ No valid members found.", ephemeral=True)
             return
 
+        # Fixed embed creation - properly closed parentheses
         color = discord.Color.green() if discharge_type == "Honourable" else discord.Color.red()
         embed = discord.Embed(
             title=f"{discharge_type} Discharge Notification",
@@ -617,11 +619,16 @@ async def discharge(
                 logger.error(f"Failed to notify {member.display_name}: {str(e)}")
                 failed_members.append(member.mention)
 
-        result_embed = discord.Embed(title="Discharge Summary", color=color)
+        result_embed = discord.Embed(
+            title="Discharge Summary", 
+            color=color
+        )
         result_embed.add_field(name="Action", value=f"{discharge_type} Discharge", inline=False)
-        result_embed.add_field(name="Results", 
-                             value=f"✅ Successfully notified: {success_count}\n❌ Failed: {len(failed_members)}", 
-                             inline=False)
+        result_embed.add_field(
+            name="Results", 
+            value=f"✅ Successfully notified: {success_count}\n❌ Failed: {len(failed_members)}", 
+            inline=False
+        )
         if failed_members:
             result_embed.add_field(name="Failed Members", value=", ".join(failed_members), inline=False)
 
@@ -631,16 +638,20 @@ async def discharge(
             log_embed = discord.Embed(
                 title=f"{discharge_type} Discharge Log",
                 color=color,
-                timestamp=datetime.now(timezone.utc))
+                timestamp=datetime.now(timezone.utc)
+            )
             
             log_embed.add_field(
                 name="Type",
                 value=f"🔰 {discharge_type} Discharge" if discharge_type == "Honourable" else f"⚠️ {discharge_type} Discharge",
-                inline=False)
+                inline=False
+            )
             log_embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
-            log_embed.add_field(name="Affected Members", 
-                               value="\n".join(m.mention for m in discharged_members) or "None", 
-                               inline=False)
+            log_embed.add_field(
+                name="Affected Members", 
+                value="\n".join(m.mention for m in discharged_members) or "None", 
+                inline=False
+            )
             if evidence:
                 log_embed.add_field(name="Evidence", value=f"[View Attachment]({evidence.url})", inline=True)
             
