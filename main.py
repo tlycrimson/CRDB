@@ -578,7 +578,12 @@ async def discharge(
             except ValueError:
                 logger.warning(f"Invalid member identifier: {mention}")
 
-        await interaction.followup.defer(ephemeral=True)
+        processing_msg = await interaction.followup.send(
+            "⚙️ Processing discharge...",
+            ephemeral=True,
+            wait=True
+        )
+
         await bot.rate_limiter.wait_if_needed(bucket="discharge")
 
         discharged_members = []
@@ -637,7 +642,10 @@ async def discharge(
         if failed_members:
             result_embed.add_field(name="Failed Members", value=", ".join(failed_members), inline=False)
 
-        await interaction.followup.send(embed=result_embed, ephemeral=True)
+        await processing_msg.edit(
+            content=None,
+            embed=result_embed
+        )
 
         # Log to D_LOG_CHANNEL_ID
         if d_log := interaction.guild.get_channel(Config.D_LOG_CHANNEL_ID):
