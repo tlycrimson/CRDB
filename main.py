@@ -730,47 +730,11 @@ async def send_hr_welcome(member: discord.Member):
     except discord.Forbidden:
         logger.error(f"Missing permissions to send HR welcome for {member.id}")
     except Exception as e:
-        logger.error(f"Failed to send HR welcome: {str(e)}")          
-        
-@bot.event
-async def on_member_update(before: discord.Member, after: discord.Member):
-   
-    if hr_role := after.guild.get_role(Config.HR_ROLE_ID):
-        if hr_role not in before.roles and hr_role in after.roles:
-            await send_hr_welcome(after)
-            
-@bot.event
-async def on_member_remove(member: discord.Member):
-    guild = member.guild
-    if not (deserter_role := guild.get_role(Config.DESERTER_ROLE_ID)):
-        return
-
-    if deserter_role not in member.roles:
-        return
-        
-    if not (alert_channel := guild.get_channel(Config.DESERTER_ALERT_CHANNEL_ID)):
-        return
-        
-    embed = discord.Embed(
-        title="🚨 Deserter Alert",
-        description=f"{member.mention} with role the {deserter_role.mention} left the server!",
-        color=discord.Color.red()
-    )
-    embed.set_thumbnail(url=member.display_avatar.url)
-    
-    await alert_channel.send(
-        content=f"<@&{Config.HIGH_COMMAND_ROLE_ID}>",
-        embed=embed
-    )
-
+        logger.error(f"Failed to send HR welcome: {str(e)}")
 
 # RMP Welcome Message
-@bot.event 
-async def on_member_update(before: discord.Member, after: discord.Member):
-    if rmp_role := after.guild.get_role(Config.RMP_ROLE_ID):
-        if rmp_role not in before.roles and rmp_role in after.roles:
-        
-   # First embed (welcome message)
+async def send_rmp_welcome(member: discord.Member):
+    # First embed (welcome message)
     embed1 = discord.Embed(
         title="Welcome to the Royal Military Police",
         description="**1.** Make sure to read all of the rules found in <#1165368313925353580>\n\n"
@@ -790,7 +754,6 @@ async def on_member_update(before: discord.Member, after: discord.Member):
         title="Trainee Constable Brochure",
         color=discord.Color.blue()
     )
-    
     
     embed2.add_field(
         name="__TOP 5 RULES__",
@@ -859,13 +822,50 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     )
 
     try:
-        await after.send(embeds=[embed1, embed2])
+        await member.send(embeds=[embed1, embed2])
     except discord.Forbidden:
-        if welcome_channel := after.guild.get_channel(722002957738180620):
-            await welcome_channel.send(f"{after.mention}", embeds=[embed1, embed2])
-            logger.info(f"Sending welcome message to {after.display_name} ({after.id})")
+        if welcome_channel := member.guild.get_channel(722002957738180620):
+            await welcome_channel.send(f"{member.mention}", embeds=[embed1, embed2])
+            logger.info(f"Sending welcome message to {member.display_name} ({member.id})")
     except discord.HTTPException as e:
-        print(f"Failed to send welcome message: {e}")
+        logger.error(f"Failed to send welcome message: {e}")
+
+@bot.event
+async def on_member_update(before: discord.Member, after: discord.Member):
+    # Check for HR role
+    if hr_role := after.guild.get_role(Config.HR_ROLE_ID):
+        if hr_role not in before.roles and hr_role in after.roles:
+            await send_hr_welcome(after)
+    
+    # Check for RMP role
+    if rmp_role := after.guild.get_role(Config.RMP_ROLE_ID):
+        if rmp_role not in before.roles and rmp_role in after.roles:
+            await send_rmp_welcome(after)
+
+@bot.event
+async def on_member_remove(member: discord.Member):
+    guild = member.guild
+    if not (deserter_role := guild.get_role(Config.DESERTER_ROLE_ID)):
+        return
+
+    if deserter_role not in member.roles:
+        return
+        
+    if not (alert_channel := guild.get_channel(Config.DESERTER_ALERT_CHANNEL_ID)):
+        return
+        
+    embed = discord.Embed(
+        title="🚨 Deserter Alert",
+        description=f"{member.mention} with role the {deserter_role.mention} left the server!",
+        color=discord.Color.red()
+    )
+    embed.set_thumbnail(url=member.display_avatar.url)
+    
+    await alert_channel.send(
+        content=f"<@&{Config.HIGH_COMMAND_ROLE_ID}>",
+        embed=embed
+    )
+
     
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
