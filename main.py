@@ -651,7 +651,7 @@ async def discharge(
         # Log to D_LOG_CHANNEL_ID
         if d_log := interaction.guild.get_channel(Config.D_LOG_CHANNEL_ID):
             log_embed = discord.Embed(
-                title=f"{discharge_type} Discharge Log",
+                title=f"Discharge Log",
                 color=color,
                 timestamp=datetime.now(timezone.utc)
             )
