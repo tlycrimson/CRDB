@@ -699,7 +699,8 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
                 ephemeral=True
             )
             return
-            
+
+# HR Welcome Message
 async def send_hr_welcome(member: discord.Member):
     if not (welcome_channel := member.guild.get_channel(Config.DESERTER_ALERT_CHANNEL_ID)):
         logger.warning("HR welcome channel not found!")
@@ -731,7 +732,7 @@ async def send_hr_welcome(member: discord.Member):
     except Exception as e:
         logger.error(f"Failed to send HR welcome: {str(e)}")          
         
- @bot.event
+@bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
    
     if hr_role := after.guild.get_role(Config.HR_ROLE_ID):
@@ -762,13 +763,12 @@ async def on_member_remove(member: discord.Member):
         embed=embed
     )
 
+
+# RMP Welcome Message
 @bot.event 
 async def on_member_update(before: discord.Member, after: discord.Member):
-    if not (rmp_role := after.guild.get_role(Config.RMP_ROLE_ID)):
-        return
-        
-    if rmp_role not in before.roles and rmp_role not in after.roles:
-        return
+    if rmp_role := after.guild.get_role(Config.RMP_ROLE_ID):
+        if rmp_role not in before.roles and rmp_role in after.roles:
         
    # First embed (welcome message)
     embed1 = discord.Embed(
