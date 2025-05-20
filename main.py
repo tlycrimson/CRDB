@@ -699,13 +699,51 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
                 ephemeral=True
             )
             return
- 
+            
+  async def send_hr_welcome(member: discord.Member):
+    """Send HR welcome message to designated channel"""
+    if not (welcome_channel := member.guild.get_channel(Config.DESERTER_ALERT_CHANNEL_ID)):
+        logger.warning("HR welcome channel not found!")
+        return
+
+    embed = discord.Embed(
+        title="🎉 Welcome to the HR Team!",
+        description=(
+            f"{member.mention}\n\n"
+            "**Please note the following:**\n"
+            "• Request document access in [HR Documents](https://discord.com/channels/1165368311085809717/1165368317532438646)\n"
+            "• Quota exemption this week only - starts next week ([Quota Info](https://discord.com/channels/1165368311085809717/1206998095552978974))\n"
+            "• Uncomplete quota = strike\n"
+            "• One failed tryout allowed if quota portion ≥2\n"
+            "• Ask for help anytime - we're friendly!\n"
+            "• Are you Captain+ in BA rank? Apply for departments: [Applications](https://discord.com/channels/1165368311085809717/1165368316970405916)"
+        ),
+        color=discord.Color.gold(),  # Gold color for HR
+        timestamp=datetime.datetime.now()
+    )
+    
+    embed.set_footer(text="We're excited to have you on the team!")
+    
+    try:
+        await welcome_channel.send(content=f"{member.mention}", embed=embed)
+        logger.info(f"Sent HR welcome to {member.display_name}")
+    except discord.Forbidden:
+        logger.error(f"Missing permissions to send HR welcome for {member.id}")
+    except Exception as e:
+        logger.error(f"Failed to send HR welcome: {str(e)}")          
+ @bot.event
+async def on_member_update(before: discord.Member, after: discord.Member):
+   
+    if hr_role := after.guild.get_role(Config.HR_ROLE_ID):
+        if hr_role not in before.roles and hr_role in after.roles:
+            await send_hr_welcome(after)
+            
 @bot.event
 async def on_member_remove(member: discord.Member):
     guild = member.guild
     if not (deserter_role := guild.get_role(Config.DESERTER_ROLE_ID)):
         return
-        
+
     if deserter_role not in member.roles:
         return
         
