@@ -569,28 +569,101 @@ async def on_member_update(before: discord.Member, after: discord.Member):
     if rmp_role in before.roles or rmp_role not in after.roles:
         return
         
-    embed = discord.Embed(
-        title="Welcome to the Royal Military Police",
-        description="**1.** Make sure to read all of the rules found in <#1165368313925353580>\n\n"
-                   "**2.** You **MUST** read the RMP main guide and MSL before starting your duties.\n\n"
-                   "**3.** You can't use your L85 unless you are doing it for Self-Militia. (Self-defence)\n\n"
-                   "**4.** Make sure to follow the Chain Of Command. Inspector > Chief Inspector > Superintendent > Major > Lieutenant Colonel > Colonel > Commander > Provost Marshal\n\n"
-                   "**5.** For phases, you may wait for one to be hosted in <#1207367013698240584> or request the phase you need in <#1270700562433839135>.\n\n"
-                   "**6.** All the information about the Defence School of Policing and Guarding is found in both <#1237062439720452157> and <#1207366893631967262>\n\n"
-                   "**7.** Choose your timezone here https://discord.com/channels/1165368311085809717/1165368313925353578\n\n"
-                   "**8.** Please read the following announcements if you're unsure on some stuff: [TC Mini Guide ](https://discord.com/channels/1165368311085809717/1237062439720452157/1363987177394143354), [PD and Stage Rules](https://discord.com/channels/1165368311085809717/1165368314462212158/1365042797052432384) and [Uniform policy](https://discord.com/channels/1165368311085809717/1165368314462212158/1366080537638342729).\n\n"
-                   "**Besides that, good luck with your phases!**",
-        color=discord.Color.red()
-    )
-    
-    try:
-        await after.send(embed=embed)
-    except discord.Forbidden:
-        if welcome_channel := after.guild.get_channel(722002957738180620):
-            await welcome_channel.send(f"{after.mention}", embed=embed)
-    except discord.HTTPException as e:
-        print(f"Failed to send welcome message: {e}")
+   # First embed (welcome message)
+embed1 = discord.Embed(
+    title="Welcome to the Royal Military Police",
+    description="**1.** Make sure to read all of the rules found in <#1165368313925353580>\n\n"
+               "**2.** You **MUST** read the RMP main guide and MSL before starting your duties.\n\n"
+               "**3.** You can't use your L85 unless you are doing it for Self-Militia. (Self-defence)\n\n"
+               "**4.** Make sure to follow the Chain Of Command. Inspector > Chief Inspector > Superintendent > Major > Lieutenant Colonel > Colonel > Commander > Provost Marshal\n\n"
+               "**5.** For phases, you may wait for one to be hosted in <#1207367013698240584> or request the phase you need in <#1270700562433839135>.\n\n"
+               "**6.** All the information about the Defence School of Policing and Guarding is found in both <#1237062439720452157> and <#1207366893631967262>\n\n"
+               "**7.** Choose your timezone here https://discord.com/channels/1165368311085809717/1165368313925353578\n\n"
+               "**8.** Please read the following announcements if you're unsure on some stuff: [TC Mini Guide ](https://discord.com/channels/1165368311085809717/1237062439720452157/1363987177394143354), [PD and Stage Rules](https://discord.com/channels/1165368311085809717/1165368314462212158/1365042797052432384) and [Uniform policy](https://discord.com/channels/1165368311085809717/1165368314462212158/1366080537638342729).\n\n"
+               "**Besides that, good luck with your phases!**",
+    color=discord.Color.red()
+)
 
+# Second embed (detailed rules)
+embed2 = discord.Embed(
+    title=":RMP~1: | Trainee Constable Brochure",
+    color=discord.Color.blue()
+)
+
+# Add fields to the second embed
+embed2.add_field(
+    name="__TOP 5 RULES__",
+    value="> **1**. You **MUST** read the RMP main guide and MSL before starting your duties.\n"
+          "> **2**. You **CANNOT** enforce the MSL. Only the Parade Deck (PD) rules **AFTER** you pass your phase 1.\n"
+          "> **3**. You **CANNOT** use your bike on the PD or the pavements.\n"
+          "> **4**. You **MUST** use good spelling and grammar to the best of your ability.\n"
+          "> **5**. You **MUST** remain mature and respectful at all times.",
+    inline=False
+)
+
+embed2.add_field(
+    name="__Who's allowed on the PD at all times?__",
+    value="↠ Royal Army Medical Corps,\n"
+          "↠ Royal Military Police,\n" 
+          "↠ Intelligence Corps.",
+    inline=False
+)
+
+embed2.add_field(
+    name="__Who's allowed on the PD when carrying out duties?__",
+    value="↠ United Kingdom Special Forces,\n"
+          "↠ Grenadier Guards,\n"
+          "↠ Foreign Relations,\n"
+          "↠ Royal Logistic Corps,\n"
+          "↠ Adjutant General's Corps,\n"
+          "↠ High Ranks, RSM, CSM and ASM hosting,\n"
+          "↠ Regimental personnel watching one of their regiment's events inside Pad area.",
+    inline=False
+)
+
+embed2.add_field(
+    name="__How do I enforce PD rules on people not allowed on it?__",
+    value="1. Give them their first warning to get off the PD, \"W1, off the PD!\"\n"
+          "2. Wait 3-5 seconds for them to listen if they don't give them their second warning, \"W2, off the PD!\"\n"
+          "3. Wait 3-5 seconds for them to listen if they don't kill them.",
+    inline=False
+)
+
+embed2.add_field(
+    name="__Who's allowed ON the actual Stage at all times?__",
+    value="↠ Major General and above,\n"
+          "↠ Royal Family (they have a purple name tag),\n"
+          "↠ Home Command Regiments who have been given permission to guard a Major General or Royal Family member,\n"
+          "↠ Those who have been given permission by a Lieutenant General.",
+    inline=False
+)
+
+embed2.add_field(
+    name="__Who's allowed to past the red line in-front of the Stage?__",
+    value="↠ Major General and above,\n"
+          "↠ Royal Family,\n"
+          "↠ Those who have been given permission by a Lieutenant General,\n"
+          "↠ COMBATIVE Home Command Regiments:\n"
+          "- Royal Military Police,\n"
+          "- United Kingdom Forces,\n"
+          "- Household Division.\n\n"
+          "**Kill those not allowed who touch or past the red line.**",
+    inline=False
+)
+
+embed2.add_field(
+    name="\u200b",  # Empty field name for spacing
+    value="**LASTLY, IF YOU'RE UNSURE ON SOMETHING ASK SOMEONE ABOVE YOU BEFORE TAKING ACTION!**",
+    inline=False
+)
+
+try:
+    await after.send(embeds=[embed1, embed2])
+except discord.Forbidden:
+    if welcome_channel := after.guild.get_channel(722002957738180620):
+        await welcome_channel.send(f"{after.mention}", embeds=[embed1, embed2])
+except discord.HTTPException as e:
+    print(f"Failed to send welcome message: {e}")
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     await bot.reaction_logger.log_reaction(payload)
