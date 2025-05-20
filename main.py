@@ -264,9 +264,9 @@ class ReactionLogger:
             content = (message.content[:100] + "...") if len(message.content) > 100 else message.content
                 
             embed = discord.Embed(
-                title="📝 Reaction Logged",
-                description=f"{member.mention} (with {monitor_role.name} role) reacted with {payload.emoji}",
-                color=discord.Color.blue()
+                title="🧑‍💻 LD Activity Logged",
+                description=f"{member.mention} reacted with {payload.emoji}",
+                color=discord.Color.purple()
             )
             
             embed.add_field(name="Channel", value=channel.mention)
@@ -392,8 +392,8 @@ class MessageTracker:
             content = content[:1000] + "... [truncated]"
             
         embed = discord.Embed(
-            title="💬 Message Logged",
-            description=f"{message.author.mention} (with {tracked_role.name} role) sent a message",
+            title="🎓 ED Activity Logged",
+            description=f"{message.author.mention} has marked an exam or logged a course!",
             color=discord.Color.pink(),
             timestamp=message.created_at
         )
@@ -524,6 +524,168 @@ async def on_disconnect():
         logger.info("Closed shared HTTP session")
         
 # --- Commands ---
+@bot.tree.command(name="discharge", description="Notify members of honorable/dishonorable discharge")
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
+async def discharge(
+    interaction: discord.Interaction,
+    members: str,  # Comma-separated user mentions/IDs
+    discharge_type: str = commands.Choices(["Honorable", "Dishonorable"]),
+    reason: str,
+    evidence: Optional[discord.Attachment] = None
+):
+    """Notify members of their discharge with reason and optional evidence"""
+    await interaction.response.defer(ephemeral=True)
+    
+    # Parse member mentions/IDs
+    try:
+        member_ids = []
+        for mention in members.split(','):
+            mention = mention.strip()
+            if mention.startswith('<@') and mention.endswith('>'):
+                # User mention
+                member_id = int(mention[2:-1].replace('!', ''))  # Handle nicknames
+            else:
+                # Raw user ID
+                member_id = int(mention)
+            member_ids.append(member_id)
+    except ValueError:
+        await interaction.followup.send("❌ Invalid member format. Use mentions or IDs separated by commas.", ephemeral=True)
+        return
+
+    # Get member objects
+    discharged_members = []
+    for member_id in member_ids:
+        member = interaction.guild.get_member(member_id)
+        if member:
+            discharged_members.append(member)
+        else:
+            logger.warning(f"Member {member_id} not found in guild")
+
+    if not discharged_members:
+        await interaction.followup.send("❌ No valid members found.", ephemeral=True)
+        return
+
+    # Create embed
+    color = discord.Color.green() if discharge_type == "Honorable" else discord.Color.red()
+    embed = discord.Embed(
+        title=f"{discharge_type} Discharge Notification",
+        color=color,
+        timestamp=datetime.now(timezone.utc)
+    )
+
+    embed.add_field(
+        name="Reason",
+        value=reason,
+        inline=False
+    )
+
+    if evidence:
+        embed.add_field(
+            name="Evidence",
+            value=f"[Attachment Link]({evidence.url})",
+            inline=False
+        )
+
+    embed.set_footer(text=f"Discharged by {interaction.user.display_name}")
+
+    # Send notifications
+    success_count = 0
+    failed_members = []
+
+    for member in discharged_members:
+        try:
+            # Try DM first
+            try:
+                await member.send(embed=embed)
+            except discord.Forbidden:
+                # Fallback to public channel if DMs are closed
+                channel = interaction.guild.system_channel or interaction.channel
+                await channel.send(f"{member.mention}", embed=embed)
+            
+            success_count += 1
+        except Exception as e:
+            logger.error(f"Failed to notify {member.display_name}: {str(e)}")
+            failed_members.append(member.mention)
+
+    # Send summary to commander
+    result_embed = discord.Embed(
+        title="Discharge Summary",
+        color=color
+    )
+    
+    result_embed.add_field(
+        name="Action",
+        value=f"{discharge_type} Discharge",
+        inline=False
+    )
+    
+    result_embed.add_field(
+        name="Results",
+        value=f"✅ Successfully notified: {success_count}\n❌ Failed: {len(failed_members)}",
+        inline=False
+    )
+    
+    if failed_members:
+        result_embed.add_field(
+            name="Failed Members",
+            value=", ".join(failed_members),
+            inline=False
+        )
+
+    await interaction.followup.send(embed=result_embed, ephemeral=True)
+
+    # Log to discharge logs
+    if mod_log := interaction.guild.get_channel(Config.D_LOG_CHANNEL_ID):
+        log_embed = discord.Embed(
+            title=f"{discharge_type} Discharge Log",
+            color=discord.Color.green() if discharge_type == "Honorable" else discord.Color.red(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        
+        # Discharge details at top
+        log_embed.add_field(
+            name="Type",
+            value=f"🔰 {discharge_type} Discharge" if discharge_type == "Honorable" else f"⚠️ {discharge_type} Discharge",
+            inline=False
+        )
+        
+        log_embed.add_field(
+            name="Reason",
+            value=f"```{reason}```",
+            inline=False
+        )
+        
+        # Members and evidence
+        log_embed.add_field(
+            name="Affected Members",
+            value="\n".join(m.mention for m in discharged_members) or "None",
+            inline=False
+        )
+        
+        if evidence:
+            log_embed.add_field(
+                name="Evidence",
+                value=f"[View Attachment]({evidence.url})",
+                inline=True
+            )
+            log_embed.set_image(url=evidence.url) if evidence.url.lower().endswith(('png', 'jpg', 'jpeg', 'gif')) else None
+        
+        # Metadata
+        log_embed.add_field(
+            name="Processed By",
+            value=interaction.user.mention,
+            inline=True
+        )
+        
+        log_embed.add_field(
+            name="Channel",
+            value=interaction.channel.mention,
+            inline=True
+        )
+        
+        await mod_log.send(embed=log_embed)
+
+        
 @bot.tree.command(name="message-tracker-setup", description="Setup message monitoring")
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)  
 async def message_tracker_setup(
@@ -711,14 +873,14 @@ async def send_hr_welcome(member: discord.Member):
         description=(
             f"{member.mention}\n\n"
             "**Please note the following:**\n"
-            "• Request document access in [HR Documents](https://discord.com/channels/1165368311085809717/1165368317532438646)\n"
-            "• Quota exemption this week only - starts next week ([Quota Info](https://discord.com/channels/1165368311085809717/1206998095552978974))\n"
+            "• Request for document access in [HR Documents](https://discord.com/channels/1165368311085809717/1165368317532438646)\n"
+            "• You are exempted from quota this week only - you start next week ([Quota Info](https://discord.com/channels/1165368311085809717/1206998095552978974))\n"
             "• Uncomplete quota = strike\n"
-            "• One failed tryout allowed if quota portion ≥2\n"
+            "• One failed tryout allowed if your try quota portion ≥2\n"
             "• Ask for help anytime - we're friendly!\n"
-            "• Are you Captain+ in BA rank? Apply for departments: [Applications](https://discord.com/channels/1165368311085809717/1165368316970405916)"
+            "• Are you Captain+ in BA? Apply for departments: [Applications](https://discord.com/channels/1165368311085809717/1165368316970405916)"
         ),
-        color=discord.Color.gold(),  # Gold color for HR
+        color=discord.Color.gold(),  
         timestamp=datetime.utcnow()
     )
     
