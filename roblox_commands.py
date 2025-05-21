@@ -8,7 +8,7 @@ import aiohttp
 import asyncio
 from datetime import datetime, timezone
 import logging
-from typing import any
+from typing import Any, Dict, Optional
 
 # Configuration
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
@@ -225,4 +225,3 @@ def create_sc_command(bot: commands.Bot):
             )
     
     return sc
-
