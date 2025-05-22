@@ -10,6 +10,19 @@ from datetime import datetime, timezone
 import logging
 from typing import Any, Dict, Optional
 
+# Configure root logger
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+    handlers=[
+        logging.StreamHandler(),
+        logging.FileHandler('bot.log')
+    ]
+)
+
+logger = logging.getLogger(__name__)
+logger.info("Main logger configured")
+
 # Configuration
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 TIMEOUT = aiohttp.ClientTimeout(total=10)
