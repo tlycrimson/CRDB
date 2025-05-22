@@ -9,6 +9,7 @@ import asyncio
 from datetime import datetime, timezone
 import logging
 from typing import Any, Dict, Optional
+from aiohttp.resolver import AsyncResolver
 
 # Configure root logger
 logging.basicConfig(
@@ -33,6 +34,7 @@ MAX_CONCURRENT_REQUESTS = 5
 REQUEST_RETRIES = 3
 REQUEST_RETRY_DELAY = 1.0
 
+
 DEFAULT_HEADERS = {
     "User-Agent": USER_AGENT,
     "Accept": "application/json"
@@ -51,6 +53,17 @@ def widen_text(text: str) -> str:
 def create_progress_bar(percentage: float, meets_req: bool) -> str:
     filled = min(10, round(percentage / 10))
     return (("🟩" if meets_req else "🟥") * filled) + ("⬜" * (10 - filled))
+
+async def create_session():
+    return aiohttp.ClientSession(
+        timeout=TIMEOUT,
+        headers=DEFAULT_HEADERS,
+        connector=aiohttp.TCPConnector(
+            resolver=AsyncResolver(), 
+            force_close=True,
+            enable_cleanup_closed=True
+        )
+    )
 
 async def fetch_group_rank(session: aiohttp.ClientSession, user_id: int) -> str:
     url = f"https://groups.roblox.com/v2/users/{user_id}/groups/roles"
@@ -79,18 +92,13 @@ async def fetch_with_retry(session: aiohttp.ClientSession, url: str) -> Any:
     last_error = None
     for attempt in range(REQUEST_RETRIES):
         try:
-            # Create new session if closed
-            if session.closed:
-                new_session = aiohttp.ClientSession(timeout=TIMEOUT, headers=DEFAULT_HEADERS)
-                if hasattr(bot, 'shared_session'):
-                    bot.shared_session = new_session
-                return await _fetch_url(new_session, url)
-            
-            return await _fetch_url(session, url)
-        except Exception as e:
-            last_error = e
-            wait_time = (REQUEST_RETRY_DELAY * (attempt + 1)) + random.random()
-            await asyncio.sleep(wait_time)
+            return await response.json()        
+        except aiohttp.ClientConnectorError as e:
+            if "DNS" in str(e):
+                logger.warning(f"DNS resolution failed for {url}, attempt {attempt+1}")
+                await asyncio.sleep(2 ** attempt)  # Exponential backoff
+                continue
+            raise
     
     logger.error(f"Max retries exceeded for {url}: {str(last_error)}")
     raise last_error if last_error else Exception(f"Failed to fetch {url}")
@@ -98,8 +106,7 @@ async def fetch_with_retry(session: aiohttp.ClientSession, url: str) -> Any:
 async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int:
     endpoints = [
         (f"https://badges.roblox.com/v1/users/{user_id}/badges", "data"),  # Primary endpoint
-        (f"https://accountinformation.roblox.com/v1/users/{user_id}/roblox-badges", "robloxBadges"),  # Official badges
-        (f"https://api.roblox.com/users/{user_id}/badges", None)  # Legacy endpoint (array at root)
+        (f"https://accountinformation.roblox.com/v1/users/{user_id}/roblox-badges", "robloxBadges"),
     ]
     
     last_valid_count = 0
@@ -108,12 +115,11 @@ async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int
         try:
             data = await fetch_with_retry(session, url)
             if data:
-                # Handle different response formats
                 if data_key and data_key in data and isinstance(data[data_key], list):
                     count = len(data[data_key])
-                    if count > last_valid_count:  # Take the highest count we find
+                    if count > last_valid_count:
                         last_valid_count = count
-                elif isinstance(data, list):  # For legacy endpoint
+                elif isinstance(data, list):  # For array responses
                     count = len(data)
                     if count > last_valid_count:
                         last_valid_count = count
@@ -133,7 +139,7 @@ def create_sc_command(bot: commands.Bot):
     async def sc(interaction: discord.Interaction, user_id: int):
         try:
             # Create fresh session for this command
-            async with aiohttp.ClientSession(timeout=TIMEOUT, headers=DEFAULT_HEADERS) as session:
+            async with await create_session() as session:
                 await interaction.response.defer(thinking=True)
 
                 # Fetch all data in parallel
