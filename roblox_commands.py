@@ -84,27 +84,34 @@ async def fetch_with_retry(session: aiohttp.ClientSession, url: str) -> Any:
 
 async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int:
     endpoints = [
-        f"https://badges.roblox.com/v1/users/{user_id}/badges",
-        f"https://accountinformation.roblox.com/v1/users/{user_id}/roblox-badges",
-        f"https://api.roblox.com/users/{user_id}/badges"
+        (f"https://badges.roblox.com/v1/users/{user_id}/badges", "data"),  # Primary endpoint
+        (f"https://accountinformation.roblox.com/v1/users/{user_id}/roblox-badges", "robloxBadges"),  # Official badges
+        (f"https://api.roblox.com/users/{user_id}/badges", None)  # Legacy endpoint (array at root)
     ]
     
-    for url in endpoints:
+    last_valid_count = 0
+    
+    for url, data_key in endpoints:
         try:
             data = await fetch_with_retry(session, url)
             if data:
-                if isinstance(data, list):
-                    return len(data)
-                if isinstance(data.get("data"), list):
-                    return len(data["data"])
-                if isinstance(data.get("robloxBadges"), list):
-                    return len(data["robloxBadges"])
+                # Handle different response formats
+                if data_key and data_key in data and isinstance(data[data_key], list):
+                    count = len(data[data_key])
+                    if count > last_valid_count:  # Take the highest count we find
+                        last_valid_count = count
+                elif isinstance(data, list):  # For legacy endpoint
+                    count = len(data)
+                    if count > last_valid_count:
+                        last_valid_count = count
         except Exception as e:
-            logger.warning(f"Badge endpoint {url} failed: {str(e)}")
+            logger.debug(f"Badge endpoint {url} failed: {str(e)}")
             continue
 
-    logger.error("All badge endpoints failed")
-    return 0
+    if last_valid_count == 0:
+        logger.warning(f"All badge endpoints failed for user {user_id}")
+    
+    return last_valid_count
 
 def create_sc_command(bot: commands.Bot):
     @bot.tree.command(name="sc", description="Security check a Roblox user")
