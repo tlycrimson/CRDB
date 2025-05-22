@@ -291,60 +291,64 @@ class ReactionLogger:
 class SheetDBLogger:
     def __init__(self):
         self.script_url = os.getenv("GOOGLE_SCRIPT_URL")
-        self.message_tracker_script_url = os.getenv("MESSAGE_TRACKER_SCRIPT_URL")  # New URL for message tracker points
         if not self.script_url:
             logger.error("❌ Google Script URL not configured in environment variables")
             self.ready = False
         else:
             self.ready = True
             logger.info("✅ SheetDB Logger configured with Google Apps Script")
-        
-        # Message tracker sheet is optional
-        if self.message_tracker_script_url:
-            logger.info("✅ Message Tracker Sheet configured")
-        else:
-            logger.warning("⚠️ Message Tracker Sheet URL not configured")
+
+        # Define API keys for both trackers
+        self.tracker_keys = {
+            "LD": "LD_KEY",  # For reaction tracking
+            "EDD": "EDD_KEY"  # For message tracking
+        }
 
     async def update_points(self, member: discord.Member, is_message_tracker: bool = False):
-        """Update points for a member, optionally on the message tracker sheet"""
+        """Update points for a member, specifying tracker type"""
         if not self.ready:
             logger.error("🛑 SheetDB Logger not properly initialized")
             return False
 
         username = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
-        logger.info(f"🔄 Attempting to update points for: {username} ({'Message Tracker' if is_message_tracker else 'Reaction'})")
+        tracker_type = "EDD" if is_message_tracker else "LD"
+        api_key = self.tracker_keys[tracker_type]
         
-        target_url = self.message_tracker_script_url if is_message_tracker else self.script_url
-        if is_message_tracker and not target_url:
-            logger.error("🛑 Message tracker sheet URL not configured")
-            return False
+        logger.info(f"🔄 Attempting to update {username}'s points in {tracker_type} tracker")
+
+        payload = {
+            "username": username,
+            "key": api_key,
+            "tracker": tracker_type  # Tells the script which sheet to use
+        }
 
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    target_url,
-                    json={"username": username},
+                    self.script_url,  
+                    json=payload,
                     timeout=aiohttp.ClientTimeout(total=15)
                 ) as response:
                     response_text = (await response.text()).strip()
                     
-                    # More flexible success conditions
-                    success_conditions = [
-                        response.status == 200,
-                        "Error" not in response_text,
-                        "Unauthorized" not in response_text,
-                        len(response_text) > 0,
-                        ("Success" in response_text or "Updated" in response_text or "Added" in response_text)
-                    ]
-                    
-                    if all(success_conditions):
-                        logger.info(f"✅ Successfully updated points for {username} on {'message tracker' if is_message_tracker else 'reaction'} sheet")
-                        logger.debug(f"Response: {response_text}")  # Add this for debugging
+                    # Success conditions
+                    success = (
+                        response.status == 200 and 
+                        "Error" not in response_text and
+                        "Unauthorized" not in response_text and
+                        ("Success" in response_text or 
+                         "Updated" in response_text or 
+                         "Added" in response_text)
+                    )
+
+                    if success:
+                        logger.info(f"✅ Updated {username}'s points in {tracker_type} tracker")
+                        logger.debug(f"Response: {response_text}")
                         return True
                     else:
-                        logger.error(f"❌ Failed to update points - Status: {response.status}, Response: {response_text}")
+                        logger.error(f"❌ Failed to update {tracker_type} points - Status: {response.status}, Response: {response_text}")
                         return False
-                        
+
         except asyncio.TimeoutError:
             logger.error("⏰ Timeout while connecting to Google Script")
             return False
