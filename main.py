@@ -688,17 +688,25 @@ async def discharge(
                 inline=False
             )
             log_embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
+            
+            # Format member mentions with their cleaned nicknames
+            member_entries = []
+            for member in discharged_members:
+                # Clean the nickname by removing any tags like [INS]
+                cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
+                member_entries.append(f"{member.mention} | {cleaned_nickname}")
+            
             log_embed.add_field(
                 name="Discharged Members",
-                value="\n".join(m.mention for m in discharged_members) or "None",
+                value="\n".join(member_entries) or "None",
                 inline=False
             )
+            
             if evidence:
                 log_embed.add_field(name="Evidence", value=f"[View Attachment]({evidence.url})", inline=True)
 
             log_embed.add_field(name="Discharged By", value=interaction.user.mention, inline=True)
             
-
             await d_log.send(embed=log_embed)
 
     except Exception as e:
