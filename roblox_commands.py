@@ -84,6 +84,7 @@ async def fetch_with_retry(session: aiohttp.ClientSession, url: str) -> Any:
 
 async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int:
     endpoints = [
+        f"https://www.roblox.com/users/{user_id}/inventory/#!/badges"
         f"https://accountinformation.roblox.com/v1/users/{user_id}/roblox-badges",
         f"https://api.roblox.com/users/{user_id}/badges"
     ]
