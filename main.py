@@ -291,25 +291,39 @@ class ReactionLogger:
 class SheetDBLogger:
     def __init__(self):
         self.script_url = os.getenv("GOOGLE_SCRIPT_URL")
+        self.message_tracker_script_url = os.getenv("MESSAGE_TRACKER_SCRIPT_URL")  # New URL for message tracker points
         if not self.script_url:
             logger.error("❌ Google Script URL not configured in environment variables")
             self.ready = False
         else:
             self.ready = True
             logger.info("✅ SheetDB Logger configured with Google Apps Script")
+        
+        # Message tracker sheet is optional
+        if self.message_tracker_script_url:
+            logger.info("✅ Message Tracker Sheet configured")
+        else:
+            logger.warning("⚠️ Message Tracker Sheet URL not configured")
 
-    async def update_points(self, member: discord.Member):
+    async def update_points(self, member: discord.Member, is_message_tracker: bool = False):
+        """Update points for a member, optionally on the message tracker sheet"""
         if not self.ready:
             logger.error("🛑 SheetDB Logger not properly initialized")
             return False
 
         username = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
-        logger.info(f"🔄 Attempting to update points for: {username}")
+        logger.info(f"🔄 Attempting to update points for: {username} ({'Message Tracker' if is_message_tracker else 'Reaction'})")
         
+        # Determine which URL to use
+        target_url = self.message_tracker_script_url if is_message_tracker else self.script_url
+        if is_message_tracker and not target_url:
+            logger.error("🛑 Message tracker sheet URL not configured")
+            return False
+
         try:
             async with aiohttp.ClientSession() as session:
                 async with session.post(
-                    self.script_url,
+                    target_url,
                     json={"username": username},
                     timeout=aiohttp.ClientTimeout(total=15)
                 ) as response:
@@ -323,7 +337,7 @@ class SheetDBLogger:
                     ]
                     
                     if all(success_conditions):
-                        logger.info(f"✅ Successfully updated points for {username}")
+                        logger.info(f"✅ Successfully updated points for {username} on {'message tracker' if is_message_tracker else 'reaction'} sheet")
                         return True
                     else:
                         logger.error(f"❌ Failed to update points - Status: {response.status}")
@@ -335,6 +349,7 @@ class SheetDBLogger:
         except Exception as e:
             logger.error(f"⚠️ Unexpected error: {type(e).__name__}: {str(e)}")
             return False
+
 
 class MessageTracker:
     """Tracks messages sent by users with a specific role in specified channels"""
@@ -389,8 +404,8 @@ class MessageTracker:
             return
             
         content = message.content
-        if len(content) > 1000:
-            content = content[:1000] + "... [truncated]"
+        if len(content) > 300:
+            content = content[:300] + "... [truncated]"
             
         embed = discord.Embed(
             title="🎓 ED Activity Logged",
@@ -411,7 +426,13 @@ class MessageTracker:
             else:
                 embed.add_field(name="Attachment", value=f"[{attachment.filename}]({attachment.url})", inline=False)
         
-        await log_channel.send(embed=embed)
+        await log_channel.send(embed=embed) 
+        
+        logger.info(f"Attempting to update message tracker points for: {message.author.display_name}")
+        update_success = await self.bot.sheets.update_points(message.author, is_message_tracker=True)
+        logger.info(f"Message tracker update {'succeeded' if update_success else 'failed'}")
+
+    
 
     async def add_channels(self, interaction: discord.Interaction, channels: str):
         """Add channels to monitor"""
