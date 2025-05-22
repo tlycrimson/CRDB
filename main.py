@@ -314,7 +314,6 @@ class SheetDBLogger:
         username = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
         logger.info(f"🔄 Attempting to update points for: {username} ({'Message Tracker' if is_message_tracker else 'Reaction'})")
         
-        # Determine which URL to use
         target_url = self.message_tracker_script_url if is_message_tracker else self.script_url
         if is_message_tracker and not target_url:
             logger.error("🛑 Message tracker sheet URL not configured")
@@ -329,18 +328,21 @@ class SheetDBLogger:
                 ) as response:
                     response_text = (await response.text()).strip()
                     
+                    # More flexible success conditions
                     success_conditions = [
                         response.status == 200,
                         "Error" not in response_text,
                         "Unauthorized" not in response_text,
-                        len(response_text) > 0
+                        len(response_text) > 0,
+                        ("Success" in response_text or "Updated" in response_text or "Added" in response_text)
                     ]
                     
                     if all(success_conditions):
                         logger.info(f"✅ Successfully updated points for {username} on {'message tracker' if is_message_tracker else 'reaction'} sheet")
+                        logger.debug(f"Response: {response_text}")  # Add this for debugging
                         return True
                     else:
-                        logger.error(f"❌ Failed to update points - Status: {response.status}")
+                        logger.error(f"❌ Failed to update points - Status: {response.status}, Response: {response_text}")
                         return False
                         
         except asyncio.TimeoutError:
