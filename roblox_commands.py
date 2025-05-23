@@ -33,6 +33,7 @@ REQUIREMENTS = {'age': 90, 'friends': 7, 'groups': 5, 'badges': 120}
 MAX_CONCURRENT_REQUESTS = 5
 REQUEST_RETRIES = 3
 REQUEST_RETRY_DELAY = 1.0
+DISCORD_RETRY_DELAY = 1.5  # Base delay for Discord API retries
 
 DEFAULT_HEADERS = {
     "User-Agent": USER_AGENT,
@@ -40,6 +41,23 @@ DEFAULT_HEADERS = {
 }
 
 request_semaphore = asyncio.Semaphore(MAX_CONCURRENT_REQUESTS)
+
+async def safe_followup_send(interaction: discord.Interaction, *args, **kwargs):
+    """Safely send a followup message with retry logic for rate limits."""
+    last_error = None
+    for attempt in range(3):
+        try:
+            return await interaction.followup.send(*args, **kwargs)
+        except discord.HTTPException as e:
+            if e.status == 429:
+                retry_after = float(e.response.headers.get('Retry-After', DISCORD_RETRY_DELAY))
+                wait_time = retry_after * (attempt + 1)  # Exponential backoff
+                logger.warning(f"Hit Discord rate limit, retrying in {wait_time:.2f}s (attempt {attempt + 1})")
+                await asyncio.sleep(wait_time)
+                last_error = e
+                continue
+            raise
+    raise last_error if last_error else Exception("Failed to send followup after multiple attempts")
 
 def widen_text(text: str) -> str:
     return text.upper().translate(
@@ -117,34 +135,34 @@ async def fetch_with_retry(session: aiohttp.ClientSession, url: str) -> Any:
     raise last_error if last_error else Exception(f"Failed to fetch {url}")
 
 async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int:
-    endpoints = [
-        (f"https://badges.roblox.com/v1/users/{user_id}/badges", "data"),
-        (f"https://accountinformation.roblox.com/v1/users/{user_id}/roblox-badges", "robloxBadges"),
-    ]
-    
-    last_valid_count = 0
-    
-    for url, data_key in endpoints:
+    url = f"https://badges.roblox.com/v1/users/{user_id}/badges?limit=100"
+    total_badges = 0
+    seen_badge_ids = set()  # Prevents double-counting if duplicates occur
+
+    while url:
         try:
             data = await fetch_with_retry(session, url)
-            if data:
-                if data_key and data_key in data and isinstance(data[data_key], list):
-                    count = len(data[data_key])
-                    if count > last_valid_count:
-                        last_valid_count = count
-                elif isinstance(data, list):
-                    count = len(data)
-                    if count > last_valid_count:
-                        last_valid_count = count
-        except Exception as e:
-            logger.debug(f"Badge endpoint {url} failed: {str(e)}")
-            continue
+            if data and isinstance(data, dict):
+                badges = data.get('data', [])
+                for badge in badges:
+                    badge_id = badge.get('id')
+                    if badge_id and badge_id not in seen_badge_ids:
+                        seen_badge_ids.add(badge_id)
+                        total_badges += 1
 
-    if last_valid_count == 0:
-        logger.warning(f"All badge endpoints failed for user {user_id}")
-        return -1  # Special value indicating failure
-    
-    return last_valid_count
+                next_cursor = data.get('nextPageCursor')
+                if next_cursor:
+                    url = f"https://badges.roblox.com/v1/users/{user_id}/badges?limit=100&cursor={urllib.parse.quote(next_cursor)}"
+                else:
+                    break
+            else:
+                break
+        except Exception as e:
+            logger.debug(f"Badge endpoint failed during pagination: {str(e)}")
+            break
+
+    return total_badges if total_badges > 0 else -1  # -1 indicates failure
+
 
 def create_sc_command(bot: commands.Bot):
     @bot.tree.command(name="sc", description="Security check a Roblox user")
@@ -152,6 +170,9 @@ def create_sc_command(bot: commands.Bot):
     @app_commands.checks.cooldown(rate=1, per=10.0)
     async def sc(interaction: discord.Interaction, user_id: int):
         try:
+            # Initial delay to prevent immediate rate limiting
+            await asyncio.sleep(0.5)
+            
             # Create fresh session for this command
             async with await create_session() as session:
                 try:
@@ -172,14 +193,15 @@ def create_sc_command(bot: commands.Bot):
                         return_exceptions=True
                     )
                 except asyncio.TimeoutError:
-                    return await interaction.followup.send(
+                    return await safe_followup_send(
+                        interaction,
                         "⌛ Command timed out while fetching Roblox data",
                         ephemeral=True
                     )
 
                 # Process results - special handling for user ID 1 (Roblox)
                 if user_id == 1:
-                    profile = {'name': 'Roblox', 'created': '2006-01-01T00:00:00Z'}  # Fake profile for testing
+                    profile = {'name': 'Roblox', 'created': '2006-01-01T00:00:00Z'}
                     created_at = datetime.fromisoformat(profile['created'].replace('Z', '+00:00'))
                     age_days = (datetime.now(timezone.utc) - created_at).days
                     friends_count = 0
@@ -193,7 +215,7 @@ def create_sc_command(bot: commands.Bot):
                         description="The specified Roblox user could not be found.",
                         color=discord.Color.red()
                     )
-                    return await interaction.followup.send(embed=embed)
+                    return await safe_followup_send(interaction, embed=embed)
                 else:
                     username = profile.get('name', 'Unknown')
                     created_at = datetime.fromisoformat(profile['created'].replace('Z', '+00:00')) if profile.get('created') else None
@@ -254,12 +276,13 @@ def create_sc_command(bot: commands.Bot):
                 )
                 embed.set_footer(text=f"Requested by {interaction.user.display_name} | Roblox User ID: {user_id}")
 
-                await interaction.followup.send(embed=embed)
+                await safe_followup_send(interaction, embed=embed)
 
         except Exception as e:
             logger.error(f"[SC COMMAND ERROR]: {str(e)}", exc_info=True)
             try:
-                await interaction.followup.send(
+                await safe_followup_send(
+                    interaction,
                     "⚠️ An error occurred while checking this user. Roblox's APIs may be experiencing issues.",
                     ephemeral=True
                 )
@@ -269,17 +292,27 @@ def create_sc_command(bot: commands.Bot):
     @sc.error
     async def sc_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
         if isinstance(error, app_commands.CommandOnCooldown):
-            await interaction.response.send_message(
-                f"⌛ Command on cooldown. Try again in {error.retry_after:.1f}s",
-                ephemeral=True
-            )
+            try:
+                await interaction.response.send_message(
+                    f"⌛ Command on cooldown. Try again in {error.retry_after:.1f}s",
+                    ephemeral=True
+                )
+            except:
+                pass
         else:
             logger.error("Unhandled error in sc command:", exc_info=error)
             try:
-                await interaction.response.send_message(
-                    "⚠️ An unexpected error occurred.",
-                    ephemeral=True
-                )
+                if interaction.response.is_done():
+                    await safe_followup_send(
+                        interaction,
+                        "⚠️ An unexpected error occurred.",
+                        ephemeral=True
+                    )
+                else:
+                    await interaction.response.send_message(
+                        "⚠️ An unexpected error occurred.",
+                        ephemeral=True
+                    )
             except:
                 pass  # Ignore if interaction is already dead
     
