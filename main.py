@@ -1034,6 +1034,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
         if rmp_role not in before.roles and rmp_role in after.roles:
             await send_rmp_welcome(after)
 
+#Deserter Monitor
 @bot.event
 async def on_member_remove(member: discord.Member):
     guild = member.guild
@@ -1048,7 +1049,7 @@ async def on_member_remove(member: discord.Member):
         
     embed = discord.Embed(
         title="🚨 Deserter Alert",
-        description=f"{member.mention} with role the {deserter_role.mention} left the server!",
+        description=f"{member.mention} just deserted!",
         color=discord.Color.red()
     )
     embed.set_thumbnail(url=member.display_avatar.url)
@@ -1056,6 +1057,62 @@ async def on_member_remove(member: discord.Member):
     await alert_channel.send(
         content=f"<@&{Config.HIGH_COMMAND_ROLE_ID}>",
         embed=embed
+
+    # For the deserter checker discharge log
+    dishonourable_embed = discord.Embed(
+        title="🚨 Dishonourable Discharge - Deserter",
+        color=discord.Color.red(),
+        timestamp=datetime.now(timezone.utc)
+    )
+    
+    dishonourable_embed.add_field(
+        name="Type",
+        value="Dishonourable Discharge (Deserter)",
+        inline=False
+    )
+    dishonourable_embed.add_field(
+        name="Reason", 
+        value="```Desertion.```",
+        inline=False
+    )
+    
+    # Add member information (assuming you have a member object)
+    cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
+    dishonourable_embed.add_field(
+        name="Discharged Members",
+        value=f"{member.mention} | {cleaned_nickname}",
+        inline=False
+    )
+    
+    # Add discharged by information (assuming you have an interaction object)
+    dishonourable_embed.add_field(
+        name="Discharged By", 
+        value=interaction.user.mention if hasattr(interaction, 'user') else "System",
+        inline=True
+    )
+    
+    # Add automatic flag
+    dishonourable_embed.add_field(
+        name="Process",
+        value="Automated Deserter Checker",
+        inline=True
+    )
+    
+    # Set footer
+    dishonourable_embed.set_footer(text="Deserter Checker System")
+    
+    try:
+        if d_log := interaction.guild.get_channel(Config.D_LOG_CHANNEL_ID):
+            await d_log.send(embed=dishonourable_embed)
+            logger.info(f"Logged deserted member, {cleaned_nickname}.")
+        else:
+            d_log = interaction.guild.get_channel(1165368316970405917)
+            if d_log:
+                await d_log.send(f"Failed to log {cleaned_nickname} to designated channel.")
+            logger.error(f"Failed to log deserted member, {cleaned_nickname} - channel not found.")
+    except Exception as e:
+        logger.error(f"Error logging deserter discharge: {str(e)}")
+    
     )
 
     
