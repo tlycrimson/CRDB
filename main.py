@@ -995,7 +995,7 @@ async def send_rmp_welcome(member: discord.Member):
     )
     
     embed2.add_field(
-        name="__Who's allowed to past the red line in-front of the Stage?__",
+        name="__Who's allowed to pass the red line in-front of the Stage?__",
         value="↠ Major General and above,\n"
               "↠ Royal Family,\n"
               "↠ Those who have been given permission by a Lieutenant General,\n"
