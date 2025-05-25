@@ -1085,19 +1085,12 @@ async def on_member_remove(member: discord.Member):
         inline=False
     )
     
-    # Add discharged by information (assuming you have an interaction object)
     dishonourable_embed.add_field(
         name="Discharged By", 
-        value=interaction.user.mention if hasattr(interaction, 'user') else "System",
+        value=f"None - Unauthorised",
         inline=True
     )
     
-    # Add automatic flag
-    dishonourable_embed.add_field(
-        name="Process",
-        value="Automated Deserter Checker",
-        inline=True
-    )
     
     # Set footer
     dishonourable_embed.set_footer(text="Deserter Checker System")
