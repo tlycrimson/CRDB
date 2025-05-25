@@ -1094,19 +1094,21 @@ async def on_member_remove(member: discord.Member):
     
     # Set footer
     dishonourable_embed.set_footer(text="Deserter Checker System")
-    
+
     try:
-        if d_log := interaction.guild.get_channel(Config.D_LOG_CHANNEL_ID):
+        d_log = bot.get_channel(Config.D_LOG_CHANNEL_ID)
+        
+        if d_log:
             await d_log.send(embed=dishonourable_embed)
             logger.info(f"Logged deserted member, {cleaned_nickname}.")
         else:
-            d_log = interaction.guild.get_channel(1165368316970405917)
-            if d_log:
-                await d_log.send(f"Failed to log {cleaned_nickname} to designated channel.")
-            logger.error(f"Failed to log deserted member, {cleaned_nickname} - channel not found.")
+            # If main channel fails, send simple message to alternative channel
+            alt_channel = bot.get_channel(1165368316970405917)
+            if alt_channel:
+                await alt_channel.send(f"⚠️ Failed to log deserter discharge for {cleaned_nickname} in main channel")
+                logger.error(f"Failed to log deserted member {cleaned_nickname} - main channel not found")
     except Exception as e:
         logger.error(f"Error logging deserter discharge: {str(e)}")
-    
     
 
     
