@@ -1057,6 +1057,7 @@ async def on_member_remove(member: discord.Member):
     await alert_channel.send(
         content=f"<@&{Config.HIGH_COMMAND_ROLE_ID}>",
         embed=embed
+    )
 
     # For the deserter checker discharge log
     dishonourable_embed = discord.Embed(
@@ -1113,7 +1114,7 @@ async def on_member_remove(member: discord.Member):
     except Exception as e:
         logger.error(f"Error logging deserter discharge: {str(e)}")
     
-    )
+    
 
     
 @bot.event
