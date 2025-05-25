@@ -903,12 +903,12 @@ async def send_hr_welcome(member: discord.Member):
         description=(
             f"{member.mention}\n\n"
             "**Please note the following:**\n"
-            "• Request for document access in [HR Documents](https://discord.com/channels/1165368311085809717/1165368317532438646)\n"
-            "• You are exempted from quota this week only - you start next week ([Quota Info](https://discord.com/channels/1165368311085809717/1206998095552978974))\n"
-            "• Uncomplete quota = strike\n"
-            "• One failed tryout allowed if your try quota portion ≥2\n"
+            "• Request for document access in [HR Documents](https://discord.com/channels/1165368311085809717/1165368317532438646).\n"
+            "• You are exempted from quota this week only - you start next week ([Quota Info](https://discord.com/channels/1165368311085809717/1206998095552978974)).\n"
+            "• Uncomplete quota = strike.\n"
+            "• One failed tryout allowed if your try quota portion ≥2.\n"
             "• Ask for help anytime - we're friendly!\n"
-            "• Are you Captain+ in BA? Apply for departments: [Applications](https://discord.com/channels/1165368311085809717/1165368316970405916)"
+            "• Are you Captain+ in BA? Apply for departments: [Applications](https://discord.com/channels/1165368311085809717/1165368316970405916)."
         ),
         color=discord.Color.gold(),  
         timestamp=datetime.now(timezone.utc)
@@ -928,27 +928,27 @@ async def send_hr_welcome(member: discord.Member):
 async def send_rmp_welcome(member: discord.Member):
     # First embed (welcome message)
     embed1 = discord.Embed(
-        title="Welcome to the Royal Military Police",
-        description="**1.** Make sure to read all of the rules found in <#1165368313925353580>\n\n"
-                   "**2.** You **MUST** read the RMP main guide and MSL before starting your duties.\n\n"
-                   "**3.** You can't use your L85 unless you are doing it for Self-Militia. (Self-defence)\n\n"
-                   "**4.** Make sure to follow the Chain Of Command. Inspector > Chief Inspector > Superintendent > Major > Lieutenant Colonel > Colonel > Commander > Provost Marshal\n\n"
-                   "**5.** For phases, you may wait for one to be hosted in <#1207367013698240584> or request the phase you need in <#1270700562433839135>.\n\n"
-                   "**6.** All the information about the Defence School of Policing and Guarding is found in both <#1237062439720452157> and <#1207366893631967262>\n\n"
-                   "**7.** Choose your timezone here https://discord.com/channels/1165368311085809717/1165368313925353578\n\n"
-                   "**8.** Please read the following announcements if you're unsure on some stuff: [TC Mini Guide ](https://discord.com/channels/1165368311085809717/1237062439720452157/1363987177394143354), [PD and Stage Rules](https://discord.com/channels/1165368311085809717/1165368314462212158/1365042797052432384) and [Uniform policy](https://discord.com/channels/1165368311085809717/1165368314462212158/1366080537638342729).\n\n"
+        title=" 👮| Welcome to the Royal Military Police",
+        description="Congratulations on passing your security check, you're officially a TRAINING member of the police force. Please be sure to read the information found below.\n\n"
+                   "> ** 1.** Make sure to read all of the rules found in <#1165368313925353580> and in the brochure found below.\n\n"
+                   "> **2.** You **MUST** read the RMP main guide and MSL before starting your duties.\n\n"
+                   "> **3.** You can't use your L85 unless you are doing it for Self-Militia or enforcing the PD rules. (Self-defence)\n\n"
+                   "> **4.** Make sure to follow the Chain Of Command. 2nd Lieutenant > Lieutenant > Captain > Major > Lieutenant Colonel > Colonel > Brigadier > Major General\n\n"
+                   "> **5.** For phases, you may wait for one to be hosted in <#1207367013698240584> or request the phase you need in <#1270700562433839135>.\n\n"
+                   "> **6.** All the information about the Defence School of Policing and Guarding is found in both <#1237062439720452157> and <#1207366893631967262>\n\n"
+                   "> **7.** Choose your timezone here https://discord.com/channels/1165368311085809717/1165368313925353578\n\n"
                    "**Besides that, good luck with your phases!**",
-        color=discord.Color.red()
+        color=discord.Color.from_str("#330000") 
     )
 
     # Second embed (detailed rules)
     embed2 = discord.Embed(
         title="Trainee Constable Brochure",
-        color=discord.Color.blue()
+        color=discord.Color.from_str("#660000")
     )
     
     embed2.add_field(
-        name="__TOP 5 RULES__",
+        name="**TOP 5 RULES**",
         value="> **1**. You **MUST** read the RMP main guide and MSL before starting your duties.\n"
               "> **2**. You **CANNOT** enforce the MSL. Only the Parade Deck (PD) rules **AFTER** you pass your phase 1.\n"
               "> **3**. You **CANNOT** use your bike on the PD or the pavements.\n"
@@ -958,58 +958,57 @@ async def send_rmp_welcome(member: discord.Member):
     )
     
     embed2.add_field(
-        name="__Who's allowed on the PD at all times?__",
-        value="↠ Royal Army Medical Corps,\n"
-              "↠ Royal Military Police,\n" 
-              "↠ Intelligence Corps.",
+        name="**WHO'S ALLOWED ON THE PD AT ALL TIMES?__",
+        value="> ↠ Royal Army Medical Corps,\n"
+              "> ↠ Royal Military Police,\n" 
+              "> ↠ Intelligence Corps.",
         inline=False
     )
     
     embed2.add_field(
-        name="__Who's allowed on the PD when carrying out duties?__",
-        value="↠ United Kingdom Special Forces,\n"
-              "↠ Grenadier Guards,\n"
-              "↠ Foreign Relations,\n"
-              "↠ Royal Logistic Corps,\n"
-              "↠ Adjutant General's Corps,\n"
-              "↠ High Ranks, RSM, CSM and ASM hosting,\n"
-              "↠ Regimental personnel watching one of their regiment's events inside Pad area.",
+        name="**WHO'S ALLOWED ON THE PD WHEN CARRYING OUT THEIR DUTIES?**",
+        value="> ↠ United Kingdom Special Forces,\n"
+              "> ↠ Grenadier Guards,\n"
+              "> ↠ Foreign Relations,\n"
+              "> ↠ Royal Logistic Corps,\n"
+              "> ↠ Adjutant General's Corps,\n"
+              "> ↠ High Ranks, RSM, CSM and ASM hosting,\n"
+              "> ↠ Regimental personnel watching one of their regiment's events inside Pad area.",
         inline=False
     )
     
     embed2.add_field(
-        name="__How do I enforce PD rules on people not allowed on it?__",
-        value="1. Give them their first warning to get off the PD, \"W1, off the PD!\"\n"
-              "2. Wait 3-5 seconds for them to listen if they don't give them their second warning, \"W2, off the PD!\"\n"
-              "3. Wait 3-5 seconds for them to listen if they don't kill them.",
+        name="**HOW DO I ENFORCE PD RULES ON PEOPLE NOT ALLOWED ON IT?**",
+        value="> 1. Give them their first warning to get off the PD, \"W1, off the PD!\"\n"
+              "> 2. Wait 3-5 seconds for them to listen; if they don't, give them their second warning, \"W2, off the PD!\"\n"
+              "> 3. Wait 3-5 seconds for them to listen; if they don't kill them.",
         inline=False
     )
     
     embed2.add_field(
-        name="__Who's allowed ON the actual Stage at all times?__",
-        value="↠ Major General and above,\n"
-              "↠ Royal Family (they have a purple name tag),\n"
-              "↠ Home Command Regiments who have been given permission to guard a Major General or Royal Family member,\n"
-              "↠ Those who have been given permission by a Lieutenant General.",
+        name="**WHO'S ALLOWED __ON__ THE ACTUAL STAGE AT ALL TIMES**",
+        value="> ↠ Major General and above,\n"
+              "> ↠ Royal Family (they should have a purple name tag),\n"
+              "> ↠ Those who have been given permission by a Lieutenant General.",
         inline=False
     )
     
     embed2.add_field(
-        name="__Who's allowed to pass the red line in-front of the Stage?__",
-        value="↠ Major General and above,\n"
-              "↠ Royal Family,\n"
-              "↠ Those who have been given permission by a Lieutenant General,\n"
-              "↠ COMBATIVE Home Command Regiments:\n"
-              "- Royal Military Police,\n"
-              "- United Kingdom Forces,\n"
-              "- Household Division.\n\n"
-              "**Kill those not allowed who touch or past the red line.**",
+        name="**WHO'S ALLOWED TO PASS THE RED LINE IN-FRONT OF THE STAGE?**",
+        value="> ↠ Major General and above,\n"
+              "> ↠ Royal Family,\n"
+              "> ↠ Those who have been given permission by a Lieutenant General,\n"
+              "> ↠ COMBATIVE Home Command Regiments:\n"
+              "> - Royal Military Police,\n"
+              "> - United Kingdom Forces,\n"
+              "> - Household Division.\n\n"
+              "> **Kill those not allowed who touch or past the red line.**",
         inline=False
     )
     
     embed2.add_field(
-        name="\u200b",  # Empty field name for spacing
-        value="**LASTLY, IF YOU'RE UNSURE ON SOMETHING ASK SOMEONE ABOVE YOU BEFORE TAKING ACTION!**",
+        name="\u200b",  
+        value="**LASTLY, IF YOU'RE UNSURE ABOUT SOMETHING, ASK SOMEONE USING THE CHAIN OF COMMAND BEFORE TAKING ACTION!**",
         inline=False
     )
 
@@ -1061,14 +1060,14 @@ async def on_member_remove(member: discord.Member):
 
     # For the deserter checker discharge log
     dishonourable_embed = discord.Embed(
-        title="🚨 Dishonourable Discharge - Deserter",
+        title="Discharge Log",
         color=discord.Color.red(),
         timestamp=datetime.now(timezone.utc)
     )
     
     dishonourable_embed.add_field(
         name="Type",
-        value="Dishonourable Discharge (Deserter)",
+        value="🚨 Dishonourable Discharge",
         inline=False
     )
     dishonourable_embed.add_field(
@@ -1093,7 +1092,7 @@ async def on_member_remove(member: discord.Member):
     
     
     # Set footer
-    dishonourable_embed.set_footer(text="Deserter Checker System")
+    dishonourable_embed.set_footer(text="Desertion Monitor System")
 
     try:
         d_log = bot.get_channel(Config.D_LOG_CHANNEL_ID)
