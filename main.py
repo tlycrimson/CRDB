@@ -1001,7 +1001,7 @@ async def send_rmp_welcome(member: discord.Member):
               "> ↠ COMBATIVE Home Command Regiments:\n"
               "> - Royal Military Police,\n"
               "> - United Kingdom Forces,\n"
-              "> - Household Division.\n\n"
+              "> - Household Division.\n"
               "> **Kill those not allowed who touch or past the red line.**",
         inline=False
     )
