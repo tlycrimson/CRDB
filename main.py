@@ -115,6 +115,8 @@ async def check_dns_connectivity() -> bool:
     loop = asyncio.get_running_loop()
     return await loop.run_in_executor(None, sync_resolve)
 
+
+# --- CLASSES ---
 class EnhancedRateLimiter:
     """Improved rate limiter with jitter and bucket support"""
     def __init__(self, calls_per_minute: int):
@@ -241,6 +243,102 @@ class DatabaseHandler:
         except Exception as e:
             logger.error(f"Failed to clear weekly events: {str(e)}")
             return False
+
+# Event Log View Class
+class EventLogView(discord.ui.View):
+    """View for confirming or editing event logs"""
+    def __init__(self, embed: discord.Embed, original_interaction: discord.Interaction, attachments: List[discord.Attachment] = None):
+        super().__init__(timeout=120)
+        self.embed = embed
+        self.original_interaction = original_interaction
+        self.attachments = attachments or []
+        self.confirmed = False
+
+    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.green)
+    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Final confirmation to log the event"""
+        await interaction.response.defer()
+        self.confirmed = True
+        self.stop()
+        
+        # Send to log channel
+        try:
+            log_channel = self.original_interaction.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
+            if log_channel:
+                # Send embed first
+                log_message = await log_channel.send(embed=self.embed)
+                
+                # Add attachments if any
+                if self.attachments:
+                    attachment_urls = []
+                    for attachment in self.attachments:
+                        try:
+                            # Upload each attachment
+                            file = await attachment.to_file()
+                            await log_channel.send(file=file)
+                            attachment_urls.append(attachment.url)
+                        except Exception as e:
+                            logger.error(f"Failed to upload attachment: {e}")
+                            continue
+                    
+                    # Add attachment links to embed if needed
+                    if attachment_urls:
+                        self.embed.add_field(
+                            name="Attachments",
+                            value="\n".join(f"[Attachment {i+1}]({url})" for i, url in enumerate(attachment_urls)),
+                            inline=False
+                        )
+                        await log_message.edit(embed=self.embed)
+                
+                # Log to database
+                await bot.db.log_event(self.original_interaction.user.id, self.embed.fields[1].value)
+                
+                await self.original_interaction.followup.send(
+                    f"✅ Successfully logged {self.embed.fields[1].value}",
+                    ephemeral=True
+                )
+            else:
+                await self.original_interaction.followup.send(
+                    "❌ Log channel not found",
+                    ephemeral=True
+                )
+        except Exception as e:
+            logger.error(f"Failed to log event: {e}")
+            await self.original_interaction.followup.send(
+                "❌ Failed to log event - please notify Crimson",
+                ephemeral=True
+            )
+
+    @discord.ui.button(label="Edit", style=discord.ButtonStyle.blurple)
+    async def edit(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Allow user to edit the event details"""
+        await interaction.response.defer()
+        self.stop()
+        await self.original_interaction.followup.send(
+            "Please run the command again with corrected details",
+            ephemeral=True
+        )
+
+    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.red)
+    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Cancel the event logging entirely"""
+        await interaction.response.defer()
+        self.stop()
+        await self.original_interaction.followup.send(
+            "❌ Event logging cancelled",
+            ephemeral=True
+        )
+
+    async def on_timeout(self):
+        """Handle view timeout"""
+        try:
+            await self.original_interaction.followup.send(
+                "⌛ Event logging timed out",
+                ephemeral=True
+            )
+        except:
+            pass
+
 
 class ReactionLogger:
     """Handles reaction monitoring and logging"""
@@ -726,6 +824,107 @@ async def check_xp(interaction: discord.Interaction, user: Optional[discord.User
 async def clear_weekly_events(interaction: discord.Interaction):
     await bot.db.clear_weekly_events()
     await interaction.response.send_message("✅ Weekly event data cleared!")
+
+# Logging event Command
+@bot.tree.command(name="log-event", description="Log an event you hosted")
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
+async def log_event(
+    interaction: discord.Interaction,
+    event_type: Literal["Wide Event", "Event", "Phase", "Gamenight", "Tryout", "Selection", "Course"],
+    attendees: str,
+    award_recipients: Optional[str] = None,
+    attachments: Optional[str] = None,
+    image_link: Optional[str] = None
+):
+    """
+    Log an event with details about the host, attendees, and type of event.
+    For Wide Events, optionally specify award recipients.
+    Add attachments or image links for evidence.
+    """
+    await interaction.response.defer(ephemeral=True)
+    
+    # Clean all names
+    host_name = clean_nickname(interaction.user.display_name)
+    attendee_list = [clean_nickname(a.strip()) for a in attendees.split(',') if a.strip()]
+    
+    # Validate attendees
+    if not attendee_list:
+        await interaction.followup.send("❌ Please provide at least one attendee", ephemeral=True)
+        return
+    
+    # Validate award recipients if this is a Wide Event
+    award_list = []
+    if event_type == "Wide Event" and award_recipients:
+        award_list = [clean_nickname(a.strip()) for a in award_recipients.split(',') if a.strip()]
+        if not award_list:
+            await interaction.followup.send(
+                "❌ Please provide at least one award recipient for Wide Events",
+                ephemeral=True
+            )
+            return
+    
+    # Process attachments
+    attachment_objects = []
+    if attachments:
+        try:
+            # Get message with attachments (format should be message ID)
+            message = await interaction.channel.fetch_message(int(attachments))
+            attachment_objects.extend(message.attachments)
+        except:
+            await interaction.followup.send(
+                "⚠️ Couldn't find attachments from the provided message ID",
+                ephemeral=True
+            )
+    
+    # Create the preview embed
+    embed = discord.Embed(
+        title="📝 Event Log Preview",
+        description="Please review your event details below",
+        color=discord.Color.blue()
+    )
+    
+    embed.add_field(name="Host", value=host_name, inline=True)
+    embed.add_field(name="Event Type", value=event_type, inline=True)
+    embed.add_field(
+        name="Attendees", 
+        value="\n".join(attendee_list) or "None", 
+        inline=False
+    )
+    
+    if event_type == "Wide Event" and award_list:
+        embed.add_field(
+            name="Award Recipients", 
+            value="\n".join(award_list) or "None", 
+            inline=False
+        )
+    
+    # Add image preview if available
+    if image_link:
+        embed.add_field(name="Image Link", value=image_link, inline=False)
+        try:
+            # Validate it's a proper image URL
+            if any(image_link.lower().endswith(ext) for ext in ['.png', '.jpg', '.jpeg', '.gif', '.webp']):
+                embed.set_image(url=image_link)
+        except:
+            pass
+    
+    # Show attachment count in preview
+    if attachment_objects:
+        embed.add_field(
+            name="Attachments", 
+            value=f"{len(attachment_objects)} file(s) will be included",
+            inline=False
+        )
+    
+    embed.set_footer(text="Confirm to log this event or Edit to make changes")
+    
+    # Send preview with confirmation buttons
+    view = EventLogView(embed, interaction, attachment_objects)
+    await interaction.followup.send(
+        embed=embed,
+        view=view,
+        ephemeral=True
+    )
 
 # Discharge Command
 @bot.tree.command(name="discharge", description="Notify members of honourable/dishonourable discharge and log it")
