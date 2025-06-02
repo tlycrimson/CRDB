@@ -1048,7 +1048,7 @@ async def on_member_remove(member: discord.Member):
         
     embed = discord.Embed(
         title="🚨 Deserter Alert",
-        description=f"{member.mention} just deserted!",
+        description=f"{member.mention} just deserted! Please log this in BA.",
         color=discord.Color.red()
     )
     embed.set_thumbnail(url=member.display_avatar.url)
