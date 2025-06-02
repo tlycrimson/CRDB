@@ -40,9 +40,20 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+# Username Cleaner
+def clean_nickname(nickname: str) -> str:
+    """Remove tags like [INS] from nicknames and clean whitespace"""
+    if not nickname:  # Handle None or empty string
+        return "Unknown"
+    cleaned = re.sub(r'\[.*?\]', '', nickname).strip()
+    return cleaned or nickname  # Fallback to original if empty after cleaning
+
+
 # Global rate limiter configuration
 GLOBAL_RATE_LIMIT = 15  # requests per minute
 COMMAND_COOLDOWN = 10    # seconds between command uses per user
+
 
 async def check_dns_connectivity() -> bool:
     """DNS resolution with multiple fallback methods"""
@@ -154,21 +165,32 @@ class DiscordAPI:
         
         raise Exception(f"Failed after {max_retries} attempts")
 
-#SUPABASE SET UP
-# Supabase setup
+#supabase set-up
 class DatabaseHandler:
     def __init__(self):
-        self.url = os.getenv("SUPABASE_URL")  # Your Project URL
-        self.key = os.getenv("SUPABASE_KEY")  # Your anon/public key
+        self.url = os.getenv("SUPABASE_URL")
+        self.key = os.getenv("SUPABASE_KEY")
         self.supabase = create_client(self.url, self.key)
     
     async def add_xp(self, user_id: str, username: str, xp: int):
-        data, _ = self.supabase.table('users').upsert({
-            "user_id": str(user_id),
-            "username": username,
-            "xp": xp
-        }).execute()
-        return True
+        try:
+            # Get current XP and calculate new total
+            current_xp = await self.get_user_xp(user_id)
+            new_xp = current_xp + xp
+            
+            # Update with cleaned name and new XP
+            data, _ = self.supabase.table('users').upsert({
+                "user_id": str(user_id),
+                "username": clean_nickname(username),  # Using the global function
+                "xp": new_xp,
+                "last_updated": datetime.now(timezone.utc).isoformat()
+            }).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add XP: {str(e)}")
+            return False
+    
+    # ... rest of your methods ...
     
     async def log_event(self, user_id: str, event_type: str):
         week_num = datetime.now().isocalendar()[1]  # Current week number
@@ -611,25 +633,37 @@ async def on_disconnect():
         logger.info("Closed shared HTTP session")
         
 # --- Commands --- 
+# /addxp Command
+# /addxp Command
+@bot.tree.command(name="addxp", description="Add XP to a user")
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
+async def add_xp(interaction: discord.Interaction, user: discord.User, xp: int):
+    success = await bot.db.add_xp(user.id, user.display_name, xp)
+    if success:
+        new_total = await bot.db.get_user_xp(user.id)
+        cleaned_name = clean_nickname(user.display_name)
+        await interaction.response.send_message(
+            f"✅ Added {xp} XP to {cleaned_name}. New total: {new_total} XP"
+        )
+    else:
+        await interaction.response.send_message(
+            "❌ Failed to add XP. Notify Crimson.",
+            ephemeral=True
+        )
+        
 # /xp Command
 @bot.tree.command(name="xp", description="Check your XP")
 async def check_xp(interaction: discord.Interaction, user: Optional[discord.User] = None):
     target_user = user or interaction.user
     xp = await bot.db.get_user_xp(target_user.id)
+    cleaned_name = clean_nickname(target_user.display_name)
     
     embed = discord.Embed(
-        title=f"XP for {target_user.display_name}",
+        title=f"XP for {cleaned_name}",
         description=f"Total XP: {xp}",
         color=discord.Color.green()
     )
     await interaction.response.send_message(embed=embed)
-
-# /addxp Command
-@bot.tree.command(name="addxp", description="Add XP to a user")
-@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
-async def add_xp(interaction: discord.Interaction, user: discord.User, xp: int):
-    await bot.db.add_xp(user.id, user.display_name, xp)
-    await interaction.response.send_message(f"✅ Added {xp} XP to {user.display_name}!")
     
 # clearly-weekly-events
 @bot.tree.command(name="clear-weekly-events", description="Clear weekly event data")
