@@ -187,10 +187,10 @@ class DatabaseHandler:
             }).execute()
             
             logger.info(f"XP added: {user_id} gained {xp} XP (was {current_xp}, now {new_xp})")
-            return True
+            return True, new_xp  # Return both success and new XP
         except Exception as e:
             logger.error(f"Failed to add XP for {user_id}: {str(e)}")
-            return False
+            return False, current_xp
             
     async def take_xp(self, user_id: str, username: str, xp: int):
         try:
@@ -205,10 +205,10 @@ class DatabaseHandler:
             }).execute()
             
             logger.info(f"XP removed: {user_id} lost {xp} XP (was {current_xp}, now {new_xp})")
-            return True
+            return True, new_xp  # Now returning both success status and new XP
         except Exception as e:
             logger.error(f"Failed to remove XP from {user_id}: {str(e)}")
-            return False
+            return False, current_xp  # Return current XP on failure
     
     async def log_event(self, user_id: str, event_type: str):
         try:
@@ -911,13 +911,13 @@ async def on_disconnect():
         
 # --- Commands --- 
 # /addxp Command
-@bot.tree.command(name="add-xp", description="Add XP to a user")
+@bot.tree.command(name="addxp", description="Add XP to a user")
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def add_xp(interaction: discord.Interaction, user: discord.User, xp: int):
-    success = await bot.db.add_xp(user.id, user.display_name, xp)
+    success, new_total = await bot.db.add_xp(user.id, user.display_name, xp)
+    cleaned_name = clean_nickname(user.display_name)
+    
     if success:
-        new_total = await bot.db.get_user_xp(user.id)
-        cleaned_name = clean_nickname(user.display_name)
         await interaction.response.send_message(
             f"✅ Added {xp} XP to {cleaned_name}. New total: {new_total} XP"
         )
@@ -942,7 +942,7 @@ async def take_xp(interaction: discord.Interaction, user: discord.User, xp: int)
     cleaned_name = clean_nickname(user.display_name)
     
     if success:
-        message = (f"✅ Removed {xp} XP from {cleaned_name}. New total: {new_total} XP")
+        message = f"✅ Removed {xp} XP from {cleaned_name}. New total: {new_total} XP"
         if new_total == 0:
             message += "\n⚠️ User's XP has reached 0"
         await interaction.response.send_message(message)
