@@ -337,6 +337,7 @@ class EventLogModal(discord.ui.Modal, title="Event Log Submission"):
             title=f"[{self.event_type.values[0].upper()}] {event_title}",
             color=discord.Color.blue(),
             timestamp=datetime.now(timezone.utc)
+        )
         
         embed.add_field(name="Event", value=event_title, inline=False)
         embed.add_field(name="Host", value=host_name, inline=True)
