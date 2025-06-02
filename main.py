@@ -130,52 +130,6 @@ class EnhancedRateLimiter:
             bucket_data['last_call'] = time.time()
             bucket_data['count'] += 1
 
-    async def setup(self, interaction: discord.Interaction, log_channel: discord.TextChannel, monitor_channels: str):
-        """Setup reaction monitoring"""
-        await interaction.response.defer(ephemeral=True)
-        try:
-            channel_ids = [int(cid.strip()) for cid in monitor_channels.split(',')]
-            self.monitor_channel_ids = set(channel_ids)
-            self.log_channel_id = log_channel.id
-            await interaction.followup.send("✅ Reaction monitoring setup complete", ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(f"❌ Setup failed: {str(e)}", ephemeral=True)
-
-    async def add_channels(self, interaction: discord.Interaction, channels: str):
-        """Add channels to monitor"""
-        await interaction.response.defer(ephemeral=True)
-        try:
-            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
-            self.monitor_channel_ids.update(channel_ids)
-            await interaction.followup.send(f"✅ Added {len(channel_ids)} channels to monitoring", ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(f"❌ Failed to add channels: {str(e)}", ephemeral=True)
-
-    async def remove_channels(self, interaction: discord.Interaction, channels: str):
-        """Remove channels from monitoring"""
-        await interaction.response.defer(ephemeral=True)
-        try:
-            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
-            self.monitor_channel_ids.difference_update(channel_ids)
-            await interaction.followup.send(f"✅ Removed {len(channel_ids)} channels from monitoring", ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(f"❌ Failed to remove channels: {str(e)}", ephemeral=True)
-
-    async def list_channels(self, interaction: discord.Interaction):
-        """List monitored channels"""
-        await interaction.response.defer(ephemeral=True)
-        if not self.monitor_channel_ids:
-            await interaction.followup.send("❌ No channels being monitored", ephemeral=True)
-            return
-            
-        channel_list = "\n".join(f"• <#{cid}>" for cid in self.monitor_channel_ids)
-        embed = discord.Embed(
-            title="Monitored Channels",
-            description=channel_list,
-            color=discord.Color.blue()
-        )
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
 class DiscordAPI:
     """Helper class for Discord API requests with retry logic"""
     @staticmethod
@@ -199,7 +153,7 @@ class DiscordAPI:
         
         raise Exception(f"Failed after {max_retries} attempts")
 
-# In the ReactionLogger class, replace the current __init__ and add these methods:
+
 class ReactionLogger:
     """Handles reaction monitoring and logging"""
     def __init__(self, bot: commands.Bot):
@@ -279,7 +233,7 @@ class ReactionLogger:
         except Exception as e:
             logger.error(f"Failed to log reaction: {type(e).__name__}: {str(e)}")
     
-        async def _log_reaction_impl(self, payload: discord.RawReactionActionEvent):
+    async def _log_reaction_impl(self, payload: discord.RawReactionActionEvent):
         guild = self.bot.get_guild(payload.guild_id)
         if not guild:
             return
