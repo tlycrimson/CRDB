@@ -410,7 +410,7 @@ class EventLogView(discord.ui.View):
             embed.add_field(name="Notes", value=self.form_data['notes'], inline=False)
         
         # Send to log channel
-        log_channel = self.original_interaction.guild.get_channel(Config.D_LOG_CHANNEL_ID)
+        log_channel = self.original_interaction.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
         if not log_channel:
             await self.original_interaction.followup.send("❌ Log channel not found", ephemeral=True)
             return
