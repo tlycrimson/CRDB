@@ -174,42 +174,73 @@ class DatabaseHandler:
     
     async def add_xp(self, user_id: str, username: str, xp: int):
         try:
-            # Get current XP and calculate new total
             current_xp = await self.get_user_xp(user_id)
             new_xp = current_xp + xp
             
-            # Update with cleaned name and new XP
             data, _ = self.supabase.table('users').upsert({
                 "user_id": str(user_id),
-                "username": clean_nickname(username),  # Using the global function
+                "username": clean_nickname(username),
                 "xp": new_xp,
                 "last_updated": datetime.now(timezone.utc).isoformat()
             }).execute()
+            
+            logger.info(f"XP added: {user_id} gained {xp} XP (was {current_xp}, now {new_xp})")
             return True
         except Exception as e:
-            logger.error(f"Failed to add XP: {str(e)}")
+            logger.error(f"Failed to add XP for {user_id}: {str(e)}")
+            return False
+            
+    async def take_xp(self, user_id: str, username: str, xp: int):
+        try:
+            current_xp = await self.get_user_xp(user_id)
+            new_xp = max(0, current_xp - xp)  # Prevent negative XP
+            
+            data, _ = self.supabase.table('users').upsert({
+                "user_id": str(user_id),
+                "username": clean_nickname(username),
+                "xp": new_xp,
+                "last_updated": datetime.now(timezone.utc).isoformat()
+            }).execute()
+            
+            logger.info(f"XP removed: {user_id} lost {xp} XP (was {current_xp}, now {new_xp})")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to remove XP from {user_id}: {str(e)}")
             return False
     
-    # ... rest of your methods ...
-    
     async def log_event(self, user_id: str, event_type: str):
-        week_num = datetime.now().isocalendar()[1]  # Current week number
-        data, _ = self.supabase.table('events').insert({
-            "user_id": str(user_id),
-            "event_type": event_type,
-            "week_number": week_num
-        }).execute()
-        return True
+        try:
+            week_num = datetime.now().isocalendar()[1]
+            data, _ = self.supabase.table('events').insert({
+                "user_id": str(user_id),
+                "event_type": event_type,
+                "week_number": week_num
+            }).execute()
+            logger.info(f"Event logged: {user_id} - {event_type} (Week {week_num})")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to log event for {user_id}: {str(e)}")
+            return False
     
     async def get_user_xp(self, user_id: str):
-        data = self.supabase.table('users').select("xp").eq("user_id", str(user_id)).execute()
-        return data.data[0].get('xp', 0) if data.data else 0
+        try:
+            data = self.supabase.table('users').select("xp").eq("user_id", str(user_id)).execute()
+            xp = data.data[0].get('xp', 0) if data.data else 0
+            logger.debug(f"Retrieved XP for {user_id}: {xp}")  # Debug level to avoid spam
+            return xp
+        except Exception as e:
+            logger.error(f"Failed to get XP for {user_id}: {str(e)}")
+            return 0
     
     async def clear_weekly_events(self):
-        current_week = datetime.now().isocalendar()[1]
-        self.supabase.table('events').delete().lt("week_number", current_week).execute()
-        return True
-
+        try:
+            current_week = datetime.now().isocalendar()[1]
+            self.supabase.table('events').delete().lt("week_number", current_week).execute()
+            logger.info(f"Cleared events older than week {current_week}")
+            return True
+        except Exception as e:
+            logger.error(f"Failed to clear weekly events: {str(e)}")
+            return False
 
 class ReactionLogger:
     """Handles reaction monitoring and logging"""
@@ -634,8 +665,7 @@ async def on_disconnect():
         
 # --- Commands --- 
 # /addxp Command
-# /addxp Command
-@bot.tree.command(name="addxp", description="Add XP to a user")
+@bot.tree.command(name="add-xp", description="Add XP to a user")
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def add_xp(interaction: discord.Interaction, user: discord.User, xp: int):
     success = await bot.db.add_xp(user.id, user.display_name, xp)
@@ -648,6 +678,31 @@ async def add_xp(interaction: discord.Interaction, user: discord.User, xp: int):
     else:
         await interaction.response.send_message(
             "❌ Failed to add XP. Notify Crimson.",
+            ephemeral=True
+        )
+        
+# /take-xp Command
+@bot.tree.command(name="take-xp", description="Takes XP from user")
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
+async def take_xp(interaction: discord.Interaction, user: discord.User, xp: int):
+    if xp < 0:
+        await interaction.response.send_message(
+            "❌ Cannot take negative XP. Use /addxp instead.",
+            ephemeral=True
+        )
+        return
+    
+    success, new_total = await bot.db.take_xp(user.id, user.display_name, xp)
+    cleaned_name = clean_nickname(user.display_name)
+    
+    if success:
+        message = (f"✅ Removed {xp} XP from {cleaned_name}. New total: {new_total} XP")
+        if new_total == 0:
+            message += "\n⚠️ User's XP has reached 0"
+        await interaction.response.send_message(message)
+    else:
+        await interaction.response.send_message(
+            "❌ Failed to take XP. Notify Crimson.",
             ephemeral=True
         )
         
