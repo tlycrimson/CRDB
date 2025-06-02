@@ -199,6 +199,7 @@ class DiscordAPI:
         
         raise Exception(f"Failed after {max_retries} attempts")
 
+# In the ReactionLogger class, replace the current __init__ and add these methods:
 class ReactionLogger:
     """Handles reaction monitoring and logging"""
     def __init__(self, bot: commands.Bot):
@@ -206,6 +207,52 @@ class ReactionLogger:
         self.monitor_channel_ids = set(Config.DEFAULT_MONITOR_CHANNELS)
         self.log_channel_id = Config.DEFAULT_LOG_CHANNEL
         self.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
+        
+    async def setup(self, interaction: discord.Interaction, log_channel: discord.TextChannel, monitor_channels: str):
+        """Setup reaction monitoring"""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            channel_ids = [int(cid.strip()) for cid in monitor_channels.split(',')]
+            self.monitor_channel_ids = set(channel_ids)
+            self.log_channel_id = log_channel.id
+            await interaction.followup.send("✅ Reaction monitoring setup complete", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Setup failed: {str(e)}", ephemeral=True)
+
+    async def add_channels(self, interaction: discord.Interaction, channels: str):
+        """Add channels to monitor"""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
+            self.monitor_channel_ids.update(channel_ids)
+            await interaction.followup.send(f"✅ Added {len(channel_ids)} channels to monitoring", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Failed to add channels: {str(e)}", ephemeral=True)
+
+    async def remove_channels(self, interaction: discord.Interaction, channels: str):
+        """Remove channels from monitoring"""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
+            self.monitor_channel_ids.difference_update(channel_ids)
+            await interaction.followup.send(f"✅ Removed {len(channel_ids)} channels from monitoring", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Failed to remove channels: {str(e)}", ephemeral=True)
+
+    async def list_channels(self, interaction: discord.Interaction):
+        """List monitored channels"""
+        await interaction.response.defer(ephemeral=True)
+        if not self.monitor_channel_ids:
+            await interaction.followup.send("❌ No channels being monitored", ephemeral=True)
+            return
+            
+        channel_list = "\n".join(f"• <#{cid}>" for cid in self.monitor_channel_ids)
+        embed = discord.Embed(
+            title="Monitored Channels",
+            description=channel_list,
+            color=discord.Color.blue()
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
         
     async def on_ready_setup(self):
         """Setup monitoring when bot starts"""
@@ -231,33 +278,38 @@ class ReactionLogger:
             await self._log_reaction_impl(payload)
         except Exception as e:
             logger.error(f"Failed to log reaction: {type(e).__name__}: {str(e)}")
-
-    async def _log_reaction_impl(self, payload: discord.RawReactionActionEvent):
+    
+        async def _log_reaction_impl(self, payload: discord.RawReactionActionEvent):
         guild = self.bot.get_guild(payload.guild_id)
         if not guild:
             return
-
+    
+        # Check if this is a reaction we should track
+        if (payload.channel_id not in self.monitor_channel_ids or 
+            str(payload.emoji) not in Config.TRACKED_REACTIONS):
+            return
+    
+        # Check if this is in an ignored channel with ignored emoji
+        if (payload.channel_id in Config.IGNORED_CHANNELS and 
+            str(payload.emoji) in Config.IGNORED_EMOJI):
+            return
+    
         member = guild.get_member(payload.user_id)
         if not member:
             return
             
-        monitor_role = guild.get_role(Config.MONITOR_ROLE_ID)
-        if not monitor_role or monitor_role not in member.roles:
-            return
-        
-        if payload.channel_id in Config.IGNORED_CHANNELS and str(payload.emoji) in Config.IGNORED_EMOJI:
-            return
-
-        if (payload.channel_id not in self.monitor_channel_ids or 
-            str(payload.emoji) not in Config.TRACKED_REACTIONS):
-            return
-
+        # Check if member has required role to be tracked
+        if Config.MONITOR_ROLE_ID:  # Only check if configured
+            monitor_role = guild.get_role(Config.MONITOR_ROLE_ID)
+            if not monitor_role or monitor_role not in member.roles:
+                return
+    
         channel = guild.get_channel(payload.channel_id)
         log_channel = guild.get_channel(self.log_channel_id)
-
+    
         if not all((channel, member, log_channel)):
             return
-
+    
         try:
             message = await DiscordAPI.execute_with_retry(
                 channel.fetch_message(payload.message_id)
@@ -650,7 +702,7 @@ async def discharge(
                 try:
                     await member.send(embed=embed)
                 except discord.Forbidden:
-                    if channel := interaction.guild.get_channel(1165368316970405917):
+                    if channel := interaction.guild.get_channel(1219410104240050236):
                         await channel.send(f"{member.mention}", embed=embed)
                 success_count += 1
             except Exception as e:
@@ -835,7 +887,7 @@ async def reaction_setup(
     log_channel: discord.TextChannel,
     monitor_channels: str
 ):
-    await bot.reaction_logger.rate_limiter.setup(interaction, log_channel, monitor_channels)
+    await bot.reaction_logger.setup(interaction, log_channel, monitor_channels)
 
 @bot.tree.command(name="reaction-add", description="Add channels to monitor")
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
@@ -843,7 +895,7 @@ async def reaction_add(
     interaction: discord.Interaction,
     channels: str
 ):
-    await bot.reaction_logger.rate_limiter.add_channels(interaction, channels)
+    await bot.reaction_logger.add_channels(interaction, channels)
 
 @bot.tree.command(name="reaction-remove", description="Remove channels from monitoring")
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
@@ -851,12 +903,12 @@ async def reaction_remove(
     interaction: discord.Interaction,
     channels: str
 ):
-    await bot.reaction_logger.rate_limiter.remove_channels(interaction, channels)
+    await bot.reaction_logger.remove_channels(interaction, channels)
 
 @bot.tree.command(name="reaction-list", description="List monitored channels")
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def reaction_list(interaction: discord.Interaction):
-    await bot.reaction_logger.rate_limiter.list_channels(interaction)
+    await bot.reaction_logger.list_channels(interaction)
 
 @bot.tree.command(name="sheetdb-test", description="Test SheetDB connection")
 async def sheetdb_test(interaction: discord.Interaction):
@@ -1107,30 +1159,30 @@ async def on_member_remove(member: discord.Member):
     blacklist_embed.add_field(
         name="Issuer:",
         value="MP Assistant",
-        inline=True
+        inline=False
     )
     blacklist_embed.add_field(
         name="Name:", 
         value=f"{cleaned_nickname}",
-        inline=True
+        inline=False
     )
     
     blacklist_embed.add_field(
         name="Starting date", 
         value=f"<t:{int(current_date.timestamp())}:D>",
-        inline=True
+        inline=False
     )
     
     blacklist_embed.add_field(
         name="Ending date", 
         value=f"<t:{int(ending_date.timestamp())}:D>",
-        inline=True
+        inline=False
     )
 
     blacklist_embed.add_field(
         name="Reason:", 
         value="Desertion.",
-        inline=True
+        inline=False
     )
     
     
