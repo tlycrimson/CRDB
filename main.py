@@ -20,6 +20,7 @@ from dotenv import load_dotenv
 from flask import Flask
 from roblox_commands import create_sc_command
 from datetime import datetime, timedelta, timezone
+from supabase import create_client, Client
 
 # --- Configuration ---
 load_dotenv()
@@ -152,6 +153,40 @@ class DiscordAPI:
                 await asyncio.sleep(initial_delay * (attempt + 1))
         
         raise Exception(f"Failed after {max_retries} attempts")
+
+#SUPABASE SET UP
+# Supabase setup
+class DatabaseHandler:
+    def __init__(self):
+        self.url = os.getenv("SUPABASE_URL")  # Your Project URL
+        self.key = os.getenv("SUPABASE_KEY")  # Your anon/public key
+        self.supabase = create_client(self.url, self.key)
+    
+    async def add_xp(self, user_id: str, username: str, xp: int):
+        data, _ = self.supabase.table('users').upsert({
+            "user_id": str(user_id),
+            "username": username,
+            "xp": xp
+        }).execute()
+        return True
+    
+    async def log_event(self, user_id: str, event_type: str):
+        week_num = datetime.now().isocalendar()[1]  # Current week number
+        data, _ = self.supabase.table('events').insert({
+            "user_id": str(user_id),
+            "event_type": event_type,
+            "week_number": week_num
+        }).execute()
+        return True
+    
+    async def get_user_xp(self, user_id: str):
+        data = self.supabase.table('users').select("xp").eq("user_id", str(user_id)).execute()
+        return data.data[0].get('xp', 0) if data.data else 0
+    
+    async def clear_weekly_events(self):
+        current_week = datetime.now().isocalendar()[1]
+        self.supabase.table('events').delete().lt("week_number", current_week).execute()
+        return True
 
 
 class ReactionLogger:
@@ -516,6 +551,7 @@ bot.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
 bot.reaction_logger = ReactionLogger(bot)
 bot.message_tracker = MessageTracker(bot)
 bot.api = DiscordAPI()
+bot.db = DatabaseHandler()
 
 # --- Command Error Handler ---
 @bot.event
@@ -575,6 +611,33 @@ async def on_disconnect():
         logger.info("Closed shared HTTP session")
         
 # --- Commands --- 
+# /xp Command
+@bot.tree.command(name="xp", description="Check your XP")
+async def check_xp(interaction: discord.Interaction, user: Optional[discord.User] = None):
+    target_user = user or interaction.user
+    xp = await bot.db.get_user_xp(target_user.id)
+    
+    embed = discord.Embed(
+        title=f"XP for {target_user.display_name}",
+        description=f"Total XP: {xp}",
+        color=discord.Color.green()
+    )
+    await interaction.response.send_message(embed=embed)
+
+# /addxp Command
+@bot.tree.command(name="addxp", description="Add XP to a user")
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
+async def add_xp(interaction: discord.Interaction, user: discord.User, xp: int):
+    await bot.db.add_xp(user.id, user.display_name, xp)
+    await interaction.response.send_message(f"✅ Added {xp} XP to {user.display_name}!")
+    
+# clearly-weekly-events
+@bot.tree.command(name="clear-weekly-events", description="Clear weekly event data")
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
+async def clear_weekly_events(interaction: discord.Interaction):
+    await bot.db.clear_weekly_events()
+    await interaction.response.send_message("✅ Weekly event data cleared!")
+
 # Discharge Command
 @bot.tree.command(name="discharge", description="Notify members of honourable/dishonourable discharge and log it")
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
@@ -582,7 +645,7 @@ async def discharge(
     interaction: discord.Interaction,
     members: str,  # Comma-separated user mentions/IDs
     reason: str,
-    discharge_type: Literal["Honourable", "Dishonourable "] = "Honourable",
+    discharge_type: Literal["Honourable", "Dishonourable"] = "Honourable",
     evidence: Optional[discord.Attachment] = None
 ):
     view = ConfirmView()
