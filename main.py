@@ -246,7 +246,7 @@ class DatabaseHandler:
 
 # Event Log View Class
 class EventLogModal(discord.ui.Modal, title="Event Log Submission"):
-    """Modal form for event logging with all fields"""
+    """Modal form for event logging with all required fields"""
     event_name = discord.ui.TextInput(
         label="Event Name",
         placeholder="Enter the name/title of your event",
@@ -254,43 +254,30 @@ class EventLogModal(discord.ui.Modal, title="Event Log Submission"):
         required=True
     )
     
-    event_type = discord.ui.Select(
-        placeholder="Select event type",
-        options=[
-            discord.SelectOption(label="Wide Event", description="Large-scale regimental event"),
-            discord.SelectOption(label="Event", description="Standard regimental event"),
-            discord.SelectOption(label="Phase", description="Training phase completion"),
-            discord.SelectOption(label="Gamenight", description="Organized gamenight"),
-            discord.SelectOption(label="Tryout", description="Member tryout session"),
-            discord.SelectOption(label="Selection", description="Selection process event"),
-            discord.SelectOption(label="Course", description="Training course completion")
-        ]
+    event_type = discord.ui.TextInput(
+        label="Event Type (Wide/Phase/Gamenight/etc)",
+        placeholder="Type the event type",
+        style=discord.TextStyle.short,
+        required=True
     )
     
     attendees = discord.ui.TextInput(
-        label="Attendees",
-        placeholder="Comma separated list of usernames",
+        label="Attendees (comma separated)",
+        placeholder="User1, User2, User3",
         style=discord.TextStyle.long,
         required=True
     )
     
     co_host = discord.ui.TextInput(
         label="Co-Host (optional)",
-        placeholder="Leave blank if no co-host",
+        placeholder="Leave blank if none",
         style=discord.TextStyle.short,
         required=False
     )
     
-    award_recipients = discord.ui.TextInput(
-        label="Award Recipients (Wide Events only)",
-        placeholder="Comma separated list - leave blank if not applicable",
-        style=discord.TextStyle.long,
-        required=False
-    )
-    
-    notes = discord.ui.TextInput(
-        label="Additional Notes",
-        placeholder="Any extra details about the event",
+    additional_info = discord.ui.TextInput(
+        label="Awards/Notes",
+        placeholder="Awards for Wide Events or any notes",
         style=discord.TextStyle.long,
         required=False
     )
@@ -303,38 +290,29 @@ class EventLogModal(discord.ui.Modal, title="Event Log Submission"):
         # Pre-fill fields if editing
         if original_data:
             self.event_name.default = original_data.get('event_name', '')
+            self.event_type.default = original_data.get('event_type', '')
             self.attendees.default = original_data.get('attendees', '')
             self.co_host.default = original_data.get('co_host', '')
-            self.award_recipients.default = original_data.get('award_recipients', '')
-            self.notes.default = original_data.get('notes', '')
-            if 'event_type' in original_data:
-                self.event_type.default = discord.SelectOption(label=original_data['event_type'])
+            self.additional_info.default = original_data.get('additional_info', '')
 
     async def on_submit(self, interaction: discord.Interaction):
         await interaction.response.defer(ephemeral=True)
         
-        # Process all inputs
+        # Process inputs
         event_title = self.event_name.value
+        event_type = self.event_type.value
         host_name = clean_nickname(interaction.user.display_name)
         co_host_name = clean_nickname(self.co_host.value) if self.co_host.value else "N/A"
         attendee_list = [clean_nickname(a.strip()) for a in self.attendees.value.split(',') if a.strip()]
-        award_list = [clean_nickname(a.strip()) for a in (self.award_recipients.value or "").split(',') if a.strip()]
         
-        # Validate inputs
+        # Validate
         if not attendee_list:
             await interaction.followup.send("❌ Please provide at least one attendee", ephemeral=True)
             return
             
-        if self.event_type.values[0] == "Wide Event" and not award_list:
-            await interaction.followup.send(
-                "❌ Wide Events require at least one award recipient",
-                ephemeral=True
-            )
-            return
-        
         # Create preview embed
         embed = discord.Embed(
-            title=f"[{self.event_type.values[0].upper()}] {event_title}",
+            title=f"[{event_type.upper()}] {event_title}",
             color=discord.Color.blue(),
             timestamp=datetime.now(timezone.utc)
         )
@@ -344,31 +322,33 @@ class EventLogModal(discord.ui.Modal, title="Event Log Submission"):
         embed.add_field(name="Co-Host", value=co_host_name, inline=True)
         embed.add_field(name="Attendees", value="\n".join(attendee_list) or "None", inline=False)
         
-        if self.event_type.values[0] == "Wide Event" and award_list:
-            embed.add_field(name="Award Recipients", value="\n".join(award_list) or "None", inline=False)
+        if self.additional_info.value:
+            if "wide" in event_type.lower():
+                award_list = [clean_nickname(a.strip()) for a in self.additional_info.value.split(',') if a.strip()]
+                if award_list:
+                    embed.add_field(name="Award Recipients", value="\n".join(award_list), inline=False)
+                else:
+                    await interaction.followup.send(
+                        "⚠️ Wide Events should include award recipients in the Additional Info field",
+                        ephemeral=True
+                    )
+            else:
+                embed.add_field(name="Notes", value=self.additional_info.value, inline=False)
         
-        if self.notes.value:
-            embed.add_field(name="Notes", value=self.notes.value, inline=False)
-        
-        # Show preview with confirm/edit options
+        # Show preview
         view = EventLogView(
             form_data={
                 'event_name': event_title,
-                'event_type': self.event_type.values[0],
+                'event_type': event_type,
                 'attendees': self.attendees.value,
                 'co_host': self.co_host.value,
-                'award_recipients': self.award_recipients.value,
-                'notes': self.notes.value
+                'additional_info': self.additional_info.value
             },
             attachments=self.attachments,
             original_interaction=interaction
         )
         
-        await interaction.followup.send(
-            embed=embed,
-            view=view,
-            ephemeral=True
-        )
+        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
 class EventLogView(discord.ui.View):
     """View for confirming/editing event logs"""
