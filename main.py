@@ -389,7 +389,7 @@ class EventLogView(discord.ui.View):
         host_name = clean_nickname(self.original_interaction.user.display_name)
         co_host_name = clean_nickname(self.form_data['co_host']) if self.form_data['co_host'] else "N/A"
         attendee_list = [clean_nickname(a.strip()) for a in self.form_data['attendees'].split(',') if a.strip()]
-        award_list = [clean_nickname(a.strip()) for a in (self.form_data.get('award_recipients', '') or "".split(',') if a.strip()]
+        award_list = [clean_nickname(a.strip()) for a in (self.form_data.get('award_recipients', '') or '').split(',') if a.strip()]
         
         # Create final log embed
         embed = discord.Embed(
@@ -410,7 +410,7 @@ class EventLogView(discord.ui.View):
             embed.add_field(name="Notes", value=self.form_data['notes'], inline=False)
         
         # Send to log channel
-        log_channel = self.original_interaction.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
+        log_channel = self.original_interaction.guild.get_channel(Config.D_LOG_CHANNEL_ID)
         if not log_channel:
             await self.original_interaction.followup.send("❌ Log channel not found", ephemeral=True)
             return
