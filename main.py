@@ -1094,11 +1094,56 @@ async def on_member_remove(member: discord.Member):
     # Set footer
     dishonourable_embed.set_footer(text="Desertion Monitor System")
 
+    # DESERTER | BLacklist logs
+    current_date = datetime.now(timezone.utc)
+    ending_date = current_date + timedelta(days=30)  # Adding approximately one month
+    
+    blacklist_embed = discord.Embed(
+        title="⛔ Blacklist",
+        color=discord.Color.red(),
+        timestamp=current_date
+    )
+    
+    blacklist_embed.add_field(
+        name="Issuer:",
+        value="MP Assistant",
+        inline=True
+    )
+    blacklist_embed.add_field(
+        name="Name:", 
+        value=f"{cleaned_nickname}",
+        inline=True
+    )
+    
+    blacklist_embed.add_field(
+        name="Starting date", 
+        value=f"<t:{int(current_date.timestamp())}:D>",
+        inline=True
+    )
+    
+    blacklist_embed.add_field(
+        name="Ending date", 
+        value=f"<t:{int(ending_date.timestamp())}:D>",
+        inline=True
+    )
+
+    blacklist_embed.add_field(
+        name="Reason:", 
+        value="Desertion.",
+        inline=True
+    )
+    
+    
+    # Set footer
+    blacklist_embed.set_footer(text="Desertion Monitor System")
+
     try:
         d_log = bot.get_channel(Config.D_LOG_CHANNEL_ID)
+        b_log = bot.get_channel(Config.B_LOG_CHANNEL_ID)
         
         if d_log:
             await d_log.send(embed=dishonourable_embed)
+            await b_log.send(embed=blacklist_embed)
             logger.info(f"Logged deserted member, {cleaned_nickname}.")
         else:
             # If main channel fails, send simple message to alternative channel
