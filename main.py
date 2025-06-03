@@ -254,57 +254,88 @@ class EventLogView(discord.ui.View):
         self.confirmed = False
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.green)
-    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
-        self.confirmed = True
-        self.stop()
-
-        if not self.attachments:
-            embed = discord.Embed(
-                title="Missing Attachments!",
-                description="You must include at least one attachment as proof.",
-                color=discord.Color.red()
-            )
-            return await interaction.followup.send(embed=embed, ephemeral=True)
-
-        host_name = clean_nickname(self.original_interaction.user.display_name)
-        co_host_name = clean_nickname(self.form_data['co_host']) if self.form_data['co_host'] else "N/A"
-        attendee_list = [clean_nickname(a.strip()) for a in self.form_data['attendees'].split(',') if a.strip()]
-        award_list = [clean_nickname(a.strip()) for a in self.form_data.get('award_recipients', '').split(',') if a.strip()]
-
+async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
+    """Final confirmation to log the event"""
+    await interaction.response.defer()
+    self.confirmed = True
+    self.stop()
+    
+    if not self.attachments:
         embed = discord.Embed(
-            title=f"[{self.form_data['event_type'].upper()}] {self.form_data['event_name']}",
-            color=discord.Color.green(),
-            timestamp=datetime.now(timezone.utc)
+            title="Missing Attachments!",
+            description="You must include at least one attachment as proof.",
+            color=discord.Color.red()
         )
-        embed.add_field(name="Event", value=self.form_data['event_name'], inline=False)
-        embed.add_field(name="Host", value=host_name, inline=True)
-        embed.add_field(name="Co-Host", value=co_host_name, inline=True)
-        embed.add_field(name="Attendees", value="\n".join(attendee_list) or "None", inline=False)
-
-        if self.form_data['event_type'] == "Wide Event" and award_list:
-            embed.add_field(name="Award Recipients", value="\n".join(award_list) or "None", inline=False)
-
-        if self.form_data.get('notes'):
-            embed.add_field(name="Notes", value=self.form_data['notes'], inline=False)
-
-        attachment_text = "Proof:\n"
-        for i, attachment in enumerate(self.attachments, 1):
-            attachment_text += f"[Attachment {i}]({attachment.url})\n"
-        embed.add_field(name="Proof", value=attachment_text.strip(), inline=False)
-
-        log_channel = self.original_interaction.guild.get_channel(Config.D_LOG_CHANNEL_ID)
-        if log_channel:
-            await log_channel.send(embed=embed)
-            await self.original_interaction.followup.send("✅ Event logged successfully.", ephemeral=True)
-        else:
-            await self.original_interaction.followup.send("❌ Log channel not found.", ephemeral=True)
-
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.red)
-    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
-        self.stop()
-        await self.original_interaction.followup.send("❌ Event logging cancelled.", ephemeral=True)
+        embed.add_field(
+            name="How to fix",
+            value="1. Cancel this submission\n"
+                  "2. Run the command again with files attached\n"
+                  "3. Use the '+' button to add proof",
+            inline=False
+        )
+        return await interaction.followup.send(embed=embed, ephemeral=True)
+    
+    host_name = clean_nickname(self.original_interaction.user.display_name)
+    co_host_name = clean_nickname(self.form_data['co_host']) if self.form_data['co_host'] else "N/A"
+    attendee_list = [clean_nickname(a.strip()) for a in self.form_data['attendees'].split(',') if a.strip()]
+    award_list = [clean_nickname(a.strip()) for a in (self.form_data.get('award_recipients', '') or '').split(',') if a.strip()]
+    
+    embed = discord.Embed(
+        title=f"[{self.form_data['event_type'].upper()}] {self.form_data['event_name']}",
+        color=discord.Color.green(),
+        timestamp=datetime.now(timezone.utc)
+    )
+    embed.add_field(name="Event", value=self.form_data['event_name'], inline=False)
+    embed.add_field(name="Host", value=host_name, inline=False)
+    embed.add_field(name="Co-Host", value=co_host_name, inline=False)
+    embed.add_field(name="Attendees", value="\n".join(attendee_list) or "None", inline=False)
+    
+    if self.form_data['event_type'] == "Wide Event" and award_list:
+        embed.add_field(name="Award Recipients", value="\n".join(award_list) or "None", inline=False)
+    
+    if self.form_data.get('notes'):
+        embed.add_field(name="Notes", value=self.form_data['notes'], inline=False)
+    
+    # Build attachment links and show first image/gif inline
+    attachment_text = ""
+    image_set = False
+    for i, attachment in enumerate(self.attachments, start=1):
+        attachment_text += f"[Attachment {i}]({attachment.url})\n"
+        if not image_set:
+            mimetype = attachment.content_type or ""
+            if mimetype.startswith("image/") or attachment.filename.lower().endswith((".png", ".jpg", ".jpeg", ".gif")):
+                embed.set_image(url=attachment.url)
+                image_set = True
+    
+    embed.add_field(name="Proof:", value=attachment_text.strip(), inline=False)
+    
+    log_channel = self.original_interaction.guild.get_channel(Config.D_LOG_CHANNEL_ID)
+    if not log_channel:
+        await self.original_interaction.followup.send("❌ Log channel not found", ephemeral=True)
+        return
+    
+    try:
+        # Upload attachments separately so they persist and can be linked (optional)
+        for attachment in self.attachments:
+            try:
+                await log_channel.send(file=await attachment.to_file())
+            except Exception as e:
+                logger.error(f"Failed to upload attachment: {e}")
+                continue
+        
+        await log_channel.send(embed=embed)
+        await bot.db.log_event(self.original_interaction.user.id, self.form_data['event_type'])
+        
+        await self.original_interaction.followup.send(
+            f"✅ Successfully logged {self.form_data['event_type']}",
+            ephemeral=True
+        )
+    except Exception as e:
+        logger.error(f"Failed to log event: {e}")
+        await self.original_interaction.followup.send(
+            "❌ Failed to log event - please notify Crimson",
+            ephemeral=True
+        )
 
 
 class ReactionLogger:
@@ -811,7 +842,7 @@ async def log_event(
 ):
     await interaction.response.send_message(
         "📎 Please now upload your **attachments** (images, videos, etc.) in this channel.\n"
-        "You have 60 seconds. Upload them in a single message.",
+        "You have 20 seconds. Upload them in a single message.",
         ephemeral=True
     )
 
@@ -819,7 +850,7 @@ async def log_event(
         return m.author == interaction.user and m.channel == interaction.channel and m.attachments
 
     try:
-        msg = await bot.wait_for("message", check=check, timeout=60)
+        msg = await bot.wait_for("message", check=check, timeout=20)
         attachments = msg.attachments
 
         view = EventLogView(
