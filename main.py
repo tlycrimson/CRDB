@@ -608,7 +608,6 @@ bot = commands.Bot(
 bot.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
 bot.reaction_logger = ReactionLogger(bot)
 bot.message_tracker = MessageTracker(bot)
-bot.event_log_reviewer = EventLogReviewer(bot)
 bot.api = DiscordAPI()
 bot.db = DatabaseHandler()
 
@@ -1050,23 +1049,6 @@ async def sheetdb_test(interaction: discord.Interaction):
         )
 
 # --- Event Handlers ---
-
-# Event Watcher Handlers
-@bot.event
-async def on_message(message: discord.Message):
-    # Process commands first
-    await bot.process_commands(message)
-    
-    # Then track messages for message tracker
-    await bot.message_tracker.log_message(message)
-    
-    # Then check for event logs
-    await bot.event_log_reviewer.process_event_log(message)
-
-@bot.event
-async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    await bot.reaction_logger.log_reaction(payload)
-    await bot.event_log_reviewer.handle_reaction(payload)
     
 @bot.event
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
