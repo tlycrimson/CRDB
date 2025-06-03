@@ -589,6 +589,242 @@ class ConfirmView(discord.ui.View):
         await interaction.response.defer()
         self.stop()
 
+
+# Event Watcher
+class EventLogReviewer:
+    def __init__(self, bot: commands.Bot):
+        self.bot = bot
+        self.monitor_channel_ids = set(Config.EVENT_LOG_CHANNELS)  # Add this to your Config
+        self.log_channel_id = Config.EVENT_LOG_APPROVAL_CHANNEL  # Add this to your Config
+        self.allowed_role_id = Config.ALLOWED_ROLE_ID  # Add this to your Config
+        self.db = DatabaseHandler()
+        
+    async def on_ready_setup(self):
+        """Setup monitoring when bot starts"""
+        guild = self.bot.guilds[0]
+        valid_channels = set()
+        for channel_id in self.monitor_channel_ids:
+            if channel := guild.get_channel(channel_id):
+                valid_channels.add(channel.id)
+        
+        self.monitor_channel_ids = valid_channels
+        
+        if not guild.get_channel(self.log_channel_id):
+            logger.warning(f"Event log approval channel {self.log_channel_id} not found!")
+            self.log_channel_id = None
+
+    async def process_event_log(self, message: discord.Message):
+        """Process a potential event log message"""
+        if message.author.bot:
+            return
+            
+        if message.channel.id not in self.monitor_channel_ids:
+            return
+            
+        # Add initial reactions
+        try:
+            await message.add_reaction('✅')
+            await message.add_reaction('❌')
+        except discord.HTTPException as e:
+            logger.error(f"Failed to add reactions to message {message.id}: {e}")
+            return
+            
+        # Create a log embed
+        embed = discord.Embed(
+            title="📝 Event Log Submission",
+            description=f"Submitted by {message.author.mention}",
+            color=discord.Color.orange(),
+            timestamp=message.created_at
+        )
+        
+        embed.add_field(name="Channel", value=message.channel.mention)
+        embed.add_field(name="Message ID", value=message.id)
+        embed.add_field(name="Content", value=message.content[:1000] + "..." if len(message.content) > 1000 else message.content, inline=False)
+        embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
+        
+        log_channel = message.guild.get_channel(self.log_channel_id)
+        if log_channel:
+            await log_channel.send(
+                content=f"<@&{self.allowed_role_id}> New event log to review!",
+                embed=embed
+            )
+
+    async def handle_reaction(self, payload: discord.RawReactionActionEvent):
+        """Handle reactions to event log messages"""
+        if payload.channel_id not in self.monitor_channel_ids:
+            return
+            
+        if str(payload.emoji) not in ('✅', '❌'):
+            return
+            
+        guild = self.bot.get_guild(payload.guild_id)
+        if not guild:
+            return
+            
+        member = guild.get_member(payload.user_id)
+        if not member:
+            return
+            
+        # Check if user has the allowed role
+        allowed_role = guild.get_role(self.allowed_role_id)
+        if not allowed_role or allowed_role not in member.roles:
+            return
+            
+        channel = guild.get_channel(payload.channel_id)
+        if not channel:
+            return
+            
+        try:
+            message = await channel.fetch_message(payload.message_id)
+        except discord.NotFound:
+            return
+            
+        # Check if this is the first approval/rejection
+        approved = False
+        rejected = False
+        
+        for reaction in message.reactions:
+            if str(reaction.emoji) == '✅':
+                async for user in reaction.users():
+                    if user.id != self.bot.user.id and guild.get_member(user.id) and allowed_role in guild.get_member(user.id).roles:
+                        approved = True
+                        break
+            elif str(reaction.emoji) == '❌':
+                async for user in reaction.users():
+                    if user.id != self.bot.user.id and guild.get_member(user.id) and allowed_role in guild.get_member(user.id).roles:
+                        rejected = True
+                        break
+        
+        if approved and not rejected:
+            await self.approve_event_log(message, member)
+        elif rejected and not approved:
+            await self.reject_event_log(message, member)
+
+    async def approve_event_log(self, message: discord.Message, approver: discord.Member):
+        """Process an approved event log"""
+        # Parse host and attendees
+        host = None
+        attendees = []
+        
+        # Look for "Host: @mention" pattern
+        host_match = re.search(r'Host:\s*<@!?(\d+)>', message.content, re.IGNORECASE)
+        if host_match:
+            host_id = int(host_match.group(1))
+            host = message.guild.get_member(host_id)
+        
+        # Look for "Attendees: @mention1 @mention2" pattern
+        attendees_section = re.search(r'Attendees:(.*)', message.content, re.IGNORECASE)
+        if attendees_section:
+            attendee_mentions = re.findall(r'<@!?(\d+)>', attendees_section.group(1))
+            attendees = [message.guild.get_member(int(uid)) for uid in attendee_mentions if message.guild.get_member(int(uid))]
+        
+        # Log to database
+        if host:
+            await self.db.log_event(str(host.id), "hosted_event")
+            
+        for attendee in attendees:
+            if attendee:
+                await self.db.add_xp(str(attendee.id), attendee.display_name, 3)
+                await self.db.log_event(str(attendee.id), "attended_event")
+        
+        # Send approval confirmation
+        embed = discord.Embed(
+            title="✅ Event Log Approved",
+            description=f"Approved by {approver.mention}",
+            color=discord.Color.green(),
+            timestamp=datetime.now(timezone.utc)
+        
+        if host:
+            embed.add_field(name="Host", value=host.mention)
+        if attendees:
+            embed.add_field(name="Attendees", value=", ".join([a.mention for a in attendees if a]) or "None")
+        
+        await message.reply(embed=embed)
+        
+        # Log to approval channel
+        log_channel = message.guild.get_channel(self.log_channel_id)
+        if log_channel:
+            log_embed = discord.Embed(
+                title="📝 Event Log Approved",
+                description=f"Approved by {approver.mention}",
+                color=discord.Color.green(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            log_embed.add_field(name="Submitted by", value=message.author.mention)
+            log_embed.add_field(name="Content", value=message.content[:1000] + "..." if len(message.content) > 1000 else message.content, inline=False)
+            log_embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
+            
+            if host:
+                log_embed.add_field(name="Host", value=host.mention)
+            if attendees:
+                log_embed.add_field(name="Attendees", value=", ".join([a.mention for a in attendees if a]) or "None")
+            
+            await log_channel.send(embed=log_embed)
+
+    async def reject_event_log(self, message: discord.Message, rejecter: discord.Member):
+        """Process a rejected event log"""
+        # First send rejection notice
+        embed = discord.Embed(
+            title="❌ Event Log Rejected",
+            description=f"Rejected by {rejecter.mention}\nPlease provide a reason for rejection.",
+            color=discord.Color.red(),
+            timestamp=datetime.now(timezone.utc)
+        
+        rejection_msg = await message.reply(embed=embed)
+        
+        # Wait for reason from rejecter
+        def check(m):
+            return m.author.id == rejecter.id and m.channel.id == message.channel.id and m.reference and m.reference.message_id == rejection_msg.id
+            
+        try:
+            reason_msg = await self.bot.wait_for('message', check=check, timeout=300)  # 5 minute timeout
+            reason = reason_msg.content
+        except asyncio.TimeoutError:
+            reason = "No reason provided"
+        
+        # Send final rejection with reason
+        final_embed = discord.Embed(
+            title="❌ Event Log Rejected",
+            description=f"Rejected by {rejecter.mention}",
+            color=discord.Color.red(),
+            timestamp=datetime.now(timezone.utc)
+        
+        final_embed.add_field(name="Reason", value=reason)
+        
+        await message.reply(embed=final_embed)
+        
+        # Notify original author
+        try:
+            notify_embed = discord.Embed(
+                title="❌ Your Event Log Was Rejected",
+                description=f"Your event log in {message.channel.mention} was rejected.",
+                color=discord.Color.red(),
+                timestamp=datetime.now(timezone.utc)
+            
+            notify_embed.add_field(name="Reason", value=reason)
+            notify_embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
+            
+            await message.author.send(embed=notify_embed)
+        except discord.Forbidden:
+            pass  # Couldn't DM user
+        
+        # Log to approval channel
+        log_channel = message.guild.get_channel(self.log_channel_id)
+        if log_channel:
+            log_embed = discord.Embed(
+                title="📝 Event Log Rejected",
+                description=f"Rejected by {rejecter.mention}",
+                color=discord.Color.red(),
+                timestamp=datetime.now(timezone.utc)
+            
+            log_embed.add_field(name="Submitted by", value=message.author.mention)
+            log_embed.add_field(name="Reason", value=reason)
+            log_embed.add_field(name="Content", value=message.content[:1000] + "..." if len(message.content) > 1000 else message.content, inline=False)
+            log_embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
+            
+            await log_channel.send(embed=log_embed)
+
+
 # --- Bot Initialization ---
 intents = discord.Intents.default()
 intents.members = True
@@ -606,6 +842,7 @@ bot = commands.Bot(
 bot.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
 bot.reaction_logger = ReactionLogger(bot)
 bot.message_tracker = MessageTracker(bot)
+bot.event_log_reviewer = EventLogReviewer(bot)
 bot.api = DiscordAPI()
 bot.db = DatabaseHandler()
 
@@ -639,6 +876,8 @@ async def on_ready():
         
     await bot.reaction_logger.on_ready_setup()
     await bot.message_tracker.on_ready_setup()
+    await bot.event_log_reviewer.on_ready_setup()
+    
     
     bot.shared_session = aiohttp.ClientSession(
         headers={"User-Agent": USER_AGENT},
@@ -1046,6 +1285,24 @@ async def sheetdb_test(interaction: discord.Interaction):
         )
 
 # --- Event Handlers ---
+
+# Event Watcher Handlers
+@bot.event
+async def on_message(message: discord.Message):
+    # Process commands first
+    await bot.process_commands(message)
+    
+    # Then track messages for message tracker
+    await bot.message_tracker.log_message(message)
+    
+    # Then check for event logs
+    await bot.event_log_reviewer.process_event_log(message)
+
+@bot.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    await bot.reaction_logger.log_reaction(payload)
+    await bot.event_log_reviewer.handle_reaction(payload)
+    
 @bot.event
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     if isinstance(error, app_commands.CommandInvokeError):
