@@ -288,7 +288,7 @@ class EventLogView(discord.ui.View):
             title=f"[{self.form_data['event_type'].upper()}] {self.form_data['event_name']}",
             color=discord.Color.green(),
             timestamp=datetime.now(timezone.utc)
-        
+        )
         embed.add_field(name="Event", value=self.form_data['event_name'], inline=False)
         embed.add_field(name="Host", value=host_name, inline=True)
         embed.add_field(name="Co-Host", value=co_host_name, inline=True)
