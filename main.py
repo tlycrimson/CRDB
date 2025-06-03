@@ -245,110 +245,6 @@ class DatabaseHandler:
             return False
 
 # Event Log View Class
-class EventLogModal(discord.ui.Modal, title="Event Log Submission"):
-    """Modal form for event logging with all required fields"""
-    event_name = discord.ui.TextInput(
-        label="Event Name",
-        placeholder="Enter the name/title of your event",
-        style=discord.TextStyle.short,
-        required=True
-    )
-    
-    event_type = discord.ui.TextInput(
-        label="Event Type (Wide/Phase/Gamenight/etc)",
-        placeholder="Type the event type",
-        style=discord.TextStyle.short,
-        required=True
-    )
-    
-    attendees = discord.ui.TextInput(
-        label="Attendees (comma separated)",
-        placeholder="User1, User2, User3",
-        style=discord.TextStyle.long,
-        required=True
-    )
-    
-    co_host = discord.ui.TextInput(
-        label="Co-Host (optional)",
-        placeholder="Leave blank if none",
-        style=discord.TextStyle.short,
-        required=False
-    )
-    
-    additional_info = discord.ui.TextInput(
-        label="Awards/Notes",
-        placeholder="Awards for Wide Events or any notes",
-        style=discord.TextStyle.long,
-        required=False
-    )
-
-    def __init__(self, original_data: dict = None):
-        super().__init__()
-        self.original_data = original_data or {}
-        self.attachments = []
-        
-        # Pre-fill fields if editing
-        if original_data:
-            self.event_name.default = original_data.get('event_name', '')
-            self.event_type.default = original_data.get('event_type', '')
-            self.attendees.default = original_data.get('attendees', '')
-            self.co_host.default = original_data.get('co_host', '')
-            self.additional_info.default = original_data.get('additional_info', '')
-
-    async def on_submit(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
-        
-        # Process inputs
-        event_title = self.event_name.value
-        event_type = self.event_type.value
-        host_name = clean_nickname(interaction.user.display_name)
-        co_host_name = clean_nickname(self.co_host.value) if self.co_host.value else "N/A"
-        attendee_list = [clean_nickname(a.strip()) for a in self.attendees.value.split(',') if a.strip()]
-        
-        # Validate
-        if not attendee_list:
-            await interaction.followup.send("❌ Please provide at least one attendee", ephemeral=True)
-            return
-            
-        # Create preview embed
-        embed = discord.Embed(
-            title=f"[{event_type.upper()}] {event_title}",
-            color=discord.Color.blue(),
-            timestamp=datetime.now(timezone.utc)
-        )
-        
-        embed.add_field(name="Event", value=event_title, inline=False)
-        embed.add_field(name="Host", value=host_name, inline=True)
-        embed.add_field(name="Co-Host", value=co_host_name, inline=True)
-        embed.add_field(name="Attendees", value="\n".join(attendee_list) or "None", inline=False)
-        
-        if self.additional_info.value:
-            if "wide" in event_type.lower():
-                award_list = [clean_nickname(a.strip()) for a in self.additional_info.value.split(',') if a.strip()]
-                if award_list:
-                    embed.add_field(name="Award Recipients", value="\n".join(award_list), inline=False)
-                else:
-                    await interaction.followup.send(
-                        "⚠️ Wide Events should include award recipients in the Additional Info field",
-                        ephemeral=True
-                    )
-            else:
-                embed.add_field(name="Notes", value=self.additional_info.value, inline=False)
-        
-        # Show preview
-        view = EventLogView(
-            form_data={
-                'event_name': event_title,
-                'event_type': event_type,
-                'attendees': self.attendees.value,
-                'co_host': self.co_host.value,
-                'additional_info': self.additional_info.value
-            },
-            attachments=self.attachments,
-            original_interaction=interaction
-        )
-        
-        await interaction.followup.send(embed=embed, view=view, ephemeral=True)
 
 class EventLogView(discord.ui.View):
     """View for confirming/editing event logs"""
@@ -906,7 +802,8 @@ async def add_xp(interaction: discord.Interaction, user: discord.User, xp: int):
             "❌ Failed to add XP. Notify Crimson.",
             ephemeral=True
         )
-        
+
+
 # /take-xp Command
 @bot.tree.command(name="take-xp", description="Takes XP from user")
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
@@ -931,7 +828,8 @@ async def take_xp(interaction: discord.Interaction, user: discord.User, xp: int)
             "❌ Failed to take XP. Notify Crimson.",
             ephemeral=True
         )
-        
+
+
 # /xp Command
 @bot.tree.command(name="xp", description="Check your XP")
 async def check_xp(interaction: discord.Interaction, user: Optional[discord.User] = None):
@@ -945,7 +843,8 @@ async def check_xp(interaction: discord.Interaction, user: Optional[discord.User
         color=discord.Color.green()
     )
     await interaction.response.send_message(embed=embed)
-    
+
+
 # clearly-weekly-events
 @bot.tree.command(name="clear-weekly-events", description="Clear weekly event data")
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
@@ -953,36 +852,85 @@ async def clear_weekly_events(interaction: discord.Interaction):
     await bot.db.clear_weekly_events()
     await interaction.response.send_message("✅ Weekly event data cleared!")
 
+
+
 # Logging event Command
 @bot.tree.command(name="log-event", description="Log an event with attachments")
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
-async def log_event(interaction: discord.Interaction):
-    """Handle the log event command with attachment support"""
-    # Check for existing attachments
-    modal = EventLogModal()
+async def log_event(
+    interaction: discord.Interaction,
+    event_name: str,
+    event_type: Literal["Wide Event", "Event", "Phase", "Gamenight", "Tryout", "Selection", "Course"],
+    attendees: str,
+    co_host: Optional[str] = None,
+    award_recipients: Optional[str] = None,
+    notes: Optional[str] = None
+):
+    """Log an event using command parameters"""
+    await interaction.response.defer(ephemeral=True)
     
+    # Process all inputs
+    host_name = clean_nickname(interaction.user.display_name)
+    co_host_name = clean_nickname(co_host) if co_host else "N/A"
+    attendee_list = [clean_nickname(a.strip()) for a in attendees.split(',') if a.strip()]
+    award_list = [clean_nickname(a.strip()) for a in (award_recipients or "").split(',') if a.strip()]
+    
+    # Validate inputs
+    if not attendee_list:
+        await interaction.followup.send("❌ Please provide at least one attendee", ephemeral=True)
+        return
+        
+    if event_type == "Wide Event" and not award_list:
+        await interaction.followup.send(
+            "❌ Wide Events require at least one award recipient",
+            ephemeral=True
+        )
+        return
+    
+    # Get attachments from the interaction
+    attachments = []
     if interaction.message and interaction.message.attachments:
-        modal.attachments.extend(interaction.message.attachments)
+        attachments.extend(interaction.message.attachments)
     
-    await interaction.response.send_modal(modal)
-    await modal.wait()
+    # Create preview embed
+    embed = discord.Embed(
+        title=f"[{event_type.upper()}] {event_name}",
+        color=discord.Color.blue(),
+        timestamp=datetime.now(timezone.utc)
+    )
     
-    # Check for new attachments added while modal was open
-    try:
-        if hasattr(interaction, 'attachments') and interaction.attachments:
-            modal.attachments.extend(interaction.attachments)
-    except Exception as e:
-        logger.error(f"Error checking attachments: {e}")
+    embed.add_field(name="Event", value=event_name, inline=False)
+    embed.add_field(name="Host", value=host_name, inline=True)
+    embed.add_field(name="Co-Host", value=co_host_name, inline=True)
+    embed.add_field(name="Attendees", value="\n".join(attendee_list) or "None", inline=False)
+    
+    if event_type == "Wide Event" and award_list:
+        embed.add_field(name="Award Recipients", value="\n".join(award_list) or "None", inline=False)
+    
+    if notes:
+        embed.add_field(name="Notes", value=notes, inline=False)
+    
+    # Show preview with confirm/edit options
+    view = EventLogView(
+        form_data={
+            'event_name': event_name,
+            'event_type': event_type,
+            'attendees': attendees,
+            'co_host': co_host or "",
+            'award_recipients': award_recipients or "",
+            'notes': notes or ""
+        },
+        attachments=attachments,
+        original_interaction=interaction
+    )
+    
+    await interaction.followup.send(
+        embed=embed,
+        view=view,
+        ephemeral=True
+    )
 
-@bot.event
-async def on_message(message: discord.Message):
-    """Handle attachments in regular messages"""
-    if message.content.startswith(("!log-event", "/log-event")) and message.attachments:
-        ctx = await bot.get_context(message)
-        if ctx.command:
-            await ctx.invoke(ctx.command)
-    
-    await bot.process_commands(message)
+
 # Discharge Command
 @bot.tree.command(name="discharge", description="Notify members of honourable/dishonourable discharge and log it")
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
