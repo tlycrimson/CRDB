@@ -277,8 +277,8 @@ class EventLogView(discord.ui.View):
 
         
         embed.add_field(name="Event", value=self.form_data['event_name'], inline=False)
-        embed.add_field(name="Host", value=host_name, inline=True)
-        embed.add_field(name="Co-Host", value=co_host_name, inline=True)
+        embed.add_field(name="Host", value=host_name, inline=False)
+        embed.add_field(name="Co-Host", value=co_host_name, inline=False)
         embed.add_field(name="Attendees", value="\n".join(attendee_list) or "None", inline=False)
         
         if self.form_data['event_type'] == "Wide Event" and award_list:
@@ -343,6 +343,35 @@ class EventLogView(discord.ui.View):
         )
         await self.original_interaction.followup.send_modal(modal)
 
+    @discord.ui.button(label="Edit", style=discord.ButtonStyle.blurple)
+    async def edit(self, interaction: discord.Interaction, button: discord.ui.Button):
+        """Handle edit by showing instructions to run the command again"""
+        await interaction.response.defer()
+        self.stop()
+        
+        # Create instructions message with the previous values
+        instructions = (
+            "**Edit your event by running the command again with these values:**\n"
+            f"```/log-event "
+            f"event_name:\"{self.form_data['event_name']}\" "
+            f"event_type:\"{self.form_data['event_type']}\" "
+            f"attendees:\"{self.form_data['attendees']}\""
+        )
+        
+        if self.form_data['co_host']:
+            instructions += f" co_host:\"{self.form_data['co_host']}\""
+        if self.form_data['award_recipients']:
+            instructions += f" award_recipients:\"{self.form_data['award_recipients']}\""
+        if self.form_data['notes']:
+            instructions += f" notes:\"{self.form_data['notes']}\""
+        
+        instructions += "```\nYou can attach files to your new command message."
+        
+        await self.original_interaction.followup.send(
+            instructions,
+            ephemeral=True
+        )
+
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.red)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
         """Cancel the event logging"""
@@ -352,16 +381,6 @@ class EventLogView(discord.ui.View):
             "❌ Event logging cancelled",
             ephemeral=True
         )
-
-    async def on_timeout(self):
-        """Handle view timeout"""
-        try:
-            await self.original_interaction.followup.send(
-                "⌛ Event logging timed out",
-                ephemeral=True
-            )
-        except:
-            pass
 
 
 class ReactionLogger:
