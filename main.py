@@ -604,7 +604,7 @@ class EventLogReviewer:
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.monitor_channel_ids = set(Config.EVENT_LOG_CHANNELS)
-        self.log_channel_id = Config.EVENT_LOG_APPROVAL_CHANNEL
+        self.log_channel_id = Config.DEFAULT_LOG_CHANNEL
         self.allowed_role_id = Config.ALLOWED_ROLE_ID
         self.db = DatabaseHandler()
 
