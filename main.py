@@ -893,7 +893,7 @@ async def log_event(
     """Log an event with required attachments"""
 
     # ✅ Get all manually uploaded attachments
-    attachments = interaction.attachments
+    attachments = interaction.message.attachments if interaction.message else []
     if not attachments:
         return await interaction.response.send_message(
             "❌ You must attach at least one file as proof!\n"
