@@ -228,7 +228,7 @@ class DatabaseHandler:
         try:
             data = self.supabase.table('users').select("xp").eq("user_id", str(user_id)).execute()
             xp = data.data[0].get('xp', 0) if data.data else 0
-            logger.debug(f"Retrieved XP for {user_id}: {xp}")  # Debug level to avoid spam
+            logger.debug(f"Retrieved XP for {user_id}: {xp}")  #
             return xp
         except Exception as e:
             logger.error(f"Failed to get XP for {user_id}: {str(e)}")
