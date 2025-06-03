@@ -879,7 +879,7 @@ async def clear_weekly_events(interaction: discord.Interaction):
 
 
 # Logging event Command
-@bot.tree.command(name="log-event", description="Log an event (attachments required)")
+@bot.tree.command(name="log-event", description="Log an event (attachments required)") 
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def log_event(
     interaction: discord.Interaction,
@@ -891,67 +891,57 @@ async def log_event(
     notes: Optional[str] = None
 ):
     """Log an event with required attachments"""
-    # Check for attachments
-    attachments = []
-    if hasattr(interaction, 'attachments') and interaction.attachments:
-        attachments = interaction.attachments
-    elif interaction.message and interaction.message.attachments:
-        attachments = interaction.message.attachments
-    
+
+    # ✅ Get all manually uploaded attachments
+    attachments = interaction.attachments
     if not attachments:
         return await interaction.response.send_message(
             "❌ You must attach at least one file as proof!\n"
-            "Please add attachments using the '+' button and try again.",
+            "Please upload attachments using the + or paperclip button.",
             ephemeral=True
         )
-    
+
     await interaction.response.defer(ephemeral=True)
-    
-    # Process all inputs
+
+    # Process inputs...
     host_name = clean_nickname(interaction.user.display_name)
     co_host_name = clean_nickname(co_host) if co_host else "N/A"
     attendee_list = [clean_nickname(a.strip()) for a in attendees.split(',') if a.strip()]
     award_list = [clean_nickname(a.strip()) for a in (award_recipients or "").split(',') if a.strip()]
-    
-    # Validate inputs
+
     if not attendee_list:
         await interaction.followup.send("❌ Please provide at least one attendee", ephemeral=True)
         return
-        
     if event_type == "Wide Event" and not award_list:
         await interaction.followup.send(
             "❌ Wide Events require at least one award recipient",
             ephemeral=True
         )
         return
-    
-    # Create preview embed
+
+    # 📄 Create preview embed
     embed = discord.Embed(
         title=f"[{event_type.upper()}] {event_name}",
         color=discord.Color.blue(),
         timestamp=datetime.now(timezone.utc)
     )
-    
     embed.add_field(name="Event", value=event_name, inline=False)
     embed.add_field(name="Host", value=host_name, inline=True)
     embed.add_field(name="Co-Host", value=co_host_name, inline=True)
-    embed.add_field(name="Attendees", value="\n".join(attendee_list) or "None", inline=False)
-    
+    embed.add_field(name="Attendees", value="\n".join(attendee_list), inline=False)
+
     if event_type == "Wide Event" and award_list:
-        embed.add_field(name="Award Recipients", value="\n".join(award_list) or "None", inline=False)
-    
+        embed.add_field(name="Award Recipients", value="\n".join(award_list), inline=False)
     if notes:
         embed.add_field(name="Notes", value=notes, inline=False)
-    
-    # Show attachments in preview
-    if attachments:
-        embed.add_field(
-            name="Attachments",
-            value="\n".join(f"• {a.filename}" for a in attachments),
-            inline=False
-        )
-    
-    # Show preview with confirm/edit options
+
+    # 🔗 Add attachment preview
+    proof_text = ""
+    for i, att in enumerate(attachments, 1):
+        proof_text += f"[Attachment {i}]({att.url})\n"
+    embed.add_field(name="Proof", value=proof_text.strip(), inline=False)
+
+    # Show preview with buttons
     view = EventLogView(
         form_data={
             'event_name': event_name,
@@ -964,12 +954,15 @@ async def log_event(
         attachments=attachments,
         original_interaction=interaction
     )
-    
+
     await interaction.followup.send(
         embed=embed,
         view=view,
         ephemeral=True
     )
+
+
+
 
 # Discharge Command
 @bot.tree.command(name="discharge", description="Notify members of honourable/dishonourable discharge and log it")
