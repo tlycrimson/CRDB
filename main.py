@@ -715,7 +715,7 @@ async def take_xp(interaction: discord.Interaction, user: discord.User, xp: int)
 
 
 # /xp Command
-@bot.tree.command(name="xp", description="Check your XP")
+@bot.tree.command(name="xp", description="Check yours or someone else's XP")
 async def xp_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
     """Check a user's XP and leaderboard position"""
     try:
@@ -787,79 +787,7 @@ async def handle_command_error(interaction: discord.Interaction, error: Exceptio
                 delete_after=10
             )
 
-
 # Leadebaord Command
-@bot.tree.command(name="xp", description="Check your XP")
-async def check_xp(interaction: discord.Interaction, user: Optional[discord.User] = None):
-    try:
-        # Rate limiting (1 request per 2 seconds per user)
-        await bot.rate_limiter.wait_if_needed(bucket=f"xp_cmd_{interaction.user.id}")
-        
-        target_user = user or interaction.user
-        cleaned_name = clean_nickname(target_user.display_name)
-        
-        # Rate limit Supabase queries
-        await bot.rate_limiter.wait_if_needed(bucket="supabase_query")
-        
-        # Get user's XP
-        xp = await bot.db.get_user_xp(target_user.id)
-        
-        # Get leaderboard data
-        await bot.rate_limiter.wait_if_needed(bucket="supabase_query")
-        result = bot.db.supabase.table('users') \
-            .select("user_id", "xp") \
-            .order("xp", desc=True) \
-            .execute()
-        
-        leaderboard_data = result.data
-        
-        # Find user's position
-        position = None
-        if leaderboard_data:
-            for idx, entry in enumerate(leaderboard_data, 1):
-                if str(entry['user_id']) == str(target_user.id):
-                    position = idx
-                    break
-        
-        # Create embed
-        embed = discord.Embed(
-            title=f"📊 XP Profile: {cleaned_name}",
-            color=discord.Color.green()
-        )
-        
-        embed.add_field(
-            name="Current XP",
-            value=f"```{xp}```",
-            inline=True
-        )
-        
-        if position:
-            embed.add_field(
-                name="Leaderboard Position",
-                value=f"```#{position}```",
-                inline=True
-            )
-            
-            # Add percentile if we have enough data
-            if len(leaderboard_data) > 10:
-                percentile = (position / len(leaderboard_data)) * 100
-                embed.add_field(
-                    name="Percentile",
-                    value=f"```Top {100 - percentile:.1f}%```",
-                    inline=False
-                )
-        
-        embed.set_thumbnail(url=target_user.display_avatar.url)
-        
-        await interaction.response.send_message(embed=embed)
-        
-    except Exception as e:
-        logger.error(f"Error in /xp command: {str(e)}")
-        await interaction.response.send_message(
-            "❌ Failed to retrieve XP data. Please try again later.",
-            ephemeral=True
-        )
-
 @bot.tree.command(name="leaderboard", description="View the top 15 users by XP")
 async def leaderboard(interaction: discord.Interaction):
     try:
@@ -908,7 +836,6 @@ async def leaderboard(interaction: discord.Interaction):
             "❌ Failed to fetch leaderboard data. Please try again later.",
             ephemeral=True
         )
-
 
 
 # clearly-weekly-events
