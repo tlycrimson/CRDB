@@ -736,6 +736,114 @@ async def clear_weekly_events(interaction: discord.Interaction):
     await bot.db.clear_weekly_events()
     await interaction.response.send_message("✅ Weekly event data cleared!")
 
+# Give Event XP Command
+@bot.tree.command(name="give-event-xp", description="Give XP to attendees mentioned in an event log message")
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
+async def give_event_xp(
+    interaction: discord.Interaction,
+    message_link: str,
+    xp_amount: int,
+    attendees_section: Literal["Attendees:", "Passed:"] = "Attendees:"
+):
+    """Give XP to users mentioned in an event log message"""
+    await interaction.response.send_message("Attempting to give XP...")
+    
+    try:
+        # Parse message link
+        if not message_link.startswith('https://discord.com/channels/'):
+            await interaction.followup.send("❌ Invalid message link format", ephemeral=True)
+            return
+            
+        parts = message_link.split('/')
+        if len(parts) < 7:
+            await interaction.followup.send("❌ Invalid message link format", ephemeral=True)
+            return
+            
+        guild_id = int(parts[4])
+        channel_id = int(parts[5])
+        message_id = int(parts[6])
+        
+        if guild_id != interaction.guild.id:
+            await interaction.followup.send("❌ Message must be from this server", ephemeral=True)
+            return
+            
+        # Fetch the message
+        channel = interaction.guild.get_channel(channel_id)
+        if not channel:
+            await interaction.followup.send("❌ Channel not found", ephemeral=True)
+            return
+            
+        try:
+            message = await channel.fetch_message(message_id)
+        except discord.NotFound:
+            await interaction.followup.send("❌ Message not found", ephemeral=True)
+            return
+        except discord.Forbidden:
+            await interaction.followup.send("❌ No permission to read that channel", ephemeral=True)
+            return
+            
+        # Find the attendees section
+        content = message.content
+        section_index = content.find(attendees_section)
+        if section_index == -1:
+            await interaction.folloup.send(f"❌ Could not find '{attendees_section}' in the message", ephemeral=True)
+            return
+            
+        # Extract mentions from the attendees section
+        mentions_section = content[section_index + len(attendees_section):]
+        mentions = re.findall(r'<@!?(\d+)>', mentions_section)
+        
+        if not mentions:
+            await interaction.followup.send(f"❌ No user mentions found after '{attendees_section}'", ephemeral=True)
+            return
+            
+        # Remove duplicates
+        unique_mentions = list(set(mentions))
+        success_count = 0
+        failed_users = []
+        
+        # Process each user
+        for user_id in unique_mentions:
+            member = interaction.guild.get_member(int(user_id))
+            if not member:
+                failed_users.append(f"Unknown user ({user_id})")
+                continue
+                
+            success, new_total = await bot.db.add_xp(
+                member.id,
+                member.display_name,
+                xp_amount
+            )
+            
+            if success:
+                success_count += 1
+                cleaned_name = clean_nickname(member.display_name)
+                await interaction.followup.send(
+                    f"✅ Added {xp_amount} XP to {cleaned_name}. New total: {new_total} XP",
+                    ephemeral=True
+                )
+            else:
+                failed_users.append(clean_nickname(member.display_name))
+                
+        # Final summary
+        result_message = [
+            f"Completed giving out XP\n\n",
+            f"Successfully gave XP to {success_count} users\n",
+            f"Failed to give XP to {len(failed_users)} users:"
+        ]
+        
+        if failed_users:
+            result_message.append("\n".join(f"• {user}" for user in failed_users))
+            
+        await interaction.followup.send("\n".join(result_message))
+        
+    except Exception as e:
+        logger.error(f"Error in give_event_xp: {str(e)}")
+        await interaction.followup.send(
+            "❌ An error occurred while processing the command",
+            ephemeral=True
+        )
+
 
 # Discharge Command
 @bot.tree.command(name="discharge", description="Notify members of honourable/dishonourable discharge and log it")
