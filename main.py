@@ -29,6 +29,11 @@ GOOGLE_SCRIPT_URL = os.getenv("GOOGLE_SCRIPT_URL")
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
 TIMEOUT = aiohttp.ClientTimeout(total=10)
 
+# XP Limit Configuration
+MAX_XP_PER_ACTION =  20  # Maximum XP that can be given/taken in a single action
+MAX_EVENT_XP_PER_USER = 20 # Maximum XP per user in event distributions
+MAX_EVENT_TOTAL_XP = 5000  # Maximum total XP for entire event distribution
+
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -672,50 +677,106 @@ async def on_disconnect():
 # --- Commands --- 
 # /addxp Command
 @bot.tree.command(name="addxp", description="Add XP to a user")
-@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
+@min_rank_required(Config.HR_ROLE_ID)
 async def add_xp(interaction: discord.Interaction, user: discord.User, xp: int):
-    success, new_total = await bot.db.add_xp(user.id, user.display_name, xp)
+    # Validate XP amount
+    if xp <= 0:
+        await interaction.response.send_message(
+            "❌ XP amount must be positive.",
+            ephemeral=True
+        )
+        return
+    if xp > MAX_XP_PER_ACTION:
+        await interaction.response.send_message(
+            f"❌ Cannot give more than {MAX_XP_PER_ACTION} XP at once.",
+            ephemeral=True
+        )
+        return
+
     cleaned_name = clean_nickname(user.display_name)
+    current_xp = await bot.db.get_user_xp(user.id)
+    
+    # Additional safety check
+    if current_xp > 100000:  # Extreme value check
+        await interaction.response.send_message(
+            "❌ User has unusually high XP. Contact admin.",
+            ephemeral=True
+        )
+        return
+    
+    success, new_total = await bot.db.add_xp(user.id, cleaned_name, xp)
     
     if success:
         await interaction.response.send_message(
             f"✅ Added {xp} XP to {cleaned_name}. New total: {new_total} XP"
         )
+        # Log the XP change
+        await log_xp_change(
+            interaction.user,
+            user,
+            xp,
+            new_total,
+            "Manual Addition"
+        )
     else:
         await interaction.response.send_message(
-            "❌ Failed to add XP. Notify Crimson.",
+            "❌ Failed to add XP. Notify admin.",
             ephemeral=True
         )
 
 
 # /take-xp Command
 @bot.tree.command(name="take-xp", description="Takes XP from user")
-@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
+@min_rank_required(Config.HR_ROLE_ID)
 async def take_xp(interaction: discord.Interaction, user: discord.User, xp: int):
-    if xp < 0:
+    if xp <= 0:
         await interaction.response.send_message(
-            "❌ Cannot take negative XP. Use /addxp instead.",
+            "❌ XP amount must be positive. Use /addxp to give XP.",
+            ephemeral=True
+        )
+        return
+    if xp > MAX_XP_PER_ACTION:
+        await interaction.response.send_message(
+            f"❌ Cannot remove more than {MAX_XP_PER_ACTION} XP at once.",
+            ephemeral=True
+        )
+        return
+
+    cleaned_name = clean_nickname(user.display_name)
+    current_xp = await bot.db.get_user_xp(user.id)
+    
+    if xp > current_xp:
+        await interaction.response.send_message(
+            f"❌ User only has {current_xp} XP. Cannot take {xp}.",
             ephemeral=True
         )
         return
     
-    success, new_total = await bot.db.take_xp(user.id, user.display_name, xp)
-    cleaned_name = clean_nickname(user.display_name)
+    success, new_total = await bot.db.take_xp(user.id, cleaned_name, xp)
     
     if success:
         message = f"✅ Removed {xp} XP from {cleaned_name}. New total: {new_total} XP"
         if new_total == 0:
             message += "\n⚠️ User's XP has reached 0"
         await interaction.response.send_message(message)
+        # Log the XP change
+        await log_xp_change(
+            interaction.user,
+            user,
+            -xp,  # Negative for removal
+            new_total,
+            "Manual Removal"
+        )
     else:
         await interaction.response.send_message(
-            "❌ Failed to take XP. Notify Crimson.",
+            "❌ Failed to take XP. Notify admin.",
             ephemeral=True
         )
 
 
 # /xp Command
 @bot.tree.command(name="xp", description="Check yours or someone else's XP")
+@min_rank_required(Config.RMP_ROLE_ID) 
 async def xp_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
     """Check a user's XP and leaderboard position"""
     try:
@@ -789,6 +850,7 @@ async def handle_command_error(interaction: discord.Interaction, error: Exceptio
 
 # Leadebaord Command
 @bot.tree.command(name="leaderboard", description="View the top 15 users by XP")
+@min_rank_required(Config.RMP_ROLE_ID)  
 async def leaderboard(interaction: discord.Interaction):
     try:
         # Rate limiting for Supabase
@@ -838,35 +900,36 @@ async def leaderboard(interaction: discord.Interaction):
         )
 
 
-# clearly-weekly-events
-@bot.tree.command(name="clear-weekly-events", description="Clear weekly event data")
-@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
-async def clear_weekly_events(interaction: discord.Interaction):
-    await bot.db.clear_weekly_events()
-    await interaction.response.send_message("✅ Weekly event data cleared!")
-
 # Give Event XP Command
 @bot.tree.command(name="give-event-xp", description="Give XP to attendees mentioned in an event log message")
-@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
+@min_rank_required(Config.HR_ROLE_ID)
 async def give_event_xp(
     interaction: discord.Interaction,
     message_link: str,
     xp_amount: int,
     attendees_section: Literal["Attendees:", "Passed:"] = "Attendees:"
 ):
-    """Give XP to users mentioned in an event log message"""
-    # Initial response visible to everyone
+    # Validate XP amount
+    if xp_amount <= 0:
+        await interaction.response.send_message(
+            "❌ XP amount must be positive.",
+            ephemeral=True
+        )
+        return
+    if xp_amount > MAX_EVENT_XP_PER_USER:
+        await interaction.response.send_message(
+            f"❌ Cannot give more than {MAX_EVENT_XP_PER_USER} XP per user in events.",
+            ephemeral=True
+        )
+        return
+
     await interaction.response.send_message("⏳ Attempting to give XP...")
     
     try:
-        # Rate limiting check (1 command per 10 seconds per user)
-        try:
-            await bot.rate_limiter.wait_if_needed(bucket=f"give_xp_{interaction.user.id}")
-        except Exception as e:
-            await interaction.followup.send("🚦 Please wait a moment before using this command again.", ephemeral=True)
-            return
+        # Rate limiting check
+        await bot.rate_limiter.wait_if_needed(bucket=f"give_xp_{interaction.user.id}")
 
-        # Parse message link
+        # Parse and validate message link
         if not message_link.startswith('https://discord.com/channels/'):
             await interaction.followup.send("❌ Invalid message link format", ephemeral=True)
             return
@@ -891,7 +954,6 @@ async def give_event_xp(
             return
             
         try:
-            # Rate limit message fetching
             await bot.rate_limiter.wait_if_needed(bucket="discord_api")
             message = await channel.fetch_message(message_id)
         except discord.NotFound:
@@ -900,21 +962,14 @@ async def give_event_xp(
         except discord.Forbidden:
             await interaction.followup.send("❌ No permission to read that channel", ephemeral=True)
             return
-        except discord.HTTPException as e:
-            if e.status == 429:
-                retry_after = e.response.headers.get('Retry-After', 5)
-                await interaction.followup.send(f"⚠️ Discord is rate limiting us. Please wait {retry_after} seconds and try again.", ephemeral=True)
-                return
-            raise
             
-        # Find the attendees section
+        # Find and process attendees section
         content = message.content
         section_index = content.find(attendees_section)
         if section_index == -1:
             await interaction.followup.send(f"❌ Could not find '{attendees_section}' in the message", ephemeral=True)
             return
             
-        # Extract mentions from the attendees section
         mentions_section = content[section_index + len(attendees_section):]
         mentions = re.findall(r'<@!?(\d+)>', mentions_section)
         
@@ -922,60 +977,68 @@ async def give_event_xp(
             await interaction.followup.send(f"❌ No user mentions found after '{attendees_section}'", ephemeral=True)
             return
             
-        # Remove duplicates
+        # Remove duplicates and validate count
         unique_mentions = list(set(mentions))
+        total_potential_xp = xp_amount * len(unique_mentions)
+        
+        if total_potential_xp > MAX_EVENT_TOTAL_XP:
+            await interaction.followup.send(
+                f"❌ Event would give {total_potential_xp} XP total (max is {MAX_EVENT_TOTAL_XP}). Reduce XP or attendees.",
+                ephemeral=True
+            )
+            return
+            
+        # Process users
         success_count = 0
         failed_users = []
-        
-        # Edit initial message to show processing has started
         await interaction.edit_original_response(content="🎯 Processing XP distribution...")
         
-        # Process each user with rate limiting
         for i, user_id in enumerate(unique_mentions):
-            # Rate limit XP distribution (1 every 0.5 seconds)
             if i > 0:
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.5)  # Rate limiting
                 
             member = interaction.guild.get_member(int(user_id))
             if not member:
                 failed_users.append(f"Unknown user ({user_id})")
                 continue
                 
-            success, new_total = await bot.db.add_xp(
-                member.id,
-                member.display_name,
-                xp_amount
-            )
+            current_xp = await bot.db.get_user_xp(member.id)
+            if current_xp + xp_amount > 100000:  # Extreme value check
+                failed_users.append(f"{clean_nickname(member.display_name)} (would exceed max XP)")
+                continue
+                
+            success, new_total = await bot.db.add_xp(member.id, member.display_name, xp_amount)
             
             if success:
                 success_count += 1
-                cleaned_giver = clean_nickname(interaction.user.display_name)
-                cleaned_receiver = clean_nickname(member.display_name)
-                # Public message for each successful XP addition
                 await interaction.followup.send(
-                    f"✨ **{cleaned_giver}** gave {xp_amount} XP to {member.mention} (New total: {new_total} XP)",
-                    silent=True  
+                    f"✨ **{clean_nickname(interaction.user.display_name)}** gave {xp_amount} XP to {member.mention} (New total: {new_total} XP)",
+                    silent=True
+                )
+                # Log the XP change
+                await log_xp_change(
+                    interaction.user,
+                    member,
+                    xp_amount,
+                    new_total,
+                    f"Event: {message.jump_url}"
                 )
             else:
                 failed_users.append(clean_nickname(member.display_name))
                 
-        # Final summary (visible to everyone)
+        # Final summary
         result_message = [
             f"✅ **XP Distribution Complete**",
             f"**Given by:** {interaction.user.mention}",
-            f"**Total XP given:** {xp_amount}",
+            f"**XP per user:** {xp_amount}",
             f"**Successful distributions:** {success_count}",
+            f"**Total XP given:** {xp_amount * success_count}"
         ]
         
         if failed_users:
             result_message.append(f"\n**Failed distributions:** {len(failed_users)}")
-            # Send failures in chunks to avoid message length limits
-            failed_chunks = [failed_users[i:i + 10] for i in range(0, len(failed_users), 10)]
-            for chunk in failed_chunks:
-                await interaction.followup.send(
-                    "• " + "\n• ".join(chunk),
-                    ephemeral=True
-                )
+            for chunk in [failed_users[i:i + 10] for i in range(0, len(failed_users), 10)]:
+                await interaction.followup.send("• " + "\n• ".join(chunk), ephemeral=True)
         
         await interaction.followup.send("\n".join(result_message))
         
@@ -985,6 +1048,32 @@ async def give_event_xp(
             "❌ An error occurred while processing the command",
             ephemeral=True
         )
+
+async def log_xp_change(
+    giver: discord.User,
+    receiver: discord.User,
+    amount: int,
+    new_total: int,
+    reason: str
+):
+    """Log XP changes to a dedicated channel"""
+    try:
+        log_channel = bot.get_channel(Config.DEFAULT_LOG_CHANNEL)  
+        if log_channel:
+            embed = discord.Embed(
+                title="📝 XP Transaction Log",
+                color=discord.Color.blue(),
+                timestamp=datetime.now(timezone.utc)
+            
+            embed.add_field(name="Giver", value=f"{giver.mention} ({giver.id})", inline=True)
+            embed.add_field(name="Receiver", value=f"{receiver.mention} ({receiver.id})", inline=True)
+            embed.add_field(name="Amount", value=f"`{amount:+}`", inline=True)
+            embed.add_field(name="New Total", value=f"`{new_total}`", inline=True)
+            embed.add_field(name="Reason", value=reason, inline=False)
+            
+            await log_channel.send(embed=embed)
+    except Exception as e:
+        logger.error(f"Failed to log XP change: {str(e)}")
 
 
 # Discharge Command
@@ -1310,6 +1399,50 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
                 ephemeral=True
             )
             return
+
+# XP Database remover
+@bot.event
+async def on_member_update(before: discord.Member, after: discord.Member):
+    """Check for RMP role removal and clean up XP data"""
+    try:
+        # Get the RMP role from config
+        rmp_role = after.guild.get_role(Config.RMP_ROLE_ID)
+        if not rmp_role:
+            return  # Role not found in server
+        
+        # Check if member lost the RMP role
+        if rmp_role in before.roles and rmp_role not in after.roles:
+            logger.info(f"RMP role removed from {after.display_name}, cleaning XP data...")
+            
+            # Try to remove from XP table
+            try:
+                result = bot.db.supabase.table('users') \
+                    .delete() \
+                    .eq('user_id', str(after.id)) \
+                    .execute()
+                
+                if len(result.data) > 0:
+                    logger.info(f"Successfully removed {after.display_name} from XP table")
+                    
+                    # Log to audit channel if configured
+                    if hasattr(Config, 'DEFAULT_LOG_CHANNEL'):
+                        channel = after.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
+                        if channel:
+                            embed = discord.Embed(
+                                title="XP Data Cleanup",
+                                description=f"Removed {after.mention} from XP table after losing RMP role",
+                                color=discord.Color.orange()
+                            )
+                            await channel.send(embed=embed)
+                else:
+                    logger.info(f"No XP data found for {after.display_name}")
+                    
+            except Exception as db_error:
+                logger.error(f"Failed to remove {after.id} from XP table: {str(db_error)}")
+                
+    except Exception as e:
+        logger.error(f"Error in on_member_update for RMP role check: {str(e)}")
+
 
 # HR Welcome Message
 async def send_hr_welcome(member: discord.Member):
