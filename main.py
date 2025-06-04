@@ -1268,7 +1268,7 @@ async def message_tracker_list(interaction: discord.Interaction):
 
 
 @bot.tree.command(name="force-update", description="Manually test sheet updates")
-@has_allowed_role()
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)  
 async def force_update(interaction: discord.Interaction, username: str):
     await interaction.response.defer(ephemeral=True)
     
@@ -1292,7 +1292,7 @@ async def force_update(interaction: discord.Interaction, username: str):
         )
 
 @bot.tree.command(name="commands", description="List all available commands")
-@has_allowed_role()
+@min_rank_required(Config.RMP_ROLE_ID)  
 async def command_list(interaction: discord.Interaction):
     embed = discord.Embed(
         title="📜 Available Commands",
@@ -1317,7 +1317,15 @@ async def command_list(interaction: discord.Interaction):
             "/commands - Show this help message",
             "/sheetdb-test - Test SheetDB connection",
             "/sc - Security Check Roblox user",
-            "/discharge - Sends discharge notification to user and logs in discharge logs."
+            "/discharge - Sends discharge notification to user and logs in discharge logs",
+            "/force-update - Manually test sheets update"
+        ],
+         "⭐ XP": [
+            "/add-xp - Gives xp to user",
+            "/take-xp - Takes xp from user",
+            "/give-event-xp - Gives xp to attendees/passers in event logs",
+            "/xp - Checks amount of xp user has",
+            "/leaderboard - View the top 15 users by XP"
         ]
     }
     
