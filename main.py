@@ -1064,6 +1064,7 @@ async def log_xp_change(
                 title="📝 XP Transaction Log",
                 color=discord.Color.blue(),
                 timestamp=datetime.now(timezone.utc)
+            )
             
             embed.add_field(name="Giver", value=f"{giver.mention} ({giver.id})", inline=True)
             embed.add_field(name="Receiver", value=f"{receiver.mention} ({receiver.id})", inline=True)
