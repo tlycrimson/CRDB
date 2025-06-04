@@ -746,9 +746,17 @@ async def give_event_xp(
     attendees_section: Literal["Attendees:", "Passed:"] = "Attendees:"
 ):
     """Give XP to users mentioned in an event log message"""
-    await interaction.response.send_message("Attempting to give XP...")
+    # Initial response visible to everyone
+    await interaction.response.send_message("⏳ Attempting to give XP...")
     
     try:
+        # Rate limiting check (1 command per 10 seconds per user)
+        try:
+            await bot.rate_limiter.wait_if_needed(bucket=f"give_xp_{interaction.user.id}")
+        except Exception as e:
+            await interaction.followup.send("🚦 Please wait a moment before using this command again.", ephemeral=True)
+            return
+
         # Parse message link
         if not message_link.startswith('https://discord.com/channels/'):
             await interaction.followup.send("❌ Invalid message link format", ephemeral=True)
@@ -767,13 +775,15 @@ async def give_event_xp(
             await interaction.followup.send("❌ Message must be from this server", ephemeral=True)
             return
             
-        # Fetch the message
+        # Fetch the message with rate limiting
         channel = interaction.guild.get_channel(channel_id)
         if not channel:
             await interaction.followup.send("❌ Channel not found", ephemeral=True)
             return
             
         try:
+            # Rate limit message fetching
+            await bot.rate_limiter.wait_if_needed(bucket="discord_api")
             message = await channel.fetch_message(message_id)
         except discord.NotFound:
             await interaction.followup.send("❌ Message not found", ephemeral=True)
@@ -781,12 +791,18 @@ async def give_event_xp(
         except discord.Forbidden:
             await interaction.followup.send("❌ No permission to read that channel", ephemeral=True)
             return
+        except discord.HTTPException as e:
+            if e.status == 429:
+                retry_after = e.response.headers.get('Retry-After', 5)
+                await interaction.followup.send(f"⚠️ Discord is rate limiting us. Please wait {retry_after} seconds and try again.", ephemeral=True)
+                return
+            raise
             
         # Find the attendees section
         content = message.content
         section_index = content.find(attendees_section)
         if section_index == -1:
-            await interaction.folloup.send(f"❌ Could not find '{attendees_section}' in the message", ephemeral=True)
+            await interaction.followup.send(f"❌ Could not find '{attendees_section}' in the message", ephemeral=True)
             return
             
         # Extract mentions from the attendees section
@@ -802,8 +818,15 @@ async def give_event_xp(
         success_count = 0
         failed_users = []
         
-        # Process each user
-        for user_id in unique_mentions:
+        # Edit initial message to show processing has started
+        await interaction.edit_original_response(content="🎯 Processing XP distribution...")
+        
+        # Process each user with rate limiting
+        for i, user_id in enumerate(unique_mentions):
+            # Rate limit XP distribution (1 every 0.5 seconds)
+            if i > 0:
+                await asyncio.sleep(0.5)
+                
             member = interaction.guild.get_member(int(user_id))
             if not member:
                 failed_users.append(f"Unknown user ({user_id})")
@@ -818,23 +841,32 @@ async def give_event_xp(
             if success:
                 success_count += 1
                 cleaned_name = clean_nickname(member.display_name)
+                # Public message for each successful XP addition
                 await interaction.followup.send(
-                    f"✅ Added {xp_amount} XP to {cleaned_name}. New total: {new_total} XP",
-                    ephemeral=True
+                    f"✨ {interaction.user.mention} gave {xp_amount} XP to {member.mention} (New total: {new_total} XP)",
+                    silent=True  # Doesn't ping the user
                 )
             else:
                 failed_users.append(clean_nickname(member.display_name))
                 
-        # Final summary
+        # Final summary (visible to everyone)
         result_message = [
-            f"Completed giving out XP\n\n",
-            f"Successfully gave XP to {success_count} users\n",
-            f"Failed to give XP to {len(failed_users)} users:"
+            f"✅ **XP Distribution Complete**",
+            f"**Given by:** {interaction.user.mention}",
+            f"**Total XP given:** {xp_amount}",
+            f"**Successful distributions:** {success_count}",
         ]
         
         if failed_users:
-            result_message.append("\n".join(f"• {user}" for user in failed_users))
-            
+            result_message.append(f"\n**Failed distributions:** {len(failed_users)}")
+            # Send failures in chunks to avoid message length limits
+            failed_chunks = [failed_users[i:i + 10] for i in range(0, len(failed_users), 10)]
+            for chunk in failed_chunks:
+                await interaction.followup.send(
+                    "• " + "\n• ".join(chunk),
+                    ephemeral=True
+                )
+        
         await interaction.followup.send("\n".join(result_message))
         
     except Exception as e:
