@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 import logging
 from typing import Any, Dict, Optional
 from aiohttp.resolver import AsyncResolver
+from decorators import min_rank_required, has_allowed_role
 
 # Configure root logger
 logging.basicConfig(
@@ -166,6 +167,7 @@ async def fetch_badge_count(session: aiohttp.ClientSession, user_id: int) -> int
 
 def create_sc_command(bot: commands.Bot):
     @bot.tree.command(name="sc", description="Security check a Roblox user")
+    @has_allowed_role()
     @app_commands.describe(user_id="The Roblox user ID to check")
     @app_commands.checks.cooldown(rate=1, per=10.0)
     async def sc(interaction: discord.Interaction, user_id: int):
