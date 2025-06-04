@@ -715,89 +715,78 @@ async def take_xp(interaction: discord.Interaction, user: discord.User, xp: int)
 
 
 # /xp Command
-@bot.tree.command(name="xp", description="Check yours or someone's XP")
-async def check_xp(interaction: discord.Interaction, user: Optional[discord.User] = None):
+@bot.tree.command(name="xp", description="Check your XP")
+async def xp_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
+    """Check a user's XP and leaderboard position"""
     try:
-        # Defer the response first to avoid the "Unknown interaction" error
         await interaction.response.defer()
         
-        # Rate limiting (1 request per 2 seconds per user)
+        # Rate limiting
         await bot.rate_limiter.wait_if_needed(bucket=f"xp_cmd_{interaction.user.id}")
         
         target_user = user or interaction.user
         cleaned_name = clean_nickname(target_user.display_name)
         
-        # Rate limit Supabase queries
-        await bot.rate_limiter.wait_if_needed(bucket="supabase_query")
-        
-        # Get user's XP
+        # Get XP and leaderboard data
         xp = await bot.db.get_user_xp(target_user.id)
-        
-        # Get leaderboard position (using the correct db access)
-        await bot.rate_limiter.wait_if_needed(bucket="supabase_query")
-        result = bot.db.supabase.table('users') \
-            .select("user_id", "xp") \
-            .order("xp", desc=True) \
+        result = await asyncio.to_thread(
+            lambda: bot.db.supabase.table('users')
+            .select("user_id", "xp")
+            .order("xp", desc=True)
             .execute()
+        )
         
-        leaderboard_data = result.data
+        # Process leaderboard position
+        position = next(
+            (idx for idx, entry in enumerate(result.data, 1) 
+             if str(entry['user_id']) == str(target_user.id)),
+            None
+        )
         
-        # Find user's position
-        position = None
-        if leaderboard_data:
-            for idx, entry in enumerate(leaderboard_data, 1):
-                if str(entry['user_id']) == str(target_user.id):
-                    position = idx
-                    break
-        
-        # Create embed
+        # Build embed
         embed = discord.Embed(
             title=f"📊 XP Profile: {cleaned_name}",
             color=discord.Color.green()
-        )
+        ).set_thumbnail(url=target_user.display_avatar.url)
         
-        embed.add_field(
-            name="Current XP",
-            value=f"```{xp}```",
-            inline=True
-        )
+        embed.add_field(name="Current XP", value=f"```{xp}```", inline=True)
         
         if position:
-            embed.add_field(
-                name="Leaderboard Position",
-                value=f"```#{position}```",
-                inline=True
-            )
-            
-            # Add percentile if we have enough data
-            if len(leaderboard_data) > 10:
-                percentile = (position / len(leaderboard_data)) * 100
+            embed.add_field(name="Leaderboard Position", value=f"```#{position}```", inline=True)
+            if len(result.data) > 10:
+                percentile = (position / len(result.data)) * 100
                 embed.add_field(
-                    name="Percentile",
-                    value=f"```Top {100 - percentile:.1f}%```",
+                    name="Percentile", 
+                    value=f"```Top {100 - percentile:.1f}%```", 
                     inline=False
                 )
         
-        embed.set_thumbnail(url=target_user.display_avatar.url)
-        
-        # Use followup since we deferred the response
         await interaction.followup.send(embed=embed)
         
     except Exception as e:
-        logger.error(f"Error in /xp command: {str(e)}")
-        try:
+        logger.error(f"XP command error: {str(e)}")
+        await handle_command_error(interaction, e)
+
+async def handle_command_error(interaction: discord.Interaction, error: Exception):
+    """Centralized error handling for commands"""
+    try:
+        if isinstance(error, discord.NotFound):
             await interaction.followup.send(
-                "❌ Failed to retrieve XP data. Please try again later.",
+                "⚠️ Operation timed out. Please try again.",
                 ephemeral=True
             )
-        except:
-            # Fallback if followup also fails
-            channel = interaction.channel
-            if channel:
-                await channel.send(
-                    f"{interaction.user.mention} ❌ Failed to retrieve XP data. Please try again later.",
-                    delete_after=10
-                )
+        else:
+            await interaction.followup.send(
+                "❌ An error occurred. Please try again later.",
+                ephemeral=True
+            )
+    except:
+        if interaction.channel:
+            await interaction.channel.send(
+                f"{interaction.user.mention} ❌ Command failed. Please try again.",
+                delete_after=10
+            )
+
 
 # Leadebaord Command
 @bot.tree.command(name="xp", description="Check your XP")
