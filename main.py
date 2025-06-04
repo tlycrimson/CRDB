@@ -676,7 +676,7 @@ async def on_disconnect():
         
 # --- Commands --- 
 # /addxp Command
-@bot.tree.command(name="addxp", description="Add XP to a user")
+@bot.tree.command(name="add-xp", description="Add XP to a user")
 @min_rank_required(Config.HR_ROLE_ID)
 async def add_xp(interaction: discord.Interaction, user: discord.User, xp: int):
     # Validate XP amount
