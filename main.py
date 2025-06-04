@@ -717,16 +717,117 @@ async def take_xp(interaction: discord.Interaction, user: discord.User, xp: int)
 # /xp Command
 @bot.tree.command(name="xp", description="Check your XP")
 async def check_xp(interaction: discord.Interaction, user: Optional[discord.User] = None):
-    target_user = user or interaction.user
-    xp = await bot.db.get_user_xp(target_user.id)
-    cleaned_name = clean_nickname(target_user.display_name)
-    
-    embed = discord.Embed(
-        title=f"XP for {cleaned_name}",
-        description=f"Total XP: {xp}",
-        color=discord.Color.green()
-    )
-    await interaction.response.send_message(embed=embed)
+    try:
+        # Rate limiting (1 request per 2 seconds per user)
+        await bot.rate_limiter.wait_if_needed(bucket=f"xp_cmd_{interaction.user.id}")
+        
+        target_user = user or interaction.user
+        cleaned_name = clean_nickname(target_user.display_name)
+        
+        # Rate limit Supabase queries
+        await bot.rate_limiter.wait_if_needed(bucket="supabase_query")
+        
+        # Get user's XP
+        xp = await bot.db.get_user_xp(target_user.id)
+        
+        # Get leaderboard position (rate limited)
+        await bot.rate_limiter.wait_if_needed(bucket="supabase_query")
+        leaderboard_data = bot.supabase.table('users') \
+            .select("user_id", "xp") \
+            .order("xp", desc=True) \
+            .execute()
+        
+        # Find user's position
+        position = None
+        if leaderboard_data.data:
+            for idx, entry in enumerate(leaderboard_data.data, 1):
+                if str(entry['user_id']) == str(target_user.id):
+                    position = idx
+                    break
+        
+        # Create embed
+        embed = discord.Embed(
+            title=f"📊 XP Profile: {cleaned_name}",
+            color=discord.Color.green()
+        )
+        
+        embed.add_field(
+            name="Current XP",
+            value=f"```{xp}```",
+            inline=True
+        )
+        
+        if position:
+            embed.add_field(
+                name="Leaderboard Position",
+                value=f"```#{position}```",
+                inline=True
+            )
+            
+            # Add percentile if we have enough data
+            if len(leaderboard_data.data) > 10:
+                percentile = (position / len(leaderboard_data.data)) * 100
+                embed.add_field(
+                    name="Percentile",
+                    value=f"```Top {100 - percentile:.1f}%```",
+                    inline=False
+                )
+        
+        embed.set_thumbnail(url=target_user.display_avatar.url)
+        
+        await interaction.response.send_message(embed=embed)
+        
+    except Exception as e:
+        logger.error(f"Error in /xp command: {str(e)}")
+        await interaction.response.send_message(
+            "❌ Failed to retrieve XP data. Please try again later.",
+            ephemeral=True
+        )
+
+# Leadebaord Command
+@bot.tree.command(name="leaderboard", description="View the top 15 users by XP")
+async def leaderboard(interaction: discord.Interaction):
+    try:
+        # Rate limiting for Supabase
+        await bot.rate_limiter.wait_if_needed(bucket="supabase_query")
+        
+        # Fetch top 15 users from Supabase
+        result = bot.supabase.table('users') \
+            .select("user_id", "xp") \
+            .order("xp", desc=True) \
+            .limit(15) \
+            .execute()
+        
+        data = result.data
+        
+        if not data:
+            await interaction.response.send_message("❌ No leaderboard data available.", ephemeral=True)
+            return
+        
+        leaderboard_lines = []
+        
+        for idx, entry in enumerate(data, start=1):
+            user_id = int(entry['user_id'])
+            user = bot.get_user(user_id) or await bot.fetch_user(user_id)
+            display_name = clean_nickname(user.display_name) if user else f"Unknown ({user_id})"
+            xp = entry['xp']
+            leaderboard_lines.append(f"**#{idx}** - {display_name}: `{xp} XP`")
+        
+        embed = discord.Embed(
+            title="🏆 XP Leaderboard (Top 15)",
+            description="\n".join(leaderboard_lines),
+            color=discord.Color.gold()
+        )
+        
+        await interaction.response.send_message(embed=embed)
+        
+    except Exception as e:
+        logger.error(f"Error in /leaderboard command: {str(e)}")
+        await interaction.response.send_message(
+            "❌ Failed to fetch leaderboard data. Please try again later.",
+            ephemeral=True
+        )
+
 
 
 # clearly-weekly-events
@@ -840,11 +941,12 @@ async def give_event_xp(
             
             if success:
                 success_count += 1
-                cleaned_name = clean_nickname(member.display_name)
+                cleaned_giver = clean_nickname(interaction.user.display_name)
+                cleaned_receiver = clean_nickname(member.display_name)
                 # Public message for each successful XP addition
                 await interaction.followup.send(
-                    f"✨ {interaction.user.mention} gave {xp_amount} XP to {member.mention} (New total: {new_total} XP)",
-                    silent=True  # Doesn't ping the user
+                    f"✨ **{cleaned_giver}** gave {xp_amount} XP to {member.mention} (New total: {new_total} XP)",
+                    silent=True  
                 )
             else:
                 failed_users.append(clean_nickname(member.display_name))
