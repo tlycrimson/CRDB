@@ -249,6 +249,39 @@ class DatabaseHandler:
             logger.error(f"Failed to clear weekly events: {str(e)}")
             return False
 
+# Logs XP changes in logging channel
+async def log_xp_to_discord(
+    admin: discord.User,
+    user: discord.User,
+    xp_change: int,
+    new_total: int,
+    reason: str
+):
+    """Log XP changes to a Discord channel instead of Supabase."""
+    log_channel = bot.get_channel(Config.DEFAULT_LOG_CHANNEL)  # Replace with your channel ID
+    if not log_channel:
+        logger.error("XP log channel not found!")
+        return False
+
+    embed = discord.Embed(
+        title="📊 XP Change Logged",
+        color=discord.Color.green() if xp_change > 0 else discord.Color.red(),
+        timestamp=datetime.now(timezone.utc)
+    )
+    
+    embed.add_field(name="Staff", value=f"{admin.mention} (`{admin.id}`)", inline=True)
+    embed.add_field(name="User", value=f"{user.mention} (`{user.id}`)", inline=True)
+    embed.add_field(name="XP Change", value=f"`{xp_change:+}`", inline=True)
+    embed.add_field(name="New Total", value=f"`{new_total}`", inline=True)
+    embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
+    
+    try:
+        await log_channel.send(embed=embed)
+        return True
+    except Exception as e:
+        logger.error(f"Failed to log XP to Discord: {str(e)}")
+        return False
+
 # Reaction Logger for LD
 class ReactionLogger:
     """Handles reaction monitoring and logging"""
@@ -711,13 +744,8 @@ async def add_xp(interaction: discord.Interaction, user: discord.User, xp: int):
             f"✅ Added {xp} XP to {cleaned_name}. New total: {new_total} XP"
         )
         # Log the XP change
-        await log_xp_change(
-            interaction.user,
-            user,
-            xp,
-            new_total,
-            "Manual Addition"
-        )
+        await log_xp_to_discord(interaction.user, user, xp, new_total, "Manual Addition")
+         
     else:
         await interaction.response.send_message(
             "❌ Failed to add XP. Notify admin.",
@@ -760,13 +788,8 @@ async def take_xp(interaction: discord.Interaction, user: discord.User, xp: int)
             message += "\n⚠️ User's XP has reached 0"
         await interaction.response.send_message(message)
         # Log the XP change
-        await log_xp_change(
-            interaction.user,
-            user,
-            -xp,  # Negative for removal
-            new_total,
-            "Manual Removal"
-        )
+        await log_xp_to_discord(interaction.user, user, -xp, new_total, "Manual Removal")
+        
     else:
         await interaction.response.send_message(
             "❌ Failed to take XP. Notify admin.",
@@ -1047,13 +1070,8 @@ async def give_event_xp(
                                 f"✨ **{clean_nickname(interaction.user.display_name)}** gave {xp_amount} XP to {member.mention} (New total: {new_total} XP)",
                                 silent=True
                             )
-                            await log_xp_change(
-                                interaction.user,
-                                member,
-                                xp_amount,
-                                new_total,
-                                f"Event: {message.jump_url}"
-                            )
+                            await log_xp_to_discord(interaction.user, member, xp_amount, new_total, f"Event: {message.jump_url}")
+        
                         else:
                             failed_users.append(clean_nickname(member.display_name))
                             
