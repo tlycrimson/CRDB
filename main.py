@@ -909,7 +909,7 @@ async def give_event_xp(
     xp_amount: int,
     attendees_section: Literal["Attendees:", "Passed:"] = "Attendees:"
 ):
-    # Validate XP amount
+    # Validate XP amount first
     if xp_amount <= 0:
         await interaction.response.send_message(
             "❌ XP amount must be positive.",
@@ -923,158 +923,170 @@ async def give_event_xp(
         )
         return
 
-    await interaction.response.send_message("⏳ Attempting to give XP...")
+    # Defer the response immediately to prevent timeout
+    await interaction.response.defer()
+    initial_message = await interaction.followup.send("⏳ Attempting to give XP...", wait=True)
     
     try:
-        # Rate limiting check
-        await bot.rate_limiter.wait_if_needed(bucket=f"give_xp_{interaction.user.id}")
-
-        # Parse and validate message link
-        if not message_link.startswith('https://discord.com/channels/'):
-            await interaction.followup.send("❌ Invalid message link format", ephemeral=True)
-            return
-            
-        parts = message_link.split('/')
-        if len(parts) < 7:
-            await interaction.followup.send("❌ Invalid message link format", ephemeral=True)
-            return
-            
-        guild_id = int(parts[4])
-        channel_id = int(parts[5])
-        message_id = int(parts[6])
-        
-        if guild_id != interaction.guild.id:
-            await interaction.followup.send("❌ Message must be from this server", ephemeral=True)
-            return
-            
-        # Fetch the message with rate limiting
-        channel = interaction.guild.get_channel(channel_id)
-        if not channel:
-            await interaction.followup.send("❌ Channel not found", ephemeral=True)
-            return
-            
-        try:
-            await bot.rate_limiter.wait_if_needed(bucket="discord_api")
-            message = await channel.fetch_message(message_id)
-        except discord.NotFound:
-            await interaction.followup.send("❌ Message not found", ephemeral=True)
-            return
-        except discord.Forbidden:
-            await interaction.followup.send("❌ No permission to read that channel", ephemeral=True)
-            return
-            
-        # Find and process attendees section
-        content = message.content
-        section_index = content.find(attendees_section)
-        if section_index == -1:
-            await interaction.followup.send(f"❌ Could not find '{attendees_section}' in the message", ephemeral=True)
-            return
-            
-        mentions_section = content[section_index + len(attendees_section):]
-        mentions = re.findall(r'<@!?(\d+)>', mentions_section)
-        
-        if not mentions:
-            await interaction.followup.send(f"❌ No user mentions found after '{attendees_section}'", ephemeral=True)
-            return
-            
-        # Remove duplicates and validate count
-        unique_mentions = list(set(mentions))
-        total_potential_xp = xp_amount * len(unique_mentions)
-        
-        if total_potential_xp > MAX_EVENT_TOTAL_XP:
-            await interaction.followup.send(
-                f"❌ Event would give {total_potential_xp} XP total (max is {MAX_EVENT_TOTAL_XP}). Reduce XP or attendees.",
-                ephemeral=True
-            )
-            return
-            
-        # Process users
-        success_count = 0
-        failed_users = []
-        await interaction.edit_original_response(content="🎯 Processing XP distribution...")
-        
-        for i, user_id in enumerate(unique_mentions):
-            if i > 0:
-                await asyncio.sleep(0.5)  # Rate limiting
-                
-            member = interaction.guild.get_member(int(user_id))
-            if not member:
-                failed_users.append(f"Unknown user ({user_id})")
-                continue
-                
-            current_xp = await bot.db.get_user_xp(member.id)
-            if current_xp + xp_amount > 100000:  # Extreme value check
-                failed_users.append(f"{clean_nickname(member.display_name)} (would exceed max XP)")
-                continue
-                
-            success, new_total = await bot.db.add_xp(member.id, member.display_name, xp_amount)
-            
-            if success:
-                success_count += 1
-                await interaction.followup.send(
-                    f"✨ **{clean_nickname(interaction.user.display_name)}** gave {xp_amount} XP to {member.mention} (New total: {new_total} XP)",
-                    silent=True
+        # Add timeout for the entire operation
+        async with asyncio.timeout(60):  # 60 second timeout for entire operation
+            # Rate limiting check with timeout
+            try:
+                await asyncio.wait_for(
+                    bot.rate_limiter.wait_if_needed(bucket=f"give_xp_{interaction.user.id}"),
+                    timeout=5.0
                 )
-                # Log the XP change
-                await log_xp_change(
-                    interaction.user,
-                    member,
-                    xp_amount,
-                    new_total,
-                    f"Event: {message.jump_url}"
-                )
-            else:
-                failed_users.append(clean_nickname(member.display_name))
-                
-        # Final summary
-        result_message = [
-            f"✅ **XP Distribution Complete**",
-            f"**Given by:** {interaction.user.mention}",
-            f"**XP per user:** {xp_amount}",
-            f"**Successful distributions:** {success_count}",
-            f"**Total XP given:** {xp_amount * success_count}"
-        ]
-        
-        if failed_users:
-            result_message.append(f"\n**Failed distributions:** {len(failed_users)}")
-            for chunk in [failed_users[i:i + 10] for i in range(0, len(failed_users), 10)]:
-                await interaction.followup.send("• " + "\n• ".join(chunk), ephemeral=True)
-        
-        await interaction.followup.send("\n".join(result_message))
-        
-    except Exception as e:
-        logger.error(f"Error in give_event_xp: {str(e)}")
-        await interaction.followup.send(
-            "❌ An error occurred while processing the command",
-            ephemeral=True
-        )
+            except asyncio.TimeoutError:
+                await initial_message.edit(content="⌛ Rate limit check timed out. Please try again.")
+                return
 
-async def log_xp_change(
-    giver: discord.User,
-    receiver: discord.User,
-    amount: int,
-    new_total: int,
-    reason: str
-):
-    """Log XP changes to a dedicated channel"""
-    try:
-        log_channel = bot.get_channel(Config.DEFAULT_LOG_CHANNEL)  
-        if log_channel:
-            embed = discord.Embed(
-                title="📝 XP Transaction Log",
-                color=discord.Color.blue(),
-                timestamp=datetime.now(timezone.utc)
-            )
+            # Parse and validate message link
+            if not message_link.startswith('https://discord.com/channels/'):
+                await initial_message.edit(content="❌ Invalid message link format")
+                return
+                
+            try:
+                parts = message_link.split('/')
+                guild_id = int(parts[4])
+                channel_id = int(parts[5])
+                message_id = int(parts[6])
+            except (IndexError, ValueError):
+                await initial_message.edit(content="❌ Invalid message link format")
+                return
             
-            embed.add_field(name="Giver", value=f"{giver.mention} ({giver.id})", inline=True)
-            embed.add_field(name="Receiver", value=f"{receiver.mention} ({receiver.id})", inline=True)
-            embed.add_field(name="Amount", value=f"`{amount:+}`", inline=True)
-            embed.add_field(name="New Total", value=f"`{new_total}`", inline=True)
-            embed.add_field(name="Reason", value=reason, inline=False)
+            if guild_id != interaction.guild.id:
+                await initial_message.edit(content="❌ Message must be from this server")
+                return
+                
+            # Fetch the message with timeout
+            try:
+                channel = interaction.guild.get_channel(channel_id)
+                if not channel:
+                    await initial_message.edit(content="❌ Channel not found")
+                    return
+                    
+                try:
+                    message = await asyncio.wait_for(
+                        channel.fetch_message(message_id),
+                        timeout=10.0
+                    )
+                except discord.NotFound:
+                    await initial_message.edit(content="❌ Message not found")
+                    return
+                except discord.Forbidden:
+                    await initial_message.edit(content="❌ No permission to read that channel")
+                    return
+            except asyncio.TimeoutError:
+                await initial_message.edit(content="⌛ Timed out fetching message")
+                return
+                
+            # Process attendees section
+            content = message.content
+            section_index = content.find(attendees_section)
+            if section_index == -1:
+                await initial_message.edit(content=f"❌ Could not find '{attendees_section}' in the message")
+                return
+                
+            mentions_section = content[section_index + len(attendees_section):]
+            mentions = re.findall(r'<@!?(\d+)>', mentions_section)
             
-            await log_channel.send(embed=embed)
+            if not mentions:
+                await initial_message.edit(content=f"❌ No user mentions found after '{attendees_section}'")
+                return
+                
+            # Process users with progress updates
+            unique_mentions = list(set(mentions))
+            total_potential_xp = xp_amount * len(unique_mentions)
+            
+            if total_potential_xp > MAX_EVENT_TOTAL_XP:
+                await initial_message.edit(
+                    content=f"❌ Event would give {total_potential_xp} XP total (max is {MAX_EVENT_TOTAL_XP}). Reduce XP or attendees."
+                )
+                return
+                
+            await initial_message.edit(content=f"🎯 Processing XP for {len(unique_mentions)} users...")
+            
+            success_count = 0
+            failed_users = []
+            processed_users = 0
+            
+            for i, user_id in enumerate(unique_mentions, 1):
+                try:
+                    # Update progress every 5 users
+                    if i % 5 == 0 or i == len(unique_mentions):
+                        await initial_message.edit(
+                            content=f"⏳ Processing {i}/{len(unique_mentions)} users ({success_count} successful)..."
+                        )
+                    
+                    # Rate limit between users
+                    if i > 1:
+                        await asyncio.sleep(0.75)  # Slightly longer delay
+                        
+                    member = interaction.guild.get_member(int(user_id))
+                    if not member:
+                        failed_users.append(f"Unknown user ({user_id})")
+                        continue
+                        
+                    try:
+                        current_xp = await asyncio.wait_for(
+                            bot.db.get_user_xp(member.id),
+                            timeout=5.0
+                        )
+                        if current_xp + xp_amount > 100000:
+                            failed_users.append(f"{clean_nickname(member.display_name)} (would exceed max XP)")
+                            continue
+                            
+                        success, new_total = await asyncio.wait_for(
+                            bot.db.add_xp(member.id, member.display_name, xp_amount),
+                            timeout=5.0
+                        )
+                        
+                        if success:
+                            success_count += 1
+                            await interaction.followup.send(
+                                f"✨ **{clean_nickname(interaction.user.display_name)}** gave {xp_amount} XP to {member.mention} (New total: {new_total} XP)",
+                                silent=True
+                            )
+                            await log_xp_change(
+                                interaction.user,
+                                member,
+                                xp_amount,
+                                new_total,
+                                f"Event: {message.jump_url}"
+                            )
+                        else:
+                            failed_users.append(clean_nickname(member.display_name))
+                            
+                    except asyncio.TimeoutError:
+                        failed_users.append(f"{clean_nickname(member.display_name)} (timeout)")
+                        continue
+                        
+                except Exception as e:
+                    logger.error(f"Error processing user {user_id}: {str(e)}")
+                    failed_users.append(f"User {user_id} (error)")
+                    continue
+                    
+            # Final summary
+            result_message = [
+                f"✅ **XP Distribution Complete**",
+                f"**Given by:** {interaction.user.mention}",
+                f"**XP per user:** {xp_amount}",
+                f"**Successful distributions:** {success_count}",
+                f"**Total XP given:** {xp_amount * success_count}"
+            ]
+            
+            if failed_users:
+                result_message.append(f"\n**Failed distributions:** {len(failed_users)}")
+                for chunk in [failed_users[i:i + 10] for i in range(0, len(failed_users), 10)]:
+                    await interaction.followup.send("• " + "\n• ".join(chunk), ephemeral=True)
+            
+            await interaction.followup.send("\n".join(result_message))
+            
+    except asyncio.TimeoutError:
+        await initial_message.edit(content="⌛ Command timed out. Some XP may have been awarded.")
     except Exception as e:
-        logger.error(f"Failed to log XP change: {str(e)}")
+        logger.error(f"Error in give_event_xp: {str(e)}", exc_info=True)
+        await initial_message.edit(content="❌ An unexpected error occurred. Please check logs.")
 
 
 # Discharge Command
