@@ -1552,7 +1552,8 @@ async def send_rmp_welcome(member: discord.Member):
         name="**WHO'S ALLOWED ON THE PD AT ALL TIMES?__",
         value="> ↠ Royal Army Medical Corps,\n"
               "> ↠ Royal Military Police,\n" 
-              "> ↠ Intelligence Corps.",
+              "> ↠ Intelligence Corps.\n"
+              "> ↠ Royal Family.",
         inline=False
     )
     
