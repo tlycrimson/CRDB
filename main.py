@@ -282,6 +282,8 @@ async def log_xp_to_discord(
         logger.error(f"Failed to log XP to Discord: {str(e)}")
         return False
 
+YOUR_USER_ID = 353167234698444802
+
 # Reaction Logger for LD
 class ReactionLogger:
     """Handles reaction monitoring and logging"""
