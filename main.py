@@ -290,6 +290,7 @@ class ReactionLogger:
         self.monitor_channel_ids = set(Config.DEFAULT_MONITOR_CHANNELS)
         self.log_channel_id = Config.DEFAULT_LOG_CHANNEL
         self.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
+        self.event_channel_id = Config.EVENT_LOG_CHANNEL_ID
         
     async def setup(self, interaction: discord.Interaction, log_channel: discord.TextChannel, monitor_channels: str):
         """Setup reaction monitoring"""
