@@ -398,7 +398,7 @@ class ReactionLogger:
             return
         except Exception as e:
             logger.error(f"Reaction log error: {type(e).__name__}: {str(e)}")
-       
+   
     async def _log_event_reaction_impl(self, payload: discord.RawReactionActionEvent):
         """Handle event logging with self-deleting confirmation"""
         if payload.channel_id not in self.event_channel_ids or str(payload.emoji) != "✅":
@@ -539,29 +539,29 @@ class ReactionLogger:
                 except Exception as e:
                     logger.error(f"Failed to record attendee {attendee_id}: {str(e)}")
                     continue
+                    
+            # Send completion embed to DEFAULT_LOG_CHANNEL (won't be deleted)
+            log_channel = guild.get_channel(self.log_channel_id)
+            if log_channel:
+                done_embed = discord.Embed(
+                    title="✅ Event Logged Successfully",
+                    color=discord.Color.green()
+                )
+                done_embed.add_field(name="Host", value=f"{host_member.mention}", inline=True)
+                done_embed.add_field(name="Attendees Recorded", value=str(success_count), inline=True)
+                done_embed.add_field(name="HR Attendees Excluded", value=str(len(hr_attendees)), inline=True)
+                done_embed.add_field(name="Logged By", value=member.mention, inline=False)
+                done_embed.add_field(name="Message", value=f"[Jump to Event]({message.jump_url})", inline=False)
                 
-        # Send completion embed to DEFAULT_LOG_CHANNEL (won't be deleted)
-        log_channel = guild.get_channel(self.log_channel_id)
-        if log_channel:
-            done_embed = discord.Embed(
-                title="✅ Event Logged Successfully",
-                color=discord.Color.green()
-            )
-            done_embed.add_field(name="Host", value=f"{host_member.mention}", inline=True)
-            done_embed.add_field(name="Attendees Recorded", value=str(success_count), inline=True)
-            done_embed.add_field(name="HR Attendees Excluded", value=str(len(hr_attendees)), inline=True)
-            done_embed.add_field(name="Logged By", value=member.mention, inline=False)
-            done_embed.add_field(name="Message", value=f"[Jump to Event]({message.jump_url})", inline=False)
-            
-            await log_channel.send(embed=done_embed)
-            
-    except Exception as e:
-        logger.error(f"Error processing event reaction: {str(e)}")
-        try:
-            error_msg = await channel.send(f"{member.mention} ❌ Error logging event")
-            self.bot.loop.create_task(delete_after(error_msg, 5))
-        except:
-            pass
+                await log_channel.send(embed=done_embed)
+                
+        except Exception as e:
+            logger.error(f"Error processing event reaction: {str(e)}")
+            try:
+                error_msg = await channel.send(f"{member.mention} ❌ Error logging event")
+                self.bot.loop.create_task(delete_after(error_msg, 5))
+            except:
+                pass
 
 
     async def _log_training_reaction_impl(self, payload: discord.RawReactionActionEvent):
