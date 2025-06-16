@@ -298,6 +298,33 @@ class ReactionLogger:
         self.tryout_log_channel_id = Config.TRYOUT_LOG_CHANNEL_ID
         self.course_log_channel_id = Config.COURSE_LOG_CHANNEL_ID
         self.activity_log_channel_id = Config.ACTIVITY_LOG_CHANNEL_ID
+        self.RANK_HIERARCHY = [
+            "Provost Marshal",
+            "SOR Commander",
+            "PW Commander", 
+            "SOR Executive",
+            "PW Executive",
+            "Squadron Commander",
+            "Lieutenant Colonel",
+            "Squadron Executive Officer",
+            "Major",
+            "Tactical Officer",
+            "Superintendent",
+            "Operations Officer",
+            "Chief Inspector",
+            "Junior Operations Officer",
+            "Inspector"
+        ]
+
+    def get_highest_rank(self, member: discord.Member) -> str:
+        """Returns the highest rank a member has from their roles"""
+        if not member or not hasattr(member, 'roles'):
+            return "No Rank"
+            
+        for rank in self.RANK_HIERARCHY:
+            if any(role.name == rank for role in member.roles):
+                return rank
+        return "No Rank"  # Default if none of the specified ranks are found
         
     async def setup(self, interaction: discord.Interaction, log_channel: discord.TextChannel, monitor_channels: str):
         """Setup reaction monitoring"""
