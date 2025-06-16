@@ -289,8 +289,8 @@ class ReactionLogger:
     """Handles reaction monitoring and logging with hard-wired configuration"""
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.monitor_channel_ids = set(Config.DEFAULT_MONITOR_CHANNELS)  # Hard-wired
-        self.log_channel_id = Config.DEFAULT_LOG_CHANNEL  # Hard-wired
+        self.monitor_channel_ids = set(Config.DEFAULT_MONITOR_CHANNELS)
+        self.log_channel_id = Config.DEFAULT_LOG_CHANNEL
         self.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
         # Hard-wired channel IDs for different log types
         self.event_channel_ids = [Config.W_EVENT_LOG_CHANNEL_ID, Config.EVENT_LOG_CHANNEL_ID]
@@ -316,41 +316,17 @@ class ReactionLogger:
             "Inspector"
         ]
 
-    def get_highest_rank(self, member: discord.Member) -> str:
-        """Returns the highest rank a member has from their roles"""
-        if not member or not hasattr(member, 'roles'):
-            return "No Rank"
-            
-        for rank in self.RANK_HIERARCHY:
-            if any(role.name == rank for role in member.roles):
-                return rank
-        return "No Rank"
-        
-    async def on_ready_setup(self):
-        """Verify configured channels when bot starts"""
-        guild = self.bot.guilds[0]
-        valid_channels = set()
-        for channel_id in self.monitor_channel_ids:
-            if channel := guild.get_channel(channel_id):
-                valid_channels.add(channel.id)
-        
-        self.monitor_channel_ids = valid_channels
-        
-        if not guild.get_channel(self.log_channel_id):
-            logger.warning(f"Default log channel {self.log_channel_id} not found!")
-            self.log_channel_id = None
-        
+    # ... (keep get_highest_rank and on_ready_setup methods unchanged) ...
+
     async def _log_reaction_impl(self, payload: discord.RawReactionActionEvent):
         guild = self.bot.get_guild(payload.guild_id)
         if not guild:
             return
     
-        # Check if this is a reaction we should track
         if (payload.channel_id not in self.monitor_channel_ids or 
             str(payload.emoji) not in Config.TRACKED_REACTIONS):
             return
     
-        # Check if this is in an ignored channel with ignored emoji
         if (payload.channel_id in Config.IGNORED_CHANNELS and 
             str(payload.emoji) in Config.IGNORED_EMOJI):
             return
@@ -359,8 +335,7 @@ class ReactionLogger:
         if not member:
             return
             
-        # Check if member has required role to be tracked
-        if Config.LD_ROLE_ID:  # Only check if configured
+        if Config.LD_ROLE_ID:
             monitor_role = guild.get_role(Config.LD_ROLE_ID)
             if not monitor_role or monitor_role not in member.roles:
                 return
@@ -389,7 +364,7 @@ class ReactionLogger:
             embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
                 
             await DiscordAPI.execute_with_retry(
-                log_channel.send(embed=embed)
+                log_channel.send(embed=embed)  # Now logs to DEFAULT_LOG_CHANNEL
             )
             
             logger.info(f"Attempting to update points for: {member.display_name}")
@@ -402,7 +377,7 @@ class ReactionLogger:
             logger.error(f"Reaction log error: {type(e).__name__}: {str(e)}")
    
     async def _log_event_reaction_impl(self, payload: discord.RawReactionActionEvent):
-        """Handle event logging in multiple channels with HR exclusion and confirmation"""
+        """Handle event logging with ephemeral confirmation"""
         if payload.channel_id not in self.event_channel_ids or str(payload.emoji) != "✅":
             return
             
@@ -482,20 +457,17 @@ class ReactionLogger:
             
             confirm_embed.set_footer(text="This will be logged in 10 seconds unless you click Cancel")
     
-            # Send confirmation message only to the reacting user
+            # Send ephemeral confirmation message in the channel
             confirm_view = ConfirmView(timeout=10.0)
-            confirm_msg = await member.send(
-                embed=confirm_embed,
-                view=confirm_view
-            )
+            await member.send(embed=confirm_embed, view=confirm_view, ephemeral=True)
             
             # Wait for confirmation
             await confirm_view.wait()
             if not confirm_view.value:
-                await confirm_msg.edit(content="❌ Event logging cancelled", embed=None, view=None)
+                await member.send("❌ Event logging cancelled", ephemeral=True)
                 return
                 
-            await confirm_msg.edit(content="✅ Logging event...", embed=None, view=None)
+            await member.send("✅ Logging event...", ephemeral=True)
             
             # Record host in HRs table
             await self._update_hr_record(
@@ -527,209 +499,29 @@ class ReactionLogger:
                     logger.error(f"Failed to record attendee {attendee_id}: {str(e)}")
                     continue
                     
-            # Send completion embed to the channel
-            done_embed = discord.Embed(
-                title="✅ Event Logged Successfully",
-                color=discord.Color.green()
-            )
-            done_embed.add_field(name="Host", value=f"{host_member.mention}", inline=True)
-            done_embed.add_field(name="Attendees Recorded", value=str(success_count), inline=True)
-            done_embed.add_field(name="HR Attendees Excluded", value=str(len(hr_attendees)), inline=True)
-            done_embed.add_field(name="Logged By", value=member.mention, inline=False)
-            done_embed.add_field(name="Message", value=f"[Jump to Event]({message.jump_url})", inline=False)
-            
-            await channel.send(embed=done_embed)
+            # Send completion embed to DEFAULT_LOG_CHANNEL
+            log_channel = guild.get_channel(self.log_channel_id)
+            if log_channel:
+                done_embed = discord.Embed(
+                    title="✅ Event Logged Successfully",
+                    color=discord.Color.green()
+                )
+                done_embed.add_field(name="Host", value=f"{host_member.mention}", inline=True)
+                done_embed.add_field(name="Attendees Recorded", value=str(success_count), inline=True)
+                done_embed.add_field(name="HR Attendees Excluded", value=str(len(hr_attendees)), inline=True)
+                done_embed.add_field(name="Logged By", value=member.mention, inline=False)
+                done_embed.add_field(name="Message", value=f"[Jump to Event]({message.jump_url})", inline=False)
+                
+                await log_channel.send(embed=done_embed)
             
         except Exception as e:
             logger.error(f"Error processing event reaction: {str(e)}")
-            if 'confirm_msg' in locals():
-                await confirm_msg.edit(content="❌ Error logging event", embed=None, view=None)
+            try:
+                await member.send("❌ Error logging event", ephemeral=True)
+            except:
+                pass
 
-    async def _log_training_reaction_impl(self, payload: discord.RawReactionActionEvent):
-        """Handle training logs (phases, tryouts, courses)"""
-        channel_id = payload.channel_id
-        column_to_update = None
-        
-        # Determine which column to update based on hard-wired channels
-        if channel_id == self.phase_log_channel_id:
-            column_to_update = "phases"
-        elif channel_id == self.tryout_log_channel_id:
-            column_to_update = "tryouts"
-        elif channel_id == self.course_log_channel_id:
-            column_to_update = "courses"
-        else:
-            return
-            
-        if str(payload.emoji) != "✅":
-            return
-            
-        guild = self.bot.get_guild(payload.guild_id)
-        if not guild:
-            return
-            
-        member = guild.get_member(payload.user_id)
-        if not member or member.id != Config.YOUR_USER_ID:
-            return
-            
-        try:
-            message = await guild.get_channel(channel_id).fetch_message(payload.message_id)
-            
-            # Extract user from message
-            user_mention = re.search(r'host:\s*<@!?(\d+)>', message.content, re.IGNORECASE)
-            if not user_mention:
-                return
-                
-            user_id = int(user_mention.group(1))
-            user_member = guild.get_member(user_id)
-            if not user_member:
-                return
-                
-            # Update HRs record
-            await self._update_hr_record(
-                user_id=user_id,
-                username=clean_nickname(user_member.display_name),
-                rank=self.get_highest_rank(user_member),
-                **{column_to_update: 1}
-            )
-            
-            logger.info(f"Updated {column_to_update} for {user_member.display_name}")
-            
-        except Exception as e:
-            logger.error(f"Error processing {column_to_update} reaction: {str(e)}")
-
-    async def _log_activity_reaction_impl(self, payload: discord.RawReactionActionEvent):
-        """Handle activity logs (time guarded and activity)"""
-        if payload.channel_id != self.activity_log_channel_id or str(payload.emoji) != "✅":
-            return
-            
-        guild = self.bot.get_guild(payload.guild_id)
-        if not guild:
-            return
-            
-        member = guild.get_member(payload.user_id)
-        if not member or member.id != Config.YOUR_USER_ID:
-            return
-            
-        try:
-            message = await guild.get_channel(payload.channel_id).fetch_message(payload.message_id)
-            
-            # Extract user
-            user_mention = re.search(r'<@!?(\d+)>', message.content)
-            if not user_mention:
-                return
-                
-            user_id = int(user_mention.group(1))
-            user_member = guild.get_member(user_id)
-            if not user_member:
-                return
-                
-            # Check for Time: or Guarded: in message
-            time_match = re.search(r'Time:\s*(\d+)', message.content)
-            guarded_match = re.search(r'Guarded:\s*(\d+)', message.content)
-            
-            updates = {}
-            if time_match:
-                updates['activity'] = int(time_match.group(1))
-            if guarded_match:
-                updates['time_guarded'] = int(guarded_match.group(1))
-                
-            if updates:
-                await self._update_lr_record(
-                    user_id=user_id,
-                    username=clean_nickname(user_member.display_name),
-                    rank=self.get_highest_rank(user_member),
-                    **updates
-                )
-                logger.info(f"Updated activity stats for {user_member.display_name}: {updates}")
-                
-        except Exception as e:
-            logger.error(f"Error processing activity reaction: {str(e)}")
-
-    async def _update_hr_record(self, user_id: int, username: str, rank: str, **increments):
-        """Helper to update HRs table with incremental values"""
-        try:
-            existing = self.bot.db.supabase.table('HRs') \
-                .select('*') \
-                .eq('user_id', str(user_id)) \
-                .execute()
-                
-            if existing.data:
-                update_data = {'username': username, 'rank': rank}
-                for col, val in increments.items():
-                    current = existing.data[0].get(col, 0)
-                    update_data[col] = current + val
-                    
-                self.bot.db.supabase.table('HRs') \
-                    .update(update_data) \
-                    .eq('user_id', str(user_id)) \
-                    .execute()
-            else:
-                new_data = {
-                    'user_id': str(user_id),
-                    'username': username,
-                    'rank': rank,
-                    'events': 0,
-                    'tryouts': 0,
-                    'phases': 0,
-                    'courses': 0,
-                    'inspections': 0,
-                    'joint_events': 0
-                }
-                for col, val in increments.items():
-                    new_data[col] = val
-                    
-                self.bot.db.supabase.table('HRs').insert(new_data).execute()
-                
-        except Exception as e:
-            logger.error(f"Failed to update HR record for {user_id}: {str(e)}")
-            raise
-
-    async def _update_lr_record(self, user_id: int, username: str, rank: str, **increments):
-        """Helper to update LRs table with incremental values"""
-        try:
-            existing = self.bot.db.supabase.table('LRs') \
-                .select('*') \
-                .eq('user_id', str(user_id)) \
-                .execute()
-                
-            if existing.data:
-                update_data = {'username': username, 'rank': rank}
-                for col, val in increments.items():
-                    current = existing.data[0].get(col, 0)
-                    update_data[col] = current + val
-                    
-                self.bot.db.supabase.table('LRs') \
-                    .update(update_data) \
-                    .eq('user_id', str(user_id)) \
-                    .execute()
-            else:
-                new_data = {
-                    'user_id': str(user_id),
-                    'username': username,
-                    'rank': rank,
-                    'events_attended': 0,
-                    'time_guarded': 0,
-                    'activity': 0
-                }
-                for col, val in increments.items():
-                    new_data[col] = val
-                    
-                self.bot.db.supabase.table('LRs').insert(new_data).execute()
-                
-        except Exception as e:
-            logger.error(f"Failed to update LR record for {user_id}: {str(e)}")
-            raise
-
-    async def log_reaction(self, payload: discord.RawReactionActionEvent):
-        """Main reaction handler that routes to specific loggers"""
-        try:
-            await self.rate_limiter.wait_if_needed(bucket="reaction_log")
-            await self._log_reaction_impl(payload)
-            await self._log_event_reaction_impl(payload)
-            await self._log_training_reaction_impl(payload)
-            await self._log_activity_reaction_impl(payload)
-        except Exception as e:
-            logger.error(f"Failed to log reaction: {type(e).__name__}: {str(e)}")
+    # ... (keep all other methods unchanged) ...
 
 class ConfirmView(discord.ui.View):
     def __init__(self, *, timeout: float = 30.0):
@@ -750,8 +542,6 @@ class ConfirmView(discord.ui.View):
 
     async def on_timeout(self):
         """Handle when the view times out"""
-        if hasattr(self, 'message'):
-            await self.message.edit(content="⏰ Timed out - please try again", view=None)
         self.value = False
         self.stop()
 
