@@ -316,8 +316,30 @@ class ReactionLogger:
             "Inspector"
         ]
 
-    # ... (keep get_highest_rank and on_ready_setup methods unchanged) ...
-
+    def get_highest_rank(self, member: discord.Member) -> str:
+            """Returns the highest rank a member has from their roles"""
+            if not member or not hasattr(member, 'roles'):
+                return "No Rank"
+                
+            for rank in self.RANK_HIERARCHY:
+                if any(role.name == rank for role in member.roles):
+                    return rank
+            return "No Rank"
+            
+    async def on_ready_setup(self):
+        """Verify configured channels when bot starts"""
+        guild = self.bot.guilds[0]
+        valid_channels = set()
+        for channel_id in self.monitor_channel_ids:
+            if channel := guild.get_channel(channel_id):
+                valid_channels.add(channel.id)
+        
+        self.monitor_channel_ids = valid_channels
+        
+        if not guild.get_channel(self.log_channel_id):
+            logger.warning(f"Default log channel {self.log_channel_id} not found!")
+            self.log_channel_id = None
+            
     async def _log_reaction_impl(self, payload: discord.RawReactionActionEvent):
         guild = self.bot.get_guild(payload.guild_id)
         if not guild:
