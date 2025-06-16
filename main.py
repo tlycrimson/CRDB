@@ -290,10 +290,9 @@ class ReactionLogger:
     """Handles reaction monitoring and logging with hard-wired configuration"""
     def __init__(self, bot: commands.Bot):
         self.bot = bot
-        self.monitor_channel_ids = set(Config.DEFAULT_MONITOR_CHANNELS)  # Hard-wired
-        self.log_channel_id = Config.DEFAULT_LOG_CHANNEL  # Hard-wired
+        self.monitor_channel_ids = set(Config.DEFAULT_MONITOR_CHANNELS)
+        self.log_channel_id = Config.DEFAULT_LOG_CHANNEL
         self.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
-        # Hard-wired channel IDs for different log types
         self.event_channel_ids = [Config.W_EVENT_LOG_CHANNEL_ID, Config.EVENT_LOG_CHANNEL_ID]
         self.phase_log_channel_id = Config.PHASE_LOG_CHANNEL_ID
         self.tryout_log_channel_id = Config.TRYOUT_LOG_CHANNEL_ID
@@ -317,30 +316,8 @@ class ReactionLogger:
             "Inspector"
         ]
 
-    def get_highest_rank(self, member: discord.Member) -> str:
-        """Returns the highest rank a member has from their roles"""
-        if not member or not hasattr(member, 'roles'):
-            return "No Rank"
-            
-        for rank in self.RANK_HIERARCHY:
-            if any(role.name == rank for role in member.roles):
-                return rank
-        return "No Rank"
-        
-    async def on_ready_setup(self):
-        """Verify configured channels when bot starts"""
-        guild = self.bot.guilds[0]
-        valid_channels = set()
-        for channel_id in self.monitor_channel_ids:
-            if channel := guild.get_channel(channel_id):
-                valid_channels.add(channel.id)
-        
-        self.monitor_channel_ids = valid_channels
-        
-        if not guild.get_channel(self.log_channel_id):
-            logger.warning(f"Default log channel {self.log_channel_id} not found!")
-            self.log_channel_id = None
-        
+    # ... (keep get_highest_rank and on_ready_setup methods unchanged) ...
+
     async def _log_reaction_impl(self, payload: discord.RawReactionActionEvent):
         guild = self.bot.get_guild(payload.guild_id)
         if not guild:
@@ -370,6 +347,9 @@ class ReactionLogger:
             return
     
         try:
+            # Add small delay before processing
+            await asyncio.sleep(0.5)
+            
             message = await DiscordAPI.execute_with_retry(
                 channel.fetch_message(payload.message_id)
             )
@@ -386,21 +366,33 @@ class ReactionLogger:
             embed.add_field(name="Message", value=content, inline=False)
             embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
                 
-            await DiscordAPI.execute_with_retry(
-                log_channel.send(embed=embed)  # Now logs to DEFAULT_LOG_CHANNEL
-            )
+            await log_channel.send(embed=embed)
             
             logger.info(f"Attempting to update points for: {member.display_name}")
             update_success = await self.bot.sheets.update_points(member)
-            logger.info(f"Update {'succeeded' if update_success else 'failed'}")
+            
+            # Log database update result
+            db_log = discord.Embed(
+                title="📊 Database Update",
+                description=f"Updated points for {member.mention}",
+                color=discord.Color.blue()
+            )
+            db_log.add_field(name="Status", value="Success" if update_success else "Failed")
+            await log_channel.send(embed=db_log)
             
         except discord.NotFound:
             return
         except Exception as e:
             logger.error(f"Reaction log error: {type(e).__name__}: {str(e)}")
+            error_embed = discord.Embed(
+                title="❌ Error",
+                description=f"Failed to log reaction: {str(e)}",
+                color=discord.Color.red()
+            )
+            await log_channel.send(embed=error_embed)
    
     async def _log_event_reaction_impl(self, payload: discord.RawReactionActionEvent):
-        """Handle event logging with self-deleting confirmation"""
+        """Handle event logging without confirmation"""
         if payload.channel_id not in self.event_channel_ids or str(payload.emoji) != "✅":
             return
             
@@ -413,10 +405,14 @@ class ReactionLogger:
             return
             
         channel = guild.get_channel(payload.channel_id)
-        if not channel:
+        log_channel = guild.get_channel(self.log_channel_id)
+        if not channel or not log_channel:
             return
             
         try:
+            # Add small delay before processing
+            await asyncio.sleep(0.5)
+            
             message = await channel.fetch_message(payload.message_id)
             
             # Extract host
@@ -442,73 +438,6 @@ class ReactionLogger:
     
             # Get HR role
             hr_role = guild.get_role(Config.HR_ROLE_ID) if Config.HR_ROLE_ID else None
-            
-            # Create confirmation embed (FIXED: Now properly defined before use)
-            confirm_embed = discord.Embed(
-                title="⚠️ Confirm Event Logging",
-                description="Please confirm you want to log this event",
-                color=discord.Color.gold()
-            )
-            confirm_embed.add_field(name="Host", value=f"{host_member.mention} ({cleaned_host_name})", inline=False)
-            
-            # Filter out HR members from attendees
-            valid_attendees = []
-            hr_attendees = []
-            
-            for attendee_id in attendee_mentions:
-                attendee_member = guild.get_member(int(attendee_id))
-                if not attendee_member:
-                    continue
-                    
-                if hr_role and hr_role in attendee_member.roles:
-                    hr_attendees.append(attendee_member.mention)
-                else:
-                    valid_attendees.append(attendee_member.mention)
-            
-            confirm_embed.add_field(
-                name=f"Attendees ({len(valid_attendees)})",
-                value="\n".join(valid_attendees) or "No attendees",
-                inline=False
-            )
-            
-            if hr_attendees:
-                confirm_embed.add_field(
-                    name=f"HR Attendees (Excluded) ({len(hr_attendees)})",
-                    value="\n".join(hr_attendees),
-                    inline=False
-                )
-            
-            confirm_embed.set_footer(text="This will be logged in 10 seconds unless you click Cancel")
-    
-            # Create and send the confirmation message
-            confirm_view = ConfirmView(timeout=10.0)
-            confirm_msg = await channel.send(
-                content=f"{member.mention}",  # Ping the user
-                embed=confirm_embed,
-                view=confirm_view
-            )
-            
-            # Function to delete messages after delay
-            async def delete_after(msg, delay):
-                await asyncio.sleep(delay)
-                try:
-                    await msg.delete()
-                except:
-                    pass
-            
-            # Start deletion task (5 seconds)
-            self.bot.loop.create_task(delete_after(confirm_msg, 5))
-            
-            # Wait for confirmation
-            await confirm_view.wait()
-            
-            if not confirm_view.value:
-                cancel_msg = await channel.send(f"{member.mention} ❌ Event logging cancelled")
-                self.bot.loop.create_task(delete_after(cancel_msg, 5))
-                return
-                
-            processing_msg = await channel.send(f"{member.mention} ✅ Logging event...")
-            self.bot.loop.create_task(delete_after(processing_msg, 3))
             
             # Record host in HRs table
             await self._update_hr_record(
@@ -540,36 +469,33 @@ class ReactionLogger:
                     logger.error(f"Failed to record attendee {attendee_id}: {str(e)}")
                     continue
                     
-            # Send completion embed to DEFAULT_LOG_CHANNEL (won't be deleted)
-            log_channel = guild.get_channel(self.log_channel_id)
-            if log_channel:
-                done_embed = discord.Embed(
-                    title="✅ Event Logged Successfully",
-                    color=discord.Color.green()
-                )
-                done_embed.add_field(name="Host", value=f"{host_member.mention}", inline=True)
-                done_embed.add_field(name="Attendees Recorded", value=str(success_count), inline=True)
-                done_embed.add_field(name="HR Attendees Excluded", value=str(len(hr_attendees)), inline=True)
-                done_embed.add_field(name="Logged By", value=member.mention, inline=False)
-                done_embed.add_field(name="Message", value=f"[Jump to Event]({message.jump_url})", inline=False)
-                
-                await log_channel.send(embed=done_embed)
-                
+            # Send completion embed to DEFAULT_LOG_CHANNEL
+            done_embed = discord.Embed(
+                title="✅ Event Logged Successfully",
+                color=discord.Color.green()
+            )
+            done_embed.add_field(name="Host", value=f"{host_member.mention}", inline=True)
+            done_embed.add_field(name="Attendees Recorded", value=str(success_count), inline=True)
+            done_embed.add_field(name="HR Attendees Excluded", value=str(len(hr_attendees))) if hr_attendees else None
+            done_embed.add_field(name="Logged By", value=member.mention, inline=False)
+            done_embed.add_field(name="Message", value=f"[Jump to Event]({message.jump_url})", inline=False)
+            
+            await log_channel.send(embed=done_embed)
+            
         except Exception as e:
             logger.error(f"Error processing event reaction: {str(e)}")
-            try:
-                error_msg = await channel.send(f"{member.mention} ❌ Error logging event")
-                self.bot.loop.create_task(delete_after(error_msg, 5))
-            except:
-                pass
-
+            error_embed = discord.Embed(
+                title="❌ Event Log Error",
+                description=str(e),
+                color=discord.Color.red()
+            )
+            await log_channel.send(embed=error_embed)
 
     async def _log_training_reaction_impl(self, payload: discord.RawReactionActionEvent):
         """Handle training logs (phases, tryouts, courses)"""
         channel_id = payload.channel_id
         column_to_update = None
         
-        # Determine which column to update based on hard-wired channels
         if channel_id == self.phase_log_channel_id:
             column_to_update = "phases"
         elif channel_id == self.tryout_log_channel_id:
@@ -591,6 +517,9 @@ class ReactionLogger:
             return
             
         try:
+            # Add small delay before processing
+            await asyncio.sleep(0.5)
+            
             message = await guild.get_channel(channel_id).fetch_message(payload.message_id)
             
             # Extract user from message
@@ -611,10 +540,28 @@ class ReactionLogger:
                 **{column_to_update: 1}
             )
             
-            logger.info(f"Updated {column_to_update} for {user_member.display_name}")
+            # Log the update
+            log_channel = guild.get_channel(self.log_channel_id)
+            if log_channel:
+                embed = discord.Embed(
+                    title="📊 Training Record Updated",
+                    color=discord.Color.blue()
+                )
+                embed.add_field(name="User", value=f"{user_member.mention}")
+                embed.add_field(name="Type", value=column_to_update.capitalize())
+                embed.add_field(name="Updated By", value=member.mention)
+                await log_channel.send(embed=embed)
             
         except Exception as e:
             logger.error(f"Error processing {column_to_update} reaction: {str(e)}")
+            log_channel = guild.get_channel(self.log_channel_id)
+            if log_channel:
+                error_embed = discord.Embed(
+                    title="❌ Training Log Error",
+                    description=str(e),
+                    color=discord.Color.red()
+                )
+                await log_channel.send(embed=error_embed)
 
     async def _log_activity_reaction_impl(self, payload: discord.RawReactionActionEvent):
         """Handle activity logs (time guarded and activity)"""
@@ -630,6 +577,9 @@ class ReactionLogger:
             return
             
         try:
+            # Add small delay before processing
+            await asyncio.sleep(0.5)
+            
             message = await guild.get_channel(payload.channel_id).fetch_message(payload.message_id)
             
             # Extract user
@@ -659,11 +609,35 @@ class ReactionLogger:
                     rank=self.get_highest_rank(user_member),
                     **updates
                 )
-                logger.info(f"Updated activity stats for {user_member.display_name}: {updates}")
                 
+                # Log to default channel
+                log_channel = guild.get_channel(self.log_channel_id)
+                if log_channel:
+                    embed = discord.Embed(
+                        title="⏱ Activity Logged",
+                        color=discord.Color.green()
+                    )
+                    embed.add_field(name="Member", value=user_member.mention)
+                    if 'activity' in updates:
+                        embed.add_field(name="Activity Time", value=f"{updates['activity']} mins")
+                    if 'time_guarded' in updates:
+                        embed.add_field(name="Guarded Time", value=f"{updates['time_guarded']} mins")
+                    embed.add_field(name="Logged By", value=member.mention)
+                    embed.add_field(name="Message", value=f"[Jump to Log]({message.jump_url})")
+                    
+                    await log_channel.send(embed=embed)
+                    
         except Exception as e:
             logger.error(f"Error processing activity reaction: {str(e)}")
-
+            log_channel = guild.get_channel(self.log_channel_id)
+            if log_channel:
+                error_embed = discord.Embed(
+                    title="❌ Activity Log Error",
+                    description=str(e),
+                    color=discord.Color.red()
+                )
+                await log_channel.send(embed=error_embed)
+                
     async def _update_hr_record(self, user_id: int, username: str, rank: str, **increments):
         """Helper to update HRs table with incremental values"""
         try:
@@ -740,15 +714,25 @@ class ReactionLogger:
             raise
 
     async def log_reaction(self, payload: discord.RawReactionActionEvent):
-        """Main reaction handler that routes to specific loggers"""
-        try:
-            await self.rate_limiter.wait_if_needed(bucket="reaction_log")
-            await self._log_reaction_impl(payload)
-            await self._log_event_reaction_impl(payload)
-            await self._log_training_reaction_impl(payload)
-            await self._log_activity_reaction_impl(payload)
-        except Exception as e:
-            logger.error(f"Failed to log reaction: {type(e).__name__}: {str(e)}")
+            """Main reaction handler that routes to specific loggers"""
+            try:
+                await self.rate_limiter.wait_if_needed(bucket="reaction_log")
+                await self._log_reaction_impl(payload)
+                await self._log_event_reaction_impl(payload)
+                await self._log_training_reaction_impl(payload)
+                await self._log_activity_reaction_impl(payload)
+            except Exception as e:
+                logger.error(f"Failed to log reaction: {type(e).__name__}: {str(e)}")
+                guild = self.bot.get_guild(payload.guild_id)
+                if guild:
+                    log_channel = guild.get_channel(self.log_channel_id)
+                    if log_channel:
+                        error_embed = discord.Embed(
+                            title="❌ Reaction Logging Error",
+                            description=str(e),
+                            color=discord.Color.red()
+                        )
+                        await log_channel.send(embed=error_embed)
 
 class ConfirmView(discord.ui.View):
     def __init__(self, *, timeout: float = 30.0):
