@@ -466,19 +466,35 @@ class ReactionLogger:
                 
             # Record host in HRs table
             try:
-                # Upsert host record - increment events count
-                host_data = {
-                    "user_id": str(host_id),
-                    "username": cleaned_host_name,
-                    "events": 1  # This will be incremented by 1 in the database
-                }
-                
-                # This uses PostgreSQL's increment functionality
-                result = self.bot.db.supabase.table('HRs').upsert(
-                    host_data,
-                    on_conflict='user_id'
-                ).execute()
-                
+                # First check if host exists
+                existing_host = self.bot.db.supabase.table('HRs') \
+                    .select('*') \
+                    .eq('user_id', str(host_id)) \
+                    .execute()
+                    
+                if existing_host.data:
+                    # Update existing record by incrementing events
+                    result = self.bot.db.supabase.table('HRs') \
+                        .update({
+                            'events': existing_host.data[0]['events'] + 1,
+                            'username': cleaned_host_name  # Update username if changed
+                        }) \
+                        .eq('user_id', str(host_id)) \
+                        .execute()
+                else:
+                    # Insert new record
+                    host_data = {
+                        "user_id": str(host_id),
+                        "username": cleaned_host_name,
+                        "events": 1,
+                        "tryouts": 0,
+                        "phases": 0,
+                        "courses": 0,
+                        "inspections": 0,
+                        "joint_events": 0
+                    }
+                    result = self.bot.db.supabase.table('HRs').insert(host_data).execute()
+                    
                 logger.info(f"Recorded event for host {cleaned_host_name}")
             except Exception as e:
                 logger.error(f"Failed to record host event: {str(e)}")
@@ -494,18 +510,32 @@ class ReactionLogger:
                         
                     cleaned_attendee_name = clean_nickname(attendee_member.display_name)
                     
-                    # Upsert attendee record - increment events_attended count
-                    attendee_data = {
-                        "user_id": str(attendee_id),
-                        "username": cleaned_attendee_name,
-                        "events_attended": 1  # This will be incremented by 1 in the database
-                    }
-                    
-                    result = self.bot.db.supabase.table('LRs').upsert(
-                        attendee_data,
-                        on_conflict='user_id'
-                    ).execute()
-                    
+                    # Check if attendee exists
+                    existing_attendee = self.bot.db.supabase.table('LRs') \
+                        .select('*') \
+                        .eq('user_id', str(attendee_id)) \
+                        .execute()
+                        
+                    if existing_attendee.data:
+                        # Update existing record
+                        result = self.bot.db.supabase.table('LRs') \
+                            .update({
+                                'events_attended': existing_attendee.data[0]['events_attended'] + 1,
+                                'username': cleaned_attendee_name
+                            }) \
+                            .eq('user_id', str(attendee_id)) \
+                            .execute()
+                    else:
+                        # Insert new record
+                        attendee_data = {
+                            "user_id": str(attendee_id),
+                            "username": cleaned_attendee_name,
+                            "events_attended": 1,
+                            "time_guarded": 0,
+                            "activity": 0
+                        }
+                        result = self.bot.db.supabase.table('LRs').insert(attendee_data).execute()
+                        
                     success_count += 1
                 except Exception as e:
                     logger.error(f"Failed to record attendee {attendee_id}: {str(e)}")
