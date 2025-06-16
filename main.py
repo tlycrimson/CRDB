@@ -353,15 +353,8 @@ class ReactionLogger:
         if not guild.get_channel(self.log_channel_id):
             logger.warning(f"Default log channel {self.log_channel_id} not found!")
             self.log_channel_id = None
-
-    async def log_reaction(self, payload: discord.RawReactionActionEvent):
-        """Log reactions from monitored channels"""
-        try:
-            await self.rate_limiter.wait_if_needed(bucket="reaction_log")
-            await self._log_reaction_impl(payload)
-        except Exception as e:
-            logger.error(f"Failed to log reaction: {type(e).__name__}: {str(e)}")
-        async def _log_event_reaction_impl(self, payload: discord.RawReactionActionEvent):
+        
+    async def _log_event_reaction_impl(self, payload: discord.RawReactionActionEvent):
         """Handle event logging when allowed role reacts with ✅ in event channel"""
         # Check if this is the event channel and correct emoji
         if payload.channel_id != self.event_channel_id or str(payload.emoji) != "✅":
