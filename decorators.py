@@ -24,7 +24,7 @@ def has_allowed_role():
             return True
 
         # Check for allowed role
-        allowed_role = interaction.guild.get_role(Config.ALLOWED_ROLE_ID)
+        allowed_role = interaction.guild.get_role(Config.LD_ROLE_ID)
         if allowed_role and allowed_role in member.roles:
             return True
 
