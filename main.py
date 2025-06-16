@@ -464,8 +464,36 @@ class ReactionLogger:
             if not attendee_mentions:
                 return
                 
+            # Define the rank hierarchy (highest to lowest)
+    RANK_HIERARCHY = [
+        "Provost Marshal",
+        "SOR Commander",
+        "PW Commander", 
+        "SOR Executive",
+        "PW Executive",
+        "Squadron Commander",
+        "Lieutenant Colonel",
+        "Squadron Executive Officer",
+        "Major",
+        "Tactical Officer",
+        "Superintendent",
+        "Operations Officer",
+        "Chief Inspector",
+        "Junior Operations Officer",
+        "Inspector"
+    ]
+
+    def get_highest_rank(member):
+        """Returns the highest rank a member has from their roles"""
+        for rank in RANK_HIERARCHY:
+            if any(role.name == rank for role in member.roles):
+                return rank
+        return "No Rank"  # Default if none of the specified ranks are found
+
             # Record host in HRs table
             try:
+                host_rank = get_highest_rank(host_member)
+                
                 # First check if host exists
                 existing_host = self.bot.db.supabase.table('HRs') \
                     .select('*') \
@@ -473,11 +501,12 @@ class ReactionLogger:
                     .execute()
                     
                 if existing_host.data:
-                    # Update existing record by incrementing events
+                    # Update existing record
                     result = self.bot.db.supabase.table('HRs') \
                         .update({
                             'events': existing_host.data[0]['events'] + 1,
-                            'username': cleaned_host_name  # Update username if changed
+                            'username': cleaned_host_name,
+                            'rank': host_rank  # Update rank if changed
                         }) \
                         .eq('user_id', str(host_id)) \
                         .execute()
@@ -486,6 +515,7 @@ class ReactionLogger:
                     host_data = {
                         "user_id": str(host_id),
                         "username": cleaned_host_name,
+                        "rank": host_rank,
                         "events": 1,
                         "tryouts": 0,
                         "phases": 0,
@@ -495,7 +525,8 @@ class ReactionLogger:
                     }
                     result = self.bot.db.supabase.table('HRs').insert(host_data).execute()
                     
-                logger.info(f"Recorded event for host {cleaned_host_name}")
+                logger.info(f"Recorded event for host {cleaned_host_name} (Rank: {host_rank})")
+                
             except Exception as e:
                 logger.error(f"Failed to record host event: {str(e)}")
                 return
@@ -509,6 +540,7 @@ class ReactionLogger:
                         continue
                         
                     cleaned_attendee_name = clean_nickname(attendee_member.display_name)
+                    attendee_rank = get_highest_rank(attendee_member)
                     
                     # Check if attendee exists
                     existing_attendee = self.bot.db.supabase.table('LRs') \
@@ -521,7 +553,8 @@ class ReactionLogger:
                         result = self.bot.db.supabase.table('LRs') \
                             .update({
                                 'events_attended': existing_attendee.data[0]['events_attended'] + 1,
-                                'username': cleaned_attendee_name
+                                'username': cleaned_attendee_name,
+                                'rank': attendee_rank  # Update rank if changed
                             }) \
                             .eq('user_id', str(attendee_id)) \
                             .execute()
@@ -530,6 +563,7 @@ class ReactionLogger:
                         attendee_data = {
                             "user_id": str(attendee_id),
                             "username": cleaned_attendee_name,
+                            "rank": attendee_rank,
                             "events_attended": 1,
                             "time_guarded": 0,
                             "activity": 0
@@ -537,6 +571,8 @@ class ReactionLogger:
                         result = self.bot.db.supabase.table('LRs').insert(attendee_data).execute()
                         
                     success_count += 1
+                    logger.info(f"Recorded attendee {cleaned_attendee_name} (Rank: {attendee_rank})")
+                    
                 except Exception as e:
                     logger.error(f"Failed to record attendee {attendee_id}: {str(e)}")
                     continue
