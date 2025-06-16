@@ -464,32 +464,32 @@ class ReactionLogger:
             if not attendee_mentions:
                 return
                 
-            # Define the rank hierarchy (highest to lowest)
-    RANK_HIERARCHY = [
-        "Provost Marshal",
-        "SOR Commander",
-        "PW Commander", 
-        "SOR Executive",
-        "PW Executive",
-        "Squadron Commander",
-        "Lieutenant Colonel",
-        "Squadron Executive Officer",
-        "Major",
-        "Tactical Officer",
-        "Superintendent",
-        "Operations Officer",
-        "Chief Inspector",
-        "Junior Operations Officer",
-        "Inspector"
-    ]
-
-    def get_highest_rank(member):
-        """Returns the highest rank a member has from their roles"""
-        for rank in RANK_HIERARCHY:
-            if any(role.name == rank for role in member.roles):
-                return rank
-        return "No Rank"  # Default if none of the specified ranks are found
-
+                    # Define the rank hierarchy (highest to lowest)
+            RANK_HIERARCHY = [
+                "Provost Marshal",
+                "SOR Commander",
+                "PW Commander", 
+                "SOR Executive",
+                "PW Executive",
+                "Squadron Commander",
+                "Lieutenant Colonel",
+                "Squadron Executive Officer",
+                "Major",
+                "Tactical Officer",
+                "Superintendent",
+                "Operations Officer",
+                "Chief Inspector",
+                "Junior Operations Officer",
+                "Inspector"
+            ]
+        
+            def get_highest_rank(member):
+                """Returns the highest rank a member has from their roles"""
+                for rank in RANK_HIERARCHY:
+                    if any(role.name == rank for role in member.roles):
+                        return rank
+                return "No Rank"  # Default if none of the specified ranks are found
+        
             # Record host in HRs table
             try:
                 host_rank = get_highest_rank(host_member)
@@ -573,6 +573,9 @@ class ReactionLogger:
                     success_count += 1
                     logger.info(f"Recorded attendee {cleaned_attendee_name} (Rank: {attendee_rank})")
                     
+                except Exception as e:
+                    logger.error(f"Failed to record attendee {attendee_id}: {str(e)}")
+                    continue
                 except Exception as e:
                     logger.error(f"Failed to record attendee {attendee_id}: {str(e)}")
                     continue
