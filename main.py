@@ -501,10 +501,10 @@ class ReactionLogger:
                     inline=False
                 )
             
-            confirm_embed.set_footer(text="This will be logged in 30 seconds unless you click Cancel")
+            confirm_embed.set_footer(text="This will be logged in 10 seconds unless you click Cancel")
     
             # Send confirmation message
-            confirm_view = ConfirmView(timeout=30)
+            confirm_view = ConfirmView(timeout=10.0)
             confirm_msg = await channel.send(
                 content=f"{member.mention}",
                 embed=confirm_embed,
@@ -759,27 +759,28 @@ class ReactionLogger:
             logger.error(f"Failed to log reaction: {type(e).__name__}: {str(e)}")
 
 class ConfirmView(discord.ui.View):
-    """Confirmation view with timeout"""
-    def __init__(self, timeout=30):
-        super().__init__(timeout=timeout)
+    def __init__(self, *, timeout: float = 30.0):  # Add timeout parameter with default 30 seconds
+        super().__init__(timeout=timeout)  # Pass timeout to parent class
         self.value = None
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
         self.value = True
+        await interaction.response.defer()
         self.stop()
 
     @discord.ui.button(label="Cancel", style=discord.ButtonStyle.red)
     async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        await interaction.response.defer()
         self.value = False
+        await interaction.response.defer()
         self.stop()
 
     async def on_timeout(self):
+        """Handle when the view times out"""
+        if hasattr(self, 'message'):
+            await self.message.edit(content="⏰ Timed out - please try again", view=None)
         self.value = False
         self.stop()
-
 
 class SheetDBLogger:
     def __init__(self):
@@ -968,25 +969,7 @@ class MessageTracker:
             color=discord.Color.blue()
         )
         await interaction.followup.send(embed=embed, ephemeral=True)
-        
-class ConfirmView(discord.ui.View):
-    def __init__(self):
-        super().__init__()
-        self.value = None
-
-    @discord.ui.button(label="Confirm", style=discord.ButtonStyle.green)
-    async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.value = True
-        await interaction.response.defer()
-        self.stop()
-
-    @discord.ui.button(label="Cancel", style=discord.ButtonStyle.red)
-    async def cancel(self, interaction: discord.Interaction, button: discord.ui.Button):
-        self.value = False
-        await interaction.response.defer()
-        self.stop()
-
-
+    
 
 # --- Bot Initialization ---
 intents = discord.Intents.default()
