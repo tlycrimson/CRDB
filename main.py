@@ -354,6 +354,67 @@ class ReactionLogger:
             logger.warning(f"Default log channel {self.log_channel_id} not found!")
             self.log_channel_id = None
         
+    async def _log_reaction_impl(self, payload: discord.RawReactionActionEvent):
+        guild = self.bot.get_guild(payload.guild_id)
+        if not guild:
+            return
+    
+        # Check if this is a reaction we should track
+        if (payload.channel_id not in self.monitor_channel_ids or 
+            str(payload.emoji) not in Config.TRACKED_REACTIONS):
+            return
+    
+        # Check if this is in an ignored channel with ignored emoji
+        if (payload.channel_id in Config.IGNORED_CHANNELS and 
+            str(payload.emoji) in Config.IGNORED_EMOJI):
+            return
+    
+        member = guild.get_member(payload.user_id)
+        if not member:
+            return
+            
+        # Check if member has required role to be tracked
+        if Config.MONITOR_ROLE_ID:  # Only check if configured
+            monitor_role = guild.get_role(Config.MONITOR_ROLE_ID)
+            if not monitor_role or monitor_role not in member.roles:
+                return
+    
+        channel = guild.get_channel(payload.channel_id)
+        log_channel = guild.get_channel(self.log_channel_id)
+    
+        if not all((channel, member, log_channel)):
+            return
+    
+        try:
+            message = await DiscordAPI.execute_with_retry(
+                channel.fetch_message(payload.message_id)
+            )
+            content = (message.content[:100] + "...") if len(message.content) > 100 else message.content
+                
+            embed = discord.Embed(
+                title="🧑‍💻 LD Activity Logged",
+                description=f"{member.mention} reacted with {payload.emoji}",
+                color=discord.Color.purple()
+            )
+            
+            embed.add_field(name="Channel", value=channel.mention)
+            embed.add_field(name="Author", value=message.author.mention)
+            embed.add_field(name="Message", value=content, inline=False)
+            embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
+                
+            await DiscordAPI.execute_with_retry(
+                log_channel.send(embed=embed)
+            )
+            
+            logger.info(f"Attempting to update points for: {member.display_name}")
+            update_success = await self.bot.sheets.update_points(member)
+            logger.info(f"Update {'succeeded' if update_success else 'failed'}")
+            
+        except discord.NotFound:
+            return
+        except Exception as e:
+            logger.error(f"Reaction log error: {type(e).__name__}: {str(e)}")
+            
     async def _log_event_reaction_impl(self, payload: discord.RawReactionActionEvent):
         """Handle event logging when allowed role reacts with ✅ in event channel"""
         # Check if this is the event channel and correct emoji
@@ -466,7 +527,7 @@ class ReactionLogger:
                 
         except Exception as e:
             logger.error(f"Error processing event reaction: {str(e)}")
-  
+            
             
     async def log_reaction(self, payload: discord.RawReactionActionEvent):
         """Log reactions from monitored channels"""
