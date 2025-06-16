@@ -361,180 +361,119 @@ class ReactionLogger:
             await self._log_reaction_impl(payload)
         except Exception as e:
             logger.error(f"Failed to log reaction: {type(e).__name__}: {str(e)}")
-    
-    async def _log_reaction_impl(self, payload: discord.RawReactionActionEvent):
+        async def _log_event_reaction_impl(self, payload: discord.RawReactionActionEvent):
+        """Handle event logging when allowed role reacts with ✅ in event channel"""
+        # Check if this is the event channel and correct emoji
+        if payload.channel_id != self.event_channel_id or str(payload.emoji) != "✅":
+            return
+            
         guild = self.bot.get_guild(payload.guild_id)
         if not guild:
             return
-    
-        # Check if this is a reaction we should track
-        if (payload.channel_id not in self.monitor_channel_ids or 
-            str(payload.emoji) not in Config.TRACKED_REACTIONS):
-            return
-    
-        # Check if this is in an ignored channel with ignored emoji
-        if (payload.channel_id in Config.IGNORED_CHANNELS and 
-            str(payload.emoji) in Config.IGNORED_EMOJI):
-            return
-    
+            
         member = guild.get_member(payload.user_id)
         if not member:
             return
             
-        # Check if member has required role to be tracked
-        if Config.MONITOR_ROLE_ID:  # Only check if configured
-            monitor_role = guild.get_role(Config.MONITOR_ROLE_ID)
-            if not monitor_role or monitor_role not in member.roles:
-                return
-    
+        # Check if member has required role
+        # Replaced for only me to test this
+        MY_ID = 353167234698444802
+        if member.id != MY_ID:
+            return
+            
         channel = guild.get_channel(payload.channel_id)
-        log_channel = guild.get_channel(self.log_channel_id)
-    
-        if not all((channel, member, log_channel)):
+        if not channel:
             return
-    
+            
         try:
-            message = await DiscordAPI.execute_with_retry(
-                channel.fetch_message(payload.message_id)
-            )
-            content = (message.content[:100] + "...") if len(message.content) > 100 else message.content
-                
-            embed = discord.Embed(
-                title="🧑‍💻 LD Activity Logged",
-                description=f"{member.mention} reacted with {payload.emoji}",
-                color=discord.Color.purple()
-            )
+            message = await channel.fetch_message(payload.message_id)
             
-            embed.add_field(name="Channel", value=channel.mention)
-            embed.add_field(name="Author", value=message.author.mention)
-            embed.add_field(name="Message", value=content, inline=False)
-            embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
+            # Extract host
+            host_mention = re.search(r'host:\s*<@!?(\d+)>', message.content, re.IGNORECASE)
+            if not host_mention:
+                return
                 
-            await DiscordAPI.execute_with_retry(
-                log_channel.send(embed=embed)
-            )
+            host_id = int(host_mention.group(1))
+            host_member = guild.get_member(host_id)
+            if not host_member:
+                return
+                
+            cleaned_host_name = clean_nickname(host_member.display_name)
             
-            logger.info(f"Attempting to update points for: {member.display_name}")
-            update_success = await self.bot.sheets.update_points(member)
-            logger.info(f"Update {'succeeded' if update_success else 'failed'}")
-            
-        except discord.NotFound:
-            return
-        except Exception as e:
-            logger.error(f"Reaction log error: {type(e).__name__}: {str(e)}")
-            
-        async def _log_event_reaction_impl(self, payload: discord.RawReactionActionEvent):
-            """Handle event logging when allowed role reacts with ✅ in event channel"""
-            # Check if this is the event channel and correct emoji
-            if payload.channel_id != self.event_channel_id or str(payload.emoji) != "✅":
+            # Extract attendees/passed
+            attendees_section = re.search(r'(?:Attendees:|Passed:)\s*((?:<@!?\d+>\s*)+)', message.content, re.IGNORECASE)
+            if not attendees_section:
                 return
                 
-            guild = self.bot.get_guild(payload.guild_id)
-            if not guild:
+            attendee_mentions = re.findall(r'<@!?(\d+)>', attendees_section.group(1))
+            if not attendee_mentions:
                 return
                 
-            member = guild.get_member(payload.user_id)
-            if not member:
-                return
-                
-            # Check if member has required role
-            # Replaced for only me to test this
-            MY_ID = 353167234698444802
-            if member.id != MY_ID:
-                return
-                
-            channel = guild.get_channel(payload.channel_id)
-            if not channel:
-                return
-                
+            # Record host in HRs table
             try:
-                message = await channel.fetch_message(payload.message_id)
+                # Upsert host record - increment events count
+                host_data = {
+                    "user_id": str(host_id),
+                    "username": cleaned_host_name,
+                    "events": 1  # This will be incremented by 1 in the database
+                }
                 
-                # Extract host
-                host_mention = re.search(r'host:\s*<@!?(\d+)>', message.content, re.IGNORECASE)
-                if not host_mention:
-                    return
-                    
-                host_id = int(host_mention.group(1))
-                host_member = guild.get_member(host_id)
-                if not host_member:
-                    return
-                    
-                cleaned_host_name = clean_nickname(host_member.display_name)
+                # This uses PostgreSQL's increment functionality
+                result = self.bot.db.supabase.table('HRs').upsert(
+                    host_data,
+                    on_conflict='user_id'
+                ).execute()
                 
-                # Extract attendees/passed
-                attendees_section = re.search(r'(?:Attendees:|Passed:)\s*((?:<@!?\d+>\s*)+)', message.content, re.IGNORECASE)
-                if not attendees_section:
-                    return
-                    
-                attendee_mentions = re.findall(r'<@!?(\d+)>', attendees_section.group(1))
-                if not attendee_mentions:
-                    return
-                    
-                # Record host in HRs table
+                logger.info(f"Recorded event for host {cleaned_host_name}")
+            except Exception as e:
+                logger.error(f"Failed to record host event: {str(e)}")
+                return
+                
+            # Record attendees in LRs table
+            success_count = 0
+            for attendee_id in attendee_mentions:
                 try:
-                    # Upsert host record - increment events count
-                    host_data = {
-                        "user_id": str(host_id),
-                        "username": cleaned_host_name,
-                        "events": 1  # This will be incremented by 1 in the database
+                    attendee_member = guild.get_member(int(attendee_id))
+                    if not attendee_member:
+                        continue
+                        
+                    cleaned_attendee_name = clean_nickname(attendee_member.display_name)
+                    
+                    # Upsert attendee record - increment events_attended count
+                    attendee_data = {
+                        "user_id": str(attendee_id),
+                        "username": cleaned_attendee_name,
+                        "events_attended": 1  # This will be incremented by 1 in the database
                     }
                     
-                    # This uses PostgreSQL's increment functionality
-                    result = self.bot.db.supabase.table('HRs').upsert(
-                        host_data,
+                    result = self.bot.db.supabase.table('LRs').upsert(
+                        attendee_data,
                         on_conflict='user_id'
                     ).execute()
                     
-                    logger.info(f"Recorded event for host {cleaned_host_name}")
+                    success_count += 1
                 except Exception as e:
-                    logger.error(f"Failed to record host event: {str(e)}")
-                    return
+                    logger.error(f"Failed to record attendee {attendee_id}: {str(e)}")
+                    continue
                     
-                # Record attendees in LRs table
-                success_count = 0
-                for attendee_id in attendee_mentions:
-                    try:
-                        attendee_member = guild.get_member(int(attendee_id))
-                        if not attendee_member:
-                            continue
-                            
-                        cleaned_attendee_name = clean_nickname(attendee_member.display_name)
-                        
-                        # Upsert attendee record - increment events_attended count
-                        attendee_data = {
-                            "user_id": str(attendee_id),
-                            "username": cleaned_attendee_name,
-                            "events_attended": 1  # This will be incremented by 1 in the database
-                        }
-                        
-                        result = self.bot.db.supabase.table('LRs').upsert(
-                            attendee_data,
-                            on_conflict='user_id'
-                        ).execute()
-                        
-                        success_count += 1
-                    except Exception as e:
-                        logger.error(f"Failed to record attendee {attendee_id}: {str(e)}")
-                        continue
-                        
-                # Send confirmation
-                log_channel = guild.get_channel(self.log_channel_id)
-                if log_channel:
-                    embed = discord.Embed(
-                        title="✅ Event Logged",
-                        description=f"Event hosted by {host_member.mention} was logged",
-                        color=discord.Color.green()
-                    )
-                    embed.add_field(name="Host", value=f"{cleaned_host_name}", inline=True)
-                    embed.add_field(name="Attendees Recorded", value=str(success_count), inline=True)
-                    embed.add_field(name="Logged By", value=member.mention, inline=True)
-                    embed.add_field(name="Message", value=f"[Jump to Event]({message.jump_url})", inline=False)
-                    
-                    await log_channel.send(embed=embed)
-                    
-            except Exception as e:
-                logger.error(f"Error processing event reaction: {str(e)}")
+            # Send confirmation
+            log_channel = guild.get_channel(self.log_channel_id)
+            if log_channel:
+                embed = discord.Embed(
+                    title="✅ Event Logged",
+                    description=f"Event hosted by {host_member.mention} was logged",
+                    color=discord.Color.green()
+                )
+                embed.add_field(name="Host", value=f"{cleaned_host_name}", inline=True)
+                embed.add_field(name="Attendees Recorded", value=str(success_count), inline=True)
+                embed.add_field(name="Logged By", value=member.mention, inline=True)
+                embed.add_field(name="Message", value=f"[Jump to Event]({message.jump_url})", inline=False)
+                
+                await log_channel.send(embed=embed)
+                
+        except Exception as e:
+            logger.error(f"Error processing event reaction: {str(e)}")
+  
             
     async def log_reaction(self, payload: discord.RawReactionActionEvent):
         """Log reactions from monitored channels"""
