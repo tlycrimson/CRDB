@@ -393,14 +393,6 @@ class ReactionLogger:
             logger.info(f"Attempting to update points for: {member.display_name}")
             update_success = await self.bot.sheets.update_points(member)
             
-            # Log database update result
-            db_log = discord.Embed(
-                title="📊 Database Update",
-                description=f"Updated points for {member.mention}",
-                color=discord.Color.blue()
-            )
-            db_log.add_field(name="Status", value="Success" if update_success else "Failed")
-            await log_channel.send(embed=db_log)
             
         except discord.NotFound:
             return
@@ -461,6 +453,14 @@ class ReactionLogger:
             # Get HR role
             hr_role = guild.get_role(Config.HR_ROLE_ID) if Config.HR_ROLE_ID else None
             
+            # Identify HR attendees
+            hr_attendees = []
+            if hr_role:
+                hr_attendees = [
+                    attendee_id for attendee_id in attendee_mentions
+                    if (attendee := guild.get_member(int(attendee_id))) and hr_role in attendee.roles
+                ]
+            
             # Record host in HRs table
             await self._update_hr_record(
                 user_id=host_id,
@@ -498,7 +498,15 @@ class ReactionLogger:
             )
             done_embed.add_field(name="Host", value=f"{host_member.mention}", inline=True)
             done_embed.add_field(name="Attendees Recorded", value=str(success_count), inline=True)
-            done_embed.add_field(name="HR Attendees Excluded", value=str(len(hr_attendees))) if hr_attendees else None
+            
+            # Only add HR attendees field if there are any
+            if hr_attendees:
+                done_embed.add_field(
+                    name="HR Attendees Excluded", 
+                    value=str(len(hr_attendees)), 
+                    inline=False
+                )
+                
             done_embed.add_field(name="Logged By", value=member.mention, inline=False)
             done_embed.add_field(name="Message", value=f"[Jump to Event]({message.jump_url})", inline=False)
             
@@ -566,12 +574,12 @@ class ReactionLogger:
             log_channel = guild.get_channel(self.log_channel_id)
             if log_channel:
                 embed = discord.Embed(
-                    title="📊 Training Record Updated",
+                    title="📊 Training Logged",
                     color=discord.Color.blue()
                 )
-                embed.add_field(name="User", value=f"{user_member.mention}")
+                embed.add_field(name="Host", value=f"{user_member.mention}")
                 embed.add_field(name="Type", value=column_to_update.capitalize())
-                embed.add_field(name="Updated By", value=member.mention)
+                embed.add_field(name="Logged By", value=member.mention)
                 await log_channel.send(embed=embed)
             
         except Exception as e:
