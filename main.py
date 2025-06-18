@@ -385,7 +385,11 @@ class ReactionLogger:
         guild = self.bot.get_guild(payload.guild_id)
         if not guild:
             return
-       
+     
+        member = guild.get_member(payload.user_id)
+        if not member:
+            return
+            
         ld_role = guild.get_role(Config.LD_ROLE_ID)
         if not ld_role or ld_role not in member.roles:
             return
@@ -529,6 +533,10 @@ class ReactionLogger:
         if not guild:
             return
             
+        member = guild.get_member(payload.user_id)
+        if not member:
+            return
+            
         ld_role = guild.get_role(Config.LD_ROLE_ID)
         if not ld_role or ld_role not in member.roles:
             return
@@ -593,6 +601,10 @@ class ReactionLogger:
             
         guild = self.bot.get_guild(payload.guild_id)
         if not guild:
+            return
+            
+        member = guild.get_member(payload.user_id)
+        if not member:
             return
             
         ld_role = guild.get_role(Config.LD_ROLE_ID)
