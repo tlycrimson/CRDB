@@ -568,7 +568,6 @@ class ReactionLogger:
             if log_channel:
                 embed = discord.Embed(title=title, color=discord.Color.blue())
                 embed.add_field(name="Host", value=user_member.mention)
-                embed.add_field(name="Type", value=column_to_update.capitalize())
                 embed.add_field(name="Logged By", value=member.mention)
                 await log_channel.send(embed=embed)
             
