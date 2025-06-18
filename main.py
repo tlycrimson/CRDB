@@ -298,33 +298,7 @@ class ReactionLogger:
         self.tryout_log_channel_id = Config.TRYOUT_LOG_CHANNEL_ID
         self.course_log_channel_id = Config.COURSE_LOG_CHANNEL_ID
         self.activity_log_channel_id = Config.ACTIVITY_LOG_CHANNEL_ID
-        self.RANK_HIERARCHY = [
-            "Provost Marshal",
-            "SOR Commander",
-            "PW Commander", 
-            "SOR Executive",
-            "PW Executive",
-            "Squadron Commander",
-            "Lieutenant Colonel",
-            "Squadron Executive Officer",
-            "Major",
-            "Tactical Officer",
-            "Superintendent",
-            "Operations Officer",
-            "Chief Inspector",
-            "Junior Operations Officer",
-            "Inspector"
-        ]
-
-    def get_highest_rank(self, member: discord.Member) -> str:
-            """Returns the highest rank a member has from their roles"""
-            if not member or not hasattr(member, 'roles'):
-                return "No Rank"
-                
-            for rank in self.RANK_HIERARCHY:
-                if any(role.name == rank for role in member.roles):
-                    return rank
-            return "No Rank"
+    
             
     async def on_ready_setup(self):
         """Verify configured channels when bot starts"""
@@ -462,11 +436,20 @@ class ReactionLogger:
                 ]
             
             # Record host in HRs table
+            event_content = message.content.lower()
+            hr_update_field = "events"  # default
+            
+            if payload.channel_id == Config.W_EVENT_LOG_CHANNEL_ID:
+                if "inspection" in event_content or "pi" in event_content:
+                    hr_update_field = "inspections"
+                elif "joint" in event_content:
+                    hr_update_field = "joint_events"
+            
+            # Record host in HRs table with dynamic event type
             await self._update_hr_record(
                 user_id=host_id,
                 username=cleaned_host_name,
-                rank=self.get_highest_rank(host_member),
-                events=1
+                **{hr_update_field: 1}
             )
             
             # Record non-HR attendees in LRs table
@@ -483,7 +466,6 @@ class ReactionLogger:
                     await self._update_lr_record(
                         user_id=attendee_id,
                         username=clean_nickname(attendee_member.display_name),
-                        rank=self.get_highest_rank(attendee_member),
                         events_attended=1
                     )
                     success_count += 1
@@ -508,10 +490,11 @@ class ReactionLogger:
                 )
                 
             done_embed.add_field(name="Logged By", value=member.mention, inline=False)
+            done_embed.add_field(name="Event Type", value=hr_update_field.replace("_", " ").title(), inline=True)
             done_embed.add_field(name="Message", value=f"[Jump to Event]({message.jump_url})", inline=False)
             
             await log_channel.send(embed=done_embed)
-            
+  
         except Exception as e:
             logger.error(f"Error processing event reaction: {str(e)}")
             error_embed = discord.Embed(
@@ -566,32 +549,39 @@ class ReactionLogger:
             await self._update_hr_record(
                 user_id=user_id,
                 username=clean_nickname(user_member.display_name),
-                rank=self.get_highest_rank(user_member),
                 **{column_to_update: 1}
             )
-            
+
+         
+        
             # Log the update
+            titles = {
+                self.phase_log_channel_id: "📊 Phase Logged",
+                self.tryout_log_channel_id: "📊 Tryout Logged",
+                self.course_log_channel_id: "📊 Course Logged"
+            }
+            
+            title = titles.get(channel_id, "📊 Training Logged")
             log_channel = guild.get_channel(self.log_channel_id)
+            
             if log_channel:
-                embed = discord.Embed(
-                    title="📊 Training Logged",
-                    color=discord.Color.blue()
-                )
-                embed.add_field(name="Host", value=f"{user_member.mention}")
+                embed = discord.Embed(title=title, color=discord.Color.blue())
+                embed.add_field(name="Host", value=user_member.mention)
                 embed.add_field(name="Type", value=column_to_update.capitalize())
                 embed.add_field(name="Logged By", value=member.mention)
                 await log_channel.send(embed=embed)
             
-        except Exception as e:
-            logger.error(f"Error processing {column_to_update} reaction: {str(e)}")
-            log_channel = guild.get_channel(self.log_channel_id)
-            if log_channel:
-                error_embed = discord.Embed(
-                    title="❌ Training Log Error",
-                    description=str(e),
-                    color=discord.Color.red()
-                )
-                await log_channel.send(embed=error_embed)
+            except Exception as e:
+                logger.error(f"Error processing {column_to_update} reaction: {str(e)}")
+                log_channel = guild.get_channel(self.log_channel_id)
+                if log_channel:
+                    error_embed = discord.Embed(
+                        title="❌ Training Log Error",
+                        description=str(e),
+                        color=discord.Color.red()
+                    )
+                    await log_channel.send(embed=error_embed)
+
 
     async def _log_activity_reaction_impl(self, payload: discord.RawReactionActionEvent):
         """Handle activity logs (time guarded and activity)"""
@@ -624,19 +614,20 @@ class ReactionLogger:
                 
             # Check for Time: or Guarded: in message
             time_match = re.search(r'Time:\s*(\d+)', message.content)
-            guarded_match = re.search(r'Guarded:\s*(\d+)', message.content)
+            guarded_present = "Guarded:" in message.content
             
             updates = {}
             if time_match:
-                updates['activity'] = int(time_match.group(1))
-            if guarded_match:
-                updates['time_guarded'] = int(guarded_match.group(1))
+                if guarded_present:
+                    updates['time_guarded'] = int(time_match.group(1))
+                else:
+                    updates['activity'] = int(time_match.group(1))
+
                 
             if updates:
                 await self._update_lr_record(
                     user_id=user_id,
                     username=clean_nickname(user_member.display_name),
-                    rank=self.get_highest_rank(user_member),
                     **updates
                 )
                 
@@ -668,7 +659,7 @@ class ReactionLogger:
                 )
                 await log_channel.send(embed=error_embed)
                 
-    async def _update_hr_record(self, user_id: int, username: str, rank: str, **increments):
+    async def _update_hr_record(self, user_id: int, username: str, **increments):
         """Helper to update HRs table with incremental values"""
         try:
             existing = self.bot.db.supabase.table('HRs') \
@@ -677,7 +668,7 @@ class ReactionLogger:
                 .execute()
                 
             if existing.data:
-                update_data = {'username': username, 'rank': rank}
+                update_data = {'username': username}
                 for col, val in increments.items():
                     current = existing.data[0].get(col, 0)
                     update_data[col] = current + val
@@ -690,7 +681,6 @@ class ReactionLogger:
                 new_data = {
                     'user_id': str(user_id),
                     'username': username,
-                    'rank': rank,
                     'events': 0,
                     'tryouts': 0,
                     'phases': 0,
@@ -707,7 +697,7 @@ class ReactionLogger:
             logger.error(f"Failed to update HR record for {user_id}: {str(e)}")
             raise
 
-    async def _update_lr_record(self, user_id: int, username: str, rank: str, **increments):
+    async def _update_lr_record(self, user_id: int, username: str, **increments):
         """Helper to update LRs table with incremental values"""
         try:
             existing = self.bot.db.supabase.table('LRs') \
@@ -716,7 +706,7 @@ class ReactionLogger:
                 .execute()
                 
             if existing.data:
-                update_data = {'username': username, 'rank': rank}
+                update_data = {'username': username}
                 for col, val in increments.items():
                     current = existing.data[0].get(col, 0)
                     update_data[col] = current + val
@@ -729,7 +719,6 @@ class ReactionLogger:
                 new_data = {
                     'user_id': str(user_id),
                     'username': username,
-                    'rank': rank,
                     'events_attended': 0,
                     'time_guarded': 0,
                     'activity': 0
