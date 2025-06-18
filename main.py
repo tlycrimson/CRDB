@@ -440,10 +440,11 @@ class ReactionLogger:
             hr_update_field = "events"  # default
             
             if payload.channel_id == Config.W_EVENT_LOG_CHANNEL_ID:
-                if "inspection" in event_content or "pi" in event_content:
-                    hr_update_field = "inspections"
-                elif "joint" in event_content:
+                if re.search(r'\bjoint\b', message.content, re.IGNORECASE): 
                     hr_update_field = "joint_events"
+                elif re.search(r'\b(inspection|pi|Inspection)\b', message.content, re.IGNORECASE):
+                    hr_update_field = "inspections"
+                
             
             # Record host in HRs table with dynamic event type
             await self._update_hr_record(
