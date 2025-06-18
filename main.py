@@ -386,9 +386,9 @@ class ReactionLogger:
         if not guild:
             return
        
-        member = guild.get_member(payload.user_id)
-        if not member or member.id != Config.LD_ROLE_ID:
-            return   
+        ld_role = guild.get_role(Config.LD_ROLE_ID)
+        if not ld_role or ld_role not in member.roles:
+            return
             
         channel = guild.get_channel(payload.channel_id)
         log_channel = guild.get_channel(self.log_channel_id)
@@ -529,10 +529,10 @@ class ReactionLogger:
         if not guild:
             return
             
-        member = guild.get_member(payload.user_id)
-        if not member or member.id != Config.LD_ROLE_ID:
+        ld_role = guild.get_role(Config.LD_ROLE_ID)
+        if not ld_role or ld_role not in member.roles:
             return
-            
+
         try:
             # Add small delay before processing
             await asyncio.sleep(0.5)
@@ -595,8 +595,8 @@ class ReactionLogger:
         if not guild:
             return
             
-        member = guild.get_member(payload.user_id)
-        if not member or member.id != Config.LD_ROLE_ID:
+        ld_role = guild.get_role(Config.LD_ROLE_ID)
+        if not ld_role or ld_role not in member.roles:
             return
             
         try:
