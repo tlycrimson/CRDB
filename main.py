@@ -282,8 +282,6 @@ async def log_xp_to_discord(
         logger.error(f"Failed to log XP to Discord: {str(e)}")
         return False
 
-YOUR_USER_ID = 353167234698444802
-
 
 # Reaction Logger for LD
 class ReactionLogger:
@@ -389,7 +387,7 @@ class ReactionLogger:
             return
        
         member = guild.get_member(payload.user_id)
-        if not member or member.id != Config.YOUR_USER_ID:
+        if not member or member.id != Config.LD_ROLE_ID:
             return   
             
         channel = guild.get_channel(payload.channel_id)
@@ -532,7 +530,7 @@ class ReactionLogger:
             return
             
         member = guild.get_member(payload.user_id)
-        if not member or member.id != Config.YOUR_USER_ID:
+        if not member or member.id != Config.LD_ROLE_ID:
             return
             
         try:
@@ -598,7 +596,7 @@ class ReactionLogger:
             return
             
         member = guild.get_member(payload.user_id)
-        if not member or member.id != Config.YOUR_USER_ID:
+        if not member or member.id != Config.LD_ROLE_ID:
             return
             
         try:
