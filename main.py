@@ -387,10 +387,10 @@ class ReactionLogger:
         guild = self.bot.get_guild(payload.guild_id)
         if not guild:
             return
-            
+       
         member = guild.get_member(payload.user_id)
-        if not member:
-            return
+        if not member or member.id != Config.YOUR_USER_ID:
+            return   
             
         channel = guild.get_channel(payload.channel_id)
         log_channel = guild.get_channel(self.log_channel_id)
