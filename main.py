@@ -435,16 +435,20 @@ class ReactionLogger:
                     if (attendee := guild.get_member(int(attendee_id))) and hr_role in attendee.roles
                 ]
             
-            # Record host in HRs table
+            # Determine event type and name
             event_content = message.content.lower()
             hr_update_field = "events"  # default
             
+            # Check for special event types first (preserves existing inspection/joint logic)
             if payload.channel_id == Config.W_EVENT_LOG_CHANNEL_ID:
                 if re.search(r'\bjoint\b', message.content, re.IGNORECASE): 
                     hr_update_field = "joint_events"
                 elif re.search(r'\b(inspection|pi|Inspection)\b', message.content, re.IGNORECASE):
                     hr_update_field = "inspections"
-                
+            
+            # Extract event name (looking for "Event: [name]")
+            event_name_match = re.search(r'Event:\s*(.*?)(?:\n|$)', message.content, re.IGNORECASE)
+            event_name = event_name_match.group(1).strip() if event_name_match else hr_update_field.replace("_", " ").title()
             
             # Record host in HRs table with dynamic event type
             await self._update_hr_record(
@@ -491,11 +495,11 @@ class ReactionLogger:
                 )
                 
             done_embed.add_field(name="Logged By", value=member.mention, inline=False)
-            done_embed.add_field(name="Event Type", value=hr_update_field.replace("_", " ").title(), inline=True)
+            done_embed.add_field(name="Event Type", value=event_name, inline=True)  # Using extracted event name
             done_embed.add_field(name="Message", value=f"[Jump to Event]({message.jump_url})", inline=False)
             
             await log_channel.send(embed=done_embed)
-  
+    
         except Exception as e:
             logger.error(f"Error processing event reaction: {str(e)}")
             error_embed = discord.Embed(
@@ -504,6 +508,7 @@ class ReactionLogger:
                 color=discord.Color.red()
             )
             await log_channel.send(embed=error_embed)
+
 
     async def _log_training_reaction_impl(self, payload: discord.RawReactionActionEvent):
         """Handle training logs (phases, tryouts, courses)"""
@@ -1778,7 +1783,7 @@ async def on_app_command_error(interaction: discord.Interaction, error: app_comm
 # XP Database remover
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
-    """Check for RMP role removal and clean up XP data"""
+    """Check for RMP role removal and clean up data from all tables"""
     try:
         # Get the RMP role from config
         rmp_role = after.guild.get_role(Config.RMP_ROLE_ID)
@@ -1787,36 +1792,62 @@ async def on_member_update(before: discord.Member, after: discord.Member):
         
         # Check if member lost the RMP role
         if rmp_role in before.roles and rmp_role not in after.roles:
-            logger.info(f"RMP role removed from {after.display_name}, cleaning XP data...")
+            logger.info(f"RMP role removed from {after.display_name}, cleaning up data...")
+            await _cleanup_member_data(after)
             
-            # Try to remove from XP table
+    except Exception as e:
+        logger.error(f"Error in on_member_update for RMP role check: {str(e)}")
+
+@bot.event
+async def on_member_remove(member: discord.Member):
+    """Clean up data if member leaves and had RMP role"""
+    try:
+        rmp_role = member.guild.get_role(Config.RMP_ROLE_ID)
+        if not rmp_role:
+            return
+        
+        if rmp_role in member.roles:
+            logger.info(f"Member {member.display_name} left with RMP role, cleaning up data...")
+            await _cleanup_member_data(member)
+            
+    except Exception as e:
+        logger.error(f"Error in on_member_remove for RMP cleanup: {str(e)}")
+
+async def _cleanup_member_data(member: discord.Member):
+    """Helper function to remove member from XP, LRs, and HRs tables"""
+    try:
+        user_id_str = str(member.id)
+        tables_to_clean = ['users', 'LRs', 'HRs']  # All tables where data should be removed
+        
+        for table in tables_to_clean:
             try:
-                result = bot.db.supabase.table('users') \
+                # Delete user data from the table
+                result = bot.db.supabase.table(table) \
                     .delete() \
-                    .eq('user_id', str(after.id)) \
+                    .eq('user_id', user_id_str) \
                     .execute()
                 
                 if len(result.data) > 0:
-                    logger.info(f"Successfully removed {after.display_name} from XP table")
-                    
-                    # Log to audit channel if configured
-                    if hasattr(Config, 'DEFAULT_LOG_CHANNEL'):
-                        channel = after.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
-                        if channel:
-                            embed = discord.Embed(
-                                title="XP Data Cleanup",
-                                description=f"Removed {after.mention} from XP table after losing RMP role",
-                                color=discord.Color.orange()
-                            )
-                            await channel.send(embed=embed)
+                    logger.info(f"Successfully removed {member.display_name} from {table} table")
                 else:
-                    logger.info(f"No XP data found for {after.display_name}")
+                    logger.info(f"No data found for {member.display_name} in {table} table")
                     
-            except Exception as db_error:
-                logger.error(f"Failed to remove {after.id} from XP table: {str(db_error)}")
+            except Exception as table_error:
+                logger.error(f"Failed to remove {member.id} from {table} table: {str(table_error)}")
+        
+        # Log to audit channel if configured
+        if hasattr(Config, 'DEFAULT_LOG_CHANNEL'):
+            channel = member.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
+            if channel:
+                embed = discord.Embed(
+                    title="🗑️ Data Cleanup",
+                    description=f"Removed {member.mention} from all tracking tables (XP/LRs/HRs)",
+                    color=discord.Color.orange()
+                )
+                await channel.send(embed=embed)
                 
     except Exception as e:
-        logger.error(f"Error in on_member_update for RMP role check: {str(e)}")
+        logger.error(f"Error in _cleanup_member_data: {str(e)}")
 
 
 # HR Welcome Message
