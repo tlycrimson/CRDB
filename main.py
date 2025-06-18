@@ -571,16 +571,16 @@ class ReactionLogger:
                 embed.add_field(name="Logged By", value=member.mention)
                 await log_channel.send(embed=embed)
             
-            except Exception as e:
-                logger.error(f"Error processing {column_to_update} reaction: {str(e)}")
-                log_channel = guild.get_channel(self.log_channel_id)
-                if log_channel:
-                    error_embed = discord.Embed(
-                        title="❌ Training Log Error",
-                        description=str(e),
-                        color=discord.Color.red()
-                    )
-                    await log_channel.send(embed=error_embed)
+        except Exception as e:
+            logger.error(f"Error processing {column_to_update} reaction: {str(e)}")
+            log_channel = guild.get_channel(self.log_channel_id)
+            if log_channel:
+                error_embed = discord.Embed(
+                    title="❌ Training Log Error",
+                    description=str(e),
+                    color=discord.Color.red()
+                )
+                await log_channel.send(embed=error_embed)
 
 
     async def _log_activity_reaction_impl(self, payload: discord.RawReactionActionEvent):
