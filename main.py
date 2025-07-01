@@ -419,25 +419,6 @@ class ReactionLogger:
                 
             cleaned_host_name = clean_nickname(host_member.display_name)
             
-            # Extract attendees/passed
-            attendees_section = re.search(r'(?:Attendees:|Passed:)\s*((?:<@!?\d+>\s*)+)', message.content, re.IGNORECASE)
-            if not attendees_section:
-                return
-                
-            attendee_mentions = re.findall(r'<@!?(\d+)>', attendees_section.group(1))
-            if not attendee_mentions:
-                return
-    
-            # Get HR role
-            hr_role = guild.get_role(Config.HR_ROLE_ID) if Config.HR_ROLE_ID else None
-            
-            # Identify HR attendees
-            hr_attendees = []
-            if hr_role:
-                hr_attendees = [
-                    attendee_id for attendee_id in attendee_mentions
-                    if (attendee := guild.get_member(int(attendee_id))) and hr_role in attendee.roles
-                ]
             
             # Determine event type and name
             event_content = message.content.lower()
@@ -455,12 +436,36 @@ class ReactionLogger:
             event_name = event_name_match.group(1).strip() if event_name_match else hr_update_field.replace("_", " ").title()
             
             # Record host in HRs table with dynamic event type
-            await self._update_hr_record(
-                user_id=host_id,
-                username=cleaned_host_name,
-                **{hr_update_field: 1}
-            )
+            try:
+                await self._update_hr_record(
+                    user_id=host_id,
+                    username=cleaned_host_name,
+                    **{hr_update_field: 1}
+                )
+                logger.info(f"✅ Logged host {cleaned_host_name} to HR table")
+            except Exception as e:
+                logger.error(f"❌ Failed to log host {host_id}: {str(e)}")
+                
+            # Extract attendees/passed
+            attendees_section = re.search(r'(?:Attendees:|Passed:)\s*((?:<@!?\d+>\s*)+)', message.content, re.IGNORECASE)  
+            attendee_mentions = re.findall(r'<@!?(\d+)>', attendees_section.group(1))
             
+            if not attendee_mentions:
+                logger.info("No attendees found in message. Skipping LR logging.")
+            else:
+                attendee_mentions = re.findall(r'<@!?(\d+)>', attendees_section.group(1))
+    
+            # Get HR role
+            hr_role = guild.get_role(Config.HR_ROLE_ID) if Config.HR_ROLE_ID else None
+            
+            # Identify HR attendees
+            hr_attendees = []
+            if hr_role:
+                hr_attendees = [
+                    attendee_id for attendee_id in attendee_mentions
+                    if (attendee := guild.get_member(int(attendee_id))) and hr_role in attendee.roles
+                ]
+                
             # Record non-HR attendees in LRs table
             success_count = 0
             for attendee_id in attendee_mentions:
