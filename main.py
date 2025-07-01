@@ -407,10 +407,12 @@ class ReactionLogger:
             
             # Extract host
             host_mention = re.search(r'host:\s*<@!?(\d+)>', message.content, re.IGNORECASE)
-            if not host_mention:
-                return
-                
-            host_id = int(host_mention.group(1))
+            if host_mention:
+                host_id = int(host_mention.group(1))
+            else:
+                logger.info(f"Host not mentioned. Attempting to use author id instead.")
+                host_id = message.author.id
+            
             host_member = guild.get_member(host_id)
             if not host_member:
                 return
@@ -549,10 +551,12 @@ class ReactionLogger:
             
             # Extract user from message
             user_mention = re.search(r'host:\s*<@!?(\d+)>', message.content, re.IGNORECASE)
-            if not user_mention:
-                return
+            if user_mention:
+                user_id = int(user_mention.group(1))
+            else:
+                logger.info(f"User not mentioned. Attempting to use author id instead.")
+                user_id = message.author.id
                 
-            user_id = int(user_mention.group(1))
             user_member = guild.get_member(user_id)
             if not user_member:
                 return
@@ -619,10 +623,12 @@ class ReactionLogger:
             
             # Extract user
             user_mention = re.search(r'<@!?(\d+)>', message.content)
-            if not user_mention:
-                return
+            if user_mention:
+                user_id = int(user_mention.group(1))
+            else:
+                logger.info(f"User not mentioned. Attempting to use author id instead.")
+                user_id = message.author.id
                 
-            user_id = int(user_mention.group(1))
             user_member = guild.get_member(user_id)
             if not user_member:
                 return
