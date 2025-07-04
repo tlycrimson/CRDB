@@ -1675,7 +1675,7 @@ async def message_tracker_remove(
     await bot.message_tracker.remove_channels(interaction, channels)
 
 @bot.tree.command(name="message-tracker-list", description="List currently monitored channels")
-
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))async def command_list(interaction: discord.Interaction)
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)  
 async def message_tracker_list(interaction: discord.Interaction):
     """List channels being tracked for messages"""
@@ -1683,6 +1683,7 @@ async def message_tracker_list(interaction: discord.Interaction):
 
 
 @bot.tree.command(name="force-update", description="Manually test sheet updates")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))async def command_list(interaction: discord.Interaction)
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)  
 async def force_update(interaction: discord.Interaction, username: str):
     await interaction.response.defer(ephemeral=True)
@@ -1708,7 +1709,8 @@ async def force_update(interaction: discord.Interaction, username: str):
 
 @bot.tree.command(name="commands", description="List all available commands")
 @min_rank_required(Config.RMP_ROLE_ID)  
-@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))async def command_list(interaction: discord.Interaction):
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))async def command_list(interaction: discord.Interaction)
+async def command_list(interaction: discord.Interaction):
     embed = discord.Embed(
         title="📜 Available Commands",
         color=discord.Color.blue()
