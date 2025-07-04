@@ -123,27 +123,41 @@ async def check_dns_connectivity() -> bool:
 
 # --- CLASSES ---
 class EnhancedRateLimiter:
-    """Improved rate limiter with jitter and bucket support"""
     def __init__(self, calls_per_minute: int):
         self.calls_per_minute = calls_per_minute
         self.buckets = {}
-        self.locks = {}
+        self.global_lock = asyncio.Lock()  # Add global lock
+        self.last_global_reset = time.time()
+        self.global_count = 0
         
     async def wait_if_needed(self, bucket: str = "global"):
-        """Wait if needed to avoid rate limits"""
+        """Improved rate limiting with global and local limits"""
+        now = time.time()
+        
+        # Global rate limiting (50 requests/second hard limit)
+        async with self.global_lock:
+            if now - self.last_global_reset >= 1.0:  # Reset global counter every second
+                self.last_global_reset = now
+                self.global_count = 0
+                
+            if self.global_count >= 45:  # Stay under 50/sec limit
+                wait_time = 1.0 - (now - self.last_global_reset)
+                await asyncio.sleep(wait_time)
+                self.last_global_reset = time.time()
+                self.global_count = 0
+                
+            self.global_count += 1
+            
+        # Local bucket rate limiting
         if bucket not in self.buckets:
             self.buckets[bucket] = {'last_call': 0, 'count': 0}
-            self.locks[bucket] = asyncio.Lock()
             
-        async with self.locks[bucket]:
-            now = time.time()
+        async with self.locks.get(bucket, asyncio.Lock()):
             bucket_data = self.buckets[bucket]
-            
             elapsed = now - bucket_data['last_call']
-            required_delay = max(1.0, (60 / self.calls_per_minute) - elapsed)
+            required_delay = max(0.02, (60 / self.calls_per_minute) - elapsed)
             
             if required_delay > 0:
-                logger.debug(f"Rate limit wait: {required_delay:.2f}s for bucket {bucket}")
                 await asyncio.sleep(required_delay)
                 
             bucket_data['last_call'] = time.time()
@@ -1117,6 +1131,7 @@ async def add_xp(interaction: discord.Interaction, user: discord.User, xp: int):
 
 # /take-xp Command
 @bot.tree.command(name="take-xp", description="Takes XP from user")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @min_rank_required(Config.HR_ROLE_ID)
 async def take_xp(interaction: discord.Interaction, user: discord.User, xp: int):
     if xp <= 0:
@@ -1161,6 +1176,7 @@ async def take_xp(interaction: discord.Interaction, user: discord.User, xp: int)
 
 # /xp Command
 @bot.tree.command(name="xp", description="Check yours or someone else's XP")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @min_rank_required(Config.RMP_ROLE_ID) 
 async def xp_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
     """Check a user's XP and leaderboard position"""
@@ -1235,6 +1251,7 @@ async def handle_command_error(interaction: discord.Interaction, error: Exceptio
 
 # Leadebaord Command
 @bot.tree.command(name="leaderboard", description="View the top 15 users by XP")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @min_rank_required(Config.RMP_ROLE_ID)  
 async def leaderboard(interaction: discord.Interaction):
     try:
@@ -1287,6 +1304,7 @@ async def leaderboard(interaction: discord.Interaction):
 
 # Give Event XP Command
 @bot.tree.command(name="give-event-xp", description="Give XP to attendees mentioned in an event log message")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @min_rank_required(Config.HR_ROLE_ID)
 async def give_event_xp(
     interaction: discord.Interaction,
@@ -1471,6 +1489,7 @@ async def give_event_xp(
 
 # Discharge Command
 @bot.tree.command(name="discharge", description="Notify members of honourable/dishonourable discharge and log it")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def discharge(
     interaction: discord.Interaction,
@@ -1616,6 +1635,7 @@ async def discharge(
 
 #LD Reaction Monitor Set-up Command           
 @bot.tree.command(name="message-tracker-setup", description="Setup message monitoring")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)  
 async def message_tracker_setup(
     interaction: discord.Interaction,
@@ -1635,6 +1655,7 @@ async def message_tracker_setup(
         await interaction.followup.send(f"❌ Setup failed: {str(e)}", ephemeral=True)
 
 @bot.tree.command(name="message-tracker-add", description="Add channels to message monitoring")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)  # Or whatever role you want
 async def message_tracker_add(
     interaction: discord.Interaction,
@@ -1644,6 +1665,7 @@ async def message_tracker_add(
     await bot.message_tracker.add_channels(interaction, channels)
 
 @bot.tree.command(name="message-tracker-remove", description="Remove channels from message monitoring")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID) 
 async def message_tracker_remove(
     interaction: discord.Interaction,
@@ -1653,6 +1675,7 @@ async def message_tracker_remove(
     await bot.message_tracker.remove_channels(interaction, channels)
 
 @bot.tree.command(name="message-tracker-list", description="List currently monitored channels")
+
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)  
 async def message_tracker_list(interaction: discord.Interaction):
     """List channels being tracked for messages"""
@@ -1685,7 +1708,7 @@ async def force_update(interaction: discord.Interaction, username: str):
 
 @bot.tree.command(name="commands", description="List all available commands")
 @min_rank_required(Config.RMP_ROLE_ID)  
-async def command_list(interaction: discord.Interaction):
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))async def command_list(interaction: discord.Interaction):
     embed = discord.Embed(
         title="📜 Available Commands",
         color=discord.Color.blue()
@@ -1728,6 +1751,7 @@ async def command_list(interaction: discord.Interaction):
     
 
 @bot.tree.command(name="ping", description="Check bot latency")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @has_allowed_role()
 async def ping(interaction: discord.Interaction):
     latency = round(bot.latency * 1000)
@@ -1737,6 +1761,7 @@ async def ping(interaction: discord.Interaction):
     )
 
 @bot.tree.command(name="reaction-setup", description="Setup reaction monitoring")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def reaction_setup(
     interaction: discord.Interaction,
@@ -1746,6 +1771,7 @@ async def reaction_setup(
     await bot.reaction_logger.setup(interaction, log_channel, monitor_channels)
 
 @bot.tree.command(name="reaction-add", description="Add channels to monitor")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def reaction_add(
     interaction: discord.Interaction,
@@ -1754,6 +1780,7 @@ async def reaction_add(
     await bot.reaction_logger.add_channels(interaction, channels)
 
 @bot.tree.command(name="reaction-remove", description="Remove channels from monitoring")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def reaction_remove(
     interaction: discord.Interaction,
@@ -1762,11 +1789,13 @@ async def reaction_remove(
     await bot.reaction_logger.remove_channels(interaction, channels)
 
 @bot.tree.command(name="reaction-list", description="List monitored channels")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def reaction_list(interaction: discord.Interaction):
     await bot.reaction_logger.list_channels(interaction)
 
 @bot.tree.command(name="sheetdb-test", description="Test SheetDB connection")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 async def sheetdb_test(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
     
@@ -1793,82 +1822,31 @@ async def sheetdb_test(interaction: discord.Interaction):
 @bot.event
 async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
     if isinstance(error, app_commands.CommandInvokeError):
-        if isinstance(error.original, discord.errors.HTTPException) and error.original.status == 429:
-            retry_after = error.original.response.headers.get('Retry-After', 5)
-            await interaction.followup.send(
-                f"⚠️ Too many requests. Please wait {retry_after} seconds before trying again.",
-                ephemeral=True
-            )
-            return
-
-# XP Database remover
-@bot.event
-async def on_member_update(before: discord.Member, after: discord.Member):
-    """Check for RMP role removal and clean up data from all tables"""
-    try:
-        # Get the RMP role from config
-        rmp_role = after.guild.get_role(Config.RMP_ROLE_ID)
-        if not rmp_role:
-            return  # Role not found in server
-        
-        # Check if member lost the RMP role
-        if rmp_role in before.roles and rmp_role not in after.roles:
-            logger.info(f"RMP role removed from {after.display_name}, cleaning up data...")
-            await _cleanup_member_data(after)
-            
-    except Exception as e:
-        logger.error(f"Error in on_member_update for RMP role check: {str(e)}")
-
-@bot.event
-async def on_member_remove(member: discord.Member):
-    """Clean up data if member leaves and had RMP role"""
-    try:
-        rmp_role = member.guild.get_role(Config.RMP_ROLE_ID)
-        if not rmp_role:
-            return
-        
-        if rmp_role in member.roles:
-            logger.info(f"Member {member.display_name} left with RMP role, cleaning up data...")
-            await _cleanup_member_data(member)
-            
-    except Exception as e:
-        logger.error(f"Error in on_member_remove for RMP cleanup: {str(e)}")
-
-async def _cleanup_member_data(member: discord.Member):
-    """Helper function to remove member from XP, LRs, and HRs tables"""
-    try:
-        user_id_str = str(member.id)
-        tables_to_clean = ['users', 'LRs', 'HRs']  # All tables where data should be removed
-        
-        for table in tables_to_clean:
-            try:
-                # Delete user data from the table
-                result = bot.db.supabase.table(table) \
-                    .delete() \
-                    .eq('user_id', user_id_str) \
-                    .execute()
+        if isinstance(error.original, discord.errors.HTTPException):
+            if error.original.status == 429:
+                retry_after = float(error.original.response.headers.get('Retry-After', 5))
+                logger.warning(f"Rate limited - waiting {retry_after} seconds")
                 
-                if len(result.data) > 0:
-                    logger.info(f"Successfully removed {member.display_name} from {table} table")
-                else:
-                    logger.info(f"No data found for {member.display_name} in {table} table")
+                # Edit original response if possible
+                try:
+                    await interaction.edit_original_response(
+                        content=f"⚠️ Too many requests. Waiting {retry_after:.1f} seconds..."
+                    )
+                except:
+                    pass
                     
-            except Exception as table_error:
-                logger.error(f"Failed to remove {member.id} from {table} table: {str(table_error)}")
-        
-        # Log to audit channel if configured
-        if hasattr(Config, 'DEFAULT_LOG_CHANNEL'):
-            channel = member.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
-            if channel:
-                embed = discord.Embed(
-                    title="🗑️ Data Cleanup",
-                    description=f"Removed {member.mention} from all tracking tables (XP/LRs/HRs)",
-                    color=discord.Color.orange()
-                )
-                await channel.send(embed=embed)
+                await asyncio.sleep(retry_after)
                 
-    except Exception as e:
-        logger.error(f"Error in _cleanup_member_data: {str(e)}")
+                # Retry the command
+                try:
+                    await interaction.followup.send(
+                        "Retrying command after rate limit...",
+                        ephemeral=True
+                    )
+                    await bot.tree.call(interaction)
+                except Exception as retry_error:
+                    logger.error(f"Retry failed: {retry_error}")
+                return
 
 
 # HR Welcome Message
