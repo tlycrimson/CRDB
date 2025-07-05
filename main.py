@@ -16,6 +16,7 @@ from rate_limiter import RateLimiter
 from discord import app_commands
 from config import Config
 from discord.ext import commands
+from discord.utils import escape_markdown
 from dotenv import load_dotenv
 from flask import Flask
 from roblox_commands import create_sc_command
@@ -1313,6 +1314,8 @@ async def give_event_xp(
     xp_amount: int,
     attendees_section: Literal["Attendees:", "Passed:"] = "Attendees:"
 ):
+    # Rate Limit
+    await bot.rate_limiter.wait_if_needed(bucket="global_xp_update")
     # Validate XP amount first
     if xp_amount <= 0:
         await interaction.response.send_message(
@@ -1506,6 +1509,8 @@ async def discharge(
         return
 
     try:
+        # Input Sanitization 
+        reason = escape_markdown(reason) 
         # Reason character limit check
         if len(reason) > 1000:
             await interaction.followup.send(
