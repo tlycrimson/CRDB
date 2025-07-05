@@ -127,7 +127,8 @@ class EnhancedRateLimiter:
     def __init__(self, calls_per_minute: int):
         self.calls_per_minute = calls_per_minute
         self.buckets = {}
-        self.global_lock = asyncio.Lock()  # Add global lock
+        self.locks = {}  # Initialize locks dictionary
+        self.global_lock = asyncio.Lock()
         self.last_global_reset = time.time()
         self.global_count = 0
         
@@ -144,7 +145,7 @@ class EnhancedRateLimiter:
             if self.global_count >= 45:  # Stay under 50/sec limit
                 wait_time = 1.0 - (now - self.last_global_reset)
                 await asyncio.sleep(wait_time)
-                self.last_global_reset = time.time()
+                self.last_global_reset = now
                 self.global_count = 0
                 
             self.global_count += 1
@@ -153,7 +154,11 @@ class EnhancedRateLimiter:
         if bucket not in self.buckets:
             self.buckets[bucket] = {'last_call': 0, 'count': 0}
             
-        async with self.locks.get(bucket, asyncio.Lock()):
+        # Initialize lock for this bucket if it doesn't exist
+        if bucket not in self.locks:
+            self.locks[bucket] = asyncio.Lock()
+            
+        async with self.locks[bucket]:
             bucket_data = self.buckets[bucket]
             elapsed = now - bucket_data['last_call']
             required_delay = max(0.02, (60 / self.calls_per_minute) - elapsed)
