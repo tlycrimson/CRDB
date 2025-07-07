@@ -830,12 +830,12 @@ class SheetDBLogger:
             self.ready = False
         else:
             self.ready = True
-            logger.info("✅ SheetDB Logger configured with Google Apps Script")
+            logger.info(f"✅ SheetDB Logger configured with Google Apps Script at {self.script_url}")
 
-        # Define API keys for both trackers
+        # Defined API keys for both trackers
         self.tracker_keys = {
             "LD": "LD_KEY",  # For reaction tracking
-            "EDD": "EDD_KEY"  # For message tracking
+            "ED": "ED_KEY"  # For message tracking
         }
 
     async def update_points(self, member: discord.Member, is_message_tracker: bool = False):
@@ -845,16 +845,19 @@ class SheetDBLogger:
             return False
 
         username = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
-        tracker_type = "EDD" if is_message_tracker else "LD"
+        tracker_type = "ED" if is_message_tracker else "LD"
         api_key = self.tracker_keys[tracker_type]
         
         logger.info(f"🔄 Attempting to update {username}'s points in {tracker_type} tracker")
+        logger.debug(f"🔍 Member: {member.id}, Display Name: {member.display_name}, Cleaned Username: {username}")
 
         payload = {
             "username": username,
             "key": api_key,
-            "tracker": tracker_type  # Tells the script which sheet to use
+            "tracker": tracker_type
         }
+
+        logger.info(f"📤 Sending payload to Google Script: {payload}")
 
         try:
             async with aiohttp.ClientSession() as session:
@@ -865,6 +868,10 @@ class SheetDBLogger:
                 ) as response:
                     response_text = (await response.text()).strip()
                     
+                    # Log raw response for debugging
+                    logger.debug(f"📥 Raw response from Google Script: {response_text}")
+                    logger.debug(f"🔢 Response status: {response.status}")
+
                     # Success conditions
                     success = (
                         response.status == 200 and 
@@ -887,7 +894,7 @@ class SheetDBLogger:
             logger.error("⏰ Timeout while connecting to Google Script")
             return False
         except Exception as e:
-            logger.error(f"⚠️ Unexpected error: {type(e).__name__}: {str(e)}")
+            logger.error(f"⚠️ Unexpected error: {type(e).__name__}: {str(e)}", exc_info=True)
             return False
             
 
@@ -908,42 +915,62 @@ class MessageTracker:
         for channel_id in self.monitor_channel_ids:
             if channel := guild.get_channel(channel_id):
                 valid_channels.add(channel.id)
+                logger.info(f"👁️ Monitoring channel: #{channel.name} ({channel.id})")
+            else:
+                logger.warning(f"⚠️ Channel ID {channel_id} not found in guild!")
         
         self.monitor_channel_ids = valid_channels
         
-        if not guild.get_channel(self.log_channel_id):
-            logger.warning(f"Message tracker log channel {self.log_channel_id} not found!")
+        if log_channel := guild.get_channel(self.log_channel_id):
+            logger.info(f"📝 Log channel set to #{log_channel.name} ({log_channel.id})")
+        else:
+            logger.warning(f"⚠️ Message tracker log channel {self.log_channel_id} not found!")
             self.log_channel_id = None
 
-        if not guild.get_role(self.tracked_role_id):
-            logger.warning(f"Message tracker role {self.tracked_role_id} not found!")
+        if tracked_role := guild.get_role(self.tracked_role_id):
+            logger.info(f"🎯 Tracking role set to @{tracked_role.name} ({tracked_role.id})")
+        else:
+            logger.warning(f"⚠️ Message tracker role {self.tracked_role_id} not found!")
 
     async def log_message(self, message: discord.Message):
         """Log messages from monitored channels by users with tracked role"""
         try:
+            logger.debug(f"📨 Message received in #{message.channel.name} by {message.author.display_name}")
             await self.rate_limiter.wait_if_needed(bucket="message_log")
             await self._log_message_impl(message)
         except Exception as e:
-            logger.error(f"Failed to log message: {type(e).__name__}: {str(e)}")
+            logger.error(f"❌ Failed to log message: {type(e).__name__}: {str(e)}", exc_info=True)
 
     async def _log_message_impl(self, message: discord.Message):
         if message.author.bot:
+            logger.debug("🤖 Ignoring bot message")
             return
             
         if message.channel.id not in self.monitor_channel_ids:
+            logger.debug(f"🚫 Ignoring message from non-monitored channel #{message.channel.name}")
             return
             
         if not isinstance(message.author, discord.Member):
+            logger.warning("⚠️ Message author is not a Member object")
             return
             
         tracked_role = message.guild.get_role(self.tracked_role_id)
-        if not tracked_role or tracked_role not in message.author.roles:
+        if not tracked_role:
+            logger.error(f"❌ Tracked role {self.tracked_role_id} not found in guild!")
+            return
+            
+        if tracked_role not in message.author.roles:
+            logger.debug(f"👤 User {message.author.display_name} doesn't have the tracked role")
             return
             
         log_channel = message.guild.get_channel(self.log_channel_id)
         if not log_channel:
+            logger.error("❌ Log channel not available")
             return
             
+        # Log the message details
+        logger.info(f"✉️ Processing message from {message.author.display_name} in #{message.channel.name}")
+        
         content = message.content
         if len(content) > 300:
             content = content[:300] + "... [truncated]"
@@ -969,9 +996,9 @@ class MessageTracker:
         
         await log_channel.send(embed=embed) 
         
-        logger.info(f"Attempting to update message tracker points for: {message.author.display_name}")
+        logger.info(f"🔢 Attempting to update message tracker points for: {message.author.display_name}")
         update_success = await self.bot.sheets.update_points(message.author, is_message_tracker=True)
-        logger.info(f"Message tracker update {'succeeded' if update_success else 'failed'}")
+        logger.info(f"📊 Message tracker update {'✅ succeeded' if update_success else '❌ failed'}")
 
     
 
