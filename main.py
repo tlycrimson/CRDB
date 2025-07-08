@@ -908,6 +908,73 @@ class MessageTracker:
         self.tracked_role_id = Config.MESSAGE_TRACKER_ROLE_ID
         self.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
         
+    async def _safe_interaction_response(self, interaction: discord.Interaction):
+        """Safely handle interaction responses with proper error handling"""
+        try:
+            if not interaction.response.is_done():
+                await interaction.response.defer(ephemeral=True)
+            return True
+        except discord.errors.NotFound:
+            logger.error("Interaction expired before response could be sent")
+            return False
+        except Exception as e:
+            logger.error(f"Failed to defer interaction: {str(e)}", exc_info=True)
+            return False
+            
+    async def add_channels(self, interaction: discord.Interaction, channels: str):
+        """Add channels to monitor"""
+        if not await self._safe_interaction_response(interaction):
+            return
+            
+        try:
+            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
+            self.monitor_channel_ids.update(channel_ids)
+            await interaction.followup.send(f"✅ Added {len(channel_ids)} channels to monitoring", ephemeral=True)
+        except ValueError:
+            await interaction.followup.send("❌ Invalid channel ID format. Please provide comma-separated channel IDs.", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error in add_channels: {str(e)}", exc_info=True)
+            await interaction.followup.send(f"❌ Failed to add channels: {str(e)}", ephemeral=True)
+
+    async def remove_channels(self, interaction: discord.Interaction, channels: str):
+        """Remove channels from monitoring"""
+        if not await self._safe_interaction_response(interaction):
+            return
+            
+        try:
+            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
+            self.monitor_channel_ids.difference_update(channel_ids)
+            await interaction.followup.send(f"✅ Removed {len(channel_ids)} channels from monitoring", ephemeral=True)
+        except ValueError:
+            await interaction.followup.send("❌ Invalid channel ID format. Please provide comma-separated channel IDs.", ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error in remove_channels: {str(e)}", exc_info=True)
+            await interaction.followup.send(f"❌ Failed to remove channels: {str(e)}", ephemeral=True)
+
+    async def list_channels(self, interaction: discord.Interaction):
+        """List monitored channels"""
+        if not await self._safe_interaction_response(interaction):
+            return
+            
+        try:
+            if not self.monitor_channel_ids:
+                await interaction.followup.send("❌ No channels being monitored", ephemeral=True)
+                return
+                
+            channel_list = "\n".join(f"• <#{cid}>" for cid in self.monitor_channel_ids)
+            embed = discord.Embed(
+                title="Monitored Message Channels",
+                description=channel_list,
+                color=discord.Color.blue()
+            )
+            await interaction.followup.send(embed=embed, ephemeral=True)
+        except Exception as e:
+            logger.error(f"Error in list_channels: {str(e)}", exc_info=True)
+            try:
+                await interaction.followup.send("❌ Failed to list channels due to an error", ephemeral=True)
+            except:
+                pass
+        
     async def on_ready_setup(self):
         """Setup monitoring when bot starts"""
         guild = self.bot.guilds[0]
@@ -1000,41 +1067,6 @@ class MessageTracker:
         logger.info(f"📊 Message tracker update {'✅ succeeded' if update_success else '❌ failed'}")
 
     
-
-    async def add_channels(self, interaction: discord.Interaction, channels: str):
-        """Add channels to monitor"""
-        await interaction.response.defer(ephemeral=True)
-        try:
-            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
-            self.monitor_channel_ids.update(channel_ids)
-            await interaction.followup.send(f"✅ Added {len(channel_ids)} channels to monitoring", ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(f"❌ Failed to add channels: {str(e)}", ephemeral=True)
-
-    async def remove_channels(self, interaction: discord.Interaction, channels: str):
-        """Remove channels from monitoring"""
-        await interaction.response.defer(ephemeral=True)
-        try:
-            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
-            self.monitor_channel_ids.difference_update(channel_ids)
-            await interaction.followup.send(f"✅ Removed {len(channel_ids)} channels from monitoring", ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(f"❌ Failed to remove channels: {str(e)}", ephemeral=True)
-
-    async def list_channels(self, interaction: discord.Interaction):
-        """List monitored channels"""
-        await interaction.response.defer(ephemeral=True)
-        if not self.monitor_channel_ids:
-            await interaction.followup.send("❌ No channels being monitored", ephemeral=True)
-            return
-            
-        channel_list = "\n".join(f"• <#{cid}>" for cid in self.monitor_channel_ids)
-        embed = discord.Embed(
-            title="Monitored Message Channels",
-            description=channel_list,
-            color=discord.Color.blue()
-        )
-        await interaction.followup.send(embed=embed, ephemeral=True)
     
 
 # --- Bot Initialization ---
