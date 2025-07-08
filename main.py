@@ -935,7 +935,7 @@ class MessageTracker:
     async def log_message(self, message: discord.Message):
         """Log messages from monitored channels by users with tracked role"""
         try:
-            logger.debug(f"📨 Message received in #{message.channel.name} by {message.author.display_name}")
+            logger.debug(f"📨 Message received in other channel by {message.author.display_name}")
             await self.rate_limiter.wait_if_needed(bucket="message_log")
             await self._log_message_impl(message)
         except Exception as e:
