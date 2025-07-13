@@ -1026,7 +1026,7 @@ class MessageTracker:
 
     async def log_message(self, message: discord.Message):
         try:
-            await self.rate_limiter.wait_if_needed(bucket="message_log")
+          #  await self.rate_limiter.wait_if_needed(bucket="message_log")
             await self._log_message_impl(message)
         except Exception as e:
             logger.error(f"❌ Failed to log message: {type(e).__name__}: {str(e)}", exc_info=True)
