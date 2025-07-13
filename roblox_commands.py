@@ -226,7 +226,7 @@ def create_sc_command(bot: commands.Bot):
                     friends_count = friends.get('count', 0) if not isinstance(friends, Exception) else 0
                     groups_count = len(groups.get('data', [])) if not isinstance(groups, Exception) else 0
                     badge_count = badges if not isinstance(badges, Exception) and badges != -1 else 0
-                    warning = "⚠️ Could not verify badges" if isinstance(badges, Exception) or badges == -1 else ""
+                    warning = "⚠️ Could not verify badges | User's inventory may be private" if isinstance(badges, Exception) or badges == -1 else ""
                     british_army_rank = rank if not isinstance(rank, Exception) else 'Unknown'
 
                 metrics = {
