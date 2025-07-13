@@ -940,7 +940,7 @@ class MessageTracker:
         self.monitor_channel_ids = set(Config.MESSAGE_TRACKER_CHANNELS)
         self.log_channel_id = Config.MESSAGE_TRACKER_LOG_CHANNEL
         self.tracked_role_id = Config.MESSAGE_TRACKER_ROLE_ID
-        self.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
+       # self.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
 
     async def on_ready_setup(self):
         """Setup monitoring when bot starts"""
