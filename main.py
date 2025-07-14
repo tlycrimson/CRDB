@@ -22,6 +22,8 @@ from flask import Flask
 from roblox_commands import create_sc_command
 from datetime import datetime, timedelta, timezone
 from supabase import create_client, Client
+from time import monotonic as now
+
 
 # --- Configuration ---
 load_dotenv()
@@ -126,82 +128,81 @@ async def check_dns_connectivity() -> bool:
 class EnhancedRateLimiter:
     def __init__(self, calls_per_minute: int):
         self.calls_per_minute = calls_per_minute
+        self.interval = 60.0 / calls_per_minute
+
         self.buckets = {}
         self.locks = {}
+
         self.global_lock = asyncio.Lock()
-        self.last_global_reset = time.time()
         self.global_count = 0
-        # Add bucket cleanup tracking
-        self.last_bucket_cleanup = time.time()
-        
+        self.last_global_reset = now()
+
+        self.last_bucket_cleanup = now()
+
     async def _cleanup_old_buckets(self):
-        """Periodically clean up unused buckets"""
         async with self.global_lock:
-            now = time.time()
-            if now - self.last_bucket_cleanup > 3600:  # Cleanup every hour
-                stale_buckets = [
-                    bucket for bucket, data in self.buckets.items()
-                    if now - data['last_call'] > 86400  # 24 hours inactive
-                ]
-                for bucket in stale_buckets:
-                    del self.buckets[bucket]
-                    if bucket in self.locks:
-                        del self.locks[bucket]
-                self.last_bucket_cleanup = now
+            current_time = now()
+            if current_time - self.last_bucket_cleanup < 3600:
+                return  # Cleanup only once per hour
+
+            stale = [
+                key for key, data in self.buckets.items()
+                if current_time - data['last_call'] > 86400  # 24h
+            ]
+            for key in stale:
+                self.buckets.pop(key, None)
+                self.locks.pop(key, None)
+
+            self.last_bucket_cleanup = current_time
 
     async def wait_if_needed(self, bucket: str = "global"):
-        """Improved rate limiting with global and local limits"""
-        now = time.time()
-        
-        # Periodic bucket cleanup
-        if random.random() < 0.01:  # 1% chance to trigger cleanup
-            await self._cleanup_old_buckets()
+        current_time = now()
 
-        # Global rate limiting
+        # Chance-based cleanup
+        if random.random() < 0.01:
+            asyncio.create_task(self._cleanup_old_buckets())
+
+        # === GLOBAL RATE LIMITING ===
         async with self.global_lock:
-            # Reset global counter every second
-            if now - self.last_global_reset >= 1.0:
-                self.last_global_reset = now
+            if current_time - self.last_global_reset >= 1.0:
                 self.global_count = 0
-                
-            # Allow bursts but stay under 50/sec limit
-            if self.global_count >= 48:  # Increased from 45 to 48
-                wait_time = 1.0 - (now - self.last_global_reset)
-                await asyncio.sleep(wait_time)
-                self.last_global_reset = time.time()
+                self.last_global_reset = current_time
+
+            if self.global_count >= 48:
+                wait = self.last_global_reset + 1.0 - current_time
+                if wait > 0:
+                    await asyncio.sleep(wait)
                 self.global_count = 0
-                
+                self.last_global_reset = now()
+
             self.global_count += 1
-            
-        # Local bucket rate limiting
+
+        # === LOCAL BUCKET RATE LIMITING ===
         if bucket not in self.buckets:
-            async with self.global_lock:  # Prevent race condition on bucket creation
-                if bucket not in self.buckets:  # Double-check
+            async with self.global_lock:  # Prevent race on init
+                if bucket not in self.buckets:
                     self.buckets[bucket] = {
-                        'last_call': 0,
+                        'last_call': 0.0,
                         'count': 0,
-                        'window_start': now
+                        'window_start': current_time
                     }
                     self.locks[bucket] = asyncio.Lock()
-            
+
         async with self.locks[bucket]:
-            bucket_data = self.buckets[bucket]
-            
-            # Reset count if we're in a new minute window
-            if now - bucket_data['window_start'] > 60:
-                bucket_data['count'] = 0
-                bucket_data['window_start'] = now
-                
-            # Calculate required delay
-            elapsed = now - bucket_data['last_call']
-            required_delay = max(0.02, (60 / self.calls_per_minute) - elapsed)
-            
-            if required_delay > 0:
-                await asyncio.sleep(required_delay)
-                
-            # Update bucket data
-            bucket_data['last_call'] = time.time()
-            bucket_data['count'] += 1
+            data = self.buckets[bucket]
+
+            if current_time - data['window_start'] > 60:
+                data['count'] = 0
+                data['window_start'] = current_time
+
+            elapsed = current_time - data['last_call']
+            wait = self.interval - elapsed
+
+            if wait > 0:
+                await asyncio.sleep(wait + random.uniform(0, 0.01))  # Optional jitter
+
+            data['last_call'] = now()
+            data['count'] += 1
 
 class DiscordAPI:
     """Helper class for Discord API requests with retry logic"""
@@ -940,7 +941,7 @@ class MessageTracker:
         self.monitor_channel_ids = set(Config.MESSAGE_TRACKER_CHANNELS)
         self.log_channel_id = Config.MESSAGE_TRACKER_LOG_CHANNEL
         self.tracked_role_id = Config.MESSAGE_TRACKER_ROLE_ID
-       # self.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
+        self.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
 
     async def on_ready_setup(self):
         """Setup monitoring when bot starts"""
@@ -1026,7 +1027,7 @@ class MessageTracker:
 
     async def log_message(self, message: discord.Message):
         try:
-          #  await self.rate_limiter.wait_if_needed(bucket="message_log")
+            await self.rate_limiter.wait_if_needed(bucket="message_log")
             await self._log_message_impl(message)
         except Exception as e:
             logger.error(f"❌ Failed to log message: {type(e).__name__}: {str(e)}", exc_info=True)
