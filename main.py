@@ -127,38 +127,45 @@ async def check_dns_connectivity() -> bool:
 # --- CLASSES ---
 class GlobalRateLimiter:
     def __init__(self):
-        self.semaphore = asyncio.Semaphore(30)  # Reduced from 50 to be safer
+        self.semaphore = asyncio.Semaphore(30)
         self.last_request = 0
-        self.min_delay = 1.0 / 30  # Adjusted for 30 requests/second
+        self.min_delay = 1.0 / 30
         self.request_count = 0
         self.last_reset = time.time()
-        self.total_limited = 0  # Track how often we hit limits
+        self.total_limited = 0
+        self._lock = asyncio.Lock()  # Added for thread safety
 
     async def __aenter__(self):
         await self.semaphore.acquire()
-        now = time.time()
         
-        # Track overall rate
-        self.request_count += 1
-        if now - self.last_reset > 60:
-            # Log if we're approaching limits
-            if self.request_count > 1000:  # Discord's general limit
-                logger.warning(f"High request rate: {self.request_count}/min")
-                self.total_limited += 1
-            self.request_count = 0
-            self.last_reset = now
-        
-        # Add dynamic delay based on recent limiting
-        base_delay = self.min_delay
-        if self.total_limited > 3:  # If we've been limited a lot recently
-            base_delay *= 1.5  # Increase delay
+        async with self._lock:
+            now = time.time()
+            self.request_count += 1
             
-        elapsed = now - self.last_request
-        if elapsed < base_delay:
-            wait_time = base_delay - elapsed
-            await asyncio.sleep(wait_time + random.uniform(0, 0.15))  # Increased jitter
-        
-        self.last_request = time.time()
+            if now - self.last_reset > 60:
+                if self.request_count > 1000:
+                    logger.warning(f"High request rate: {self.request_count}/min")
+                    self.total_limited += 1
+                self.request_count = 0
+                self.last_reset = now
+            
+            base_delay = self.min_delay
+            if self.total_limited > 3:
+                base_delay *= 1.5
+                
+            elapsed = now - self.last_request
+            if elapsed < base_delay:
+                wait_time = base_delay - elapsed
+                await asyncio.sleep(wait_time + random.uniform(0, 0.15))
+            
+            self.last_request = time.time()
+        return self
+
+    async def __aexit__(self, exc_type, exc, tb):
+        self.semaphore.release()
+        if exc:
+            logger.error(f"Error in rate limited block: {exc}")
+        return False  # Don't suppress exceptions
         
 class EnhancedRateLimiter:
     def __init__(self, calls_per_minute: int):
