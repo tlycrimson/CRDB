@@ -125,6 +125,41 @@ async def check_dns_connectivity() -> bool:
 
 
 # --- CLASSES ---
+class GlobalRateLimiter:
+    def __init__(self):
+        self.semaphore = asyncio.Semaphore(30)  # Reduced from 50 to be safer
+        self.last_request = 0
+        self.min_delay = 1.0 / 30  # Adjusted for 30 requests/second
+        self.request_count = 0
+        self.last_reset = time.time()
+        self.total_limited = 0  # Track how often we hit limits
+
+    async def __aenter__(self):
+        await self.semaphore.acquire()
+        now = time.time()
+        
+        # Track overall rate
+        self.request_count += 1
+        if now - self.last_reset > 60:
+            # Log if we're approaching limits
+            if self.request_count > 1000:  # Discord's general limit
+                logger.warning(f"High request rate: {self.request_count}/min")
+                self.total_limited += 1
+            self.request_count = 0
+            self.last_reset = now
+        
+        # Add dynamic delay based on recent limiting
+        base_delay = self.min_delay
+        if self.total_limited > 3:  # If we've been limited a lot recently
+            base_delay *= 1.5  # Increase delay
+            
+        elapsed = now - self.last_request
+        if elapsed < base_delay:
+            wait_time = base_delay - elapsed
+            await asyncio.sleep(wait_time + random.uniform(0, 0.15))  # Increased jitter
+        
+        self.last_request = time.time()
+        
 class EnhancedRateLimiter:
     def __init__(self, calls_per_minute: int):
         self.calls_per_minute = calls_per_minute
@@ -211,10 +246,11 @@ class DiscordAPI:
         """Execute a Discord API call with automatic retry on rate limits"""
         for attempt in range(max_retries):
             try:
-                return await coro
+                async with global_rate_limiter:
+                    return await coro
             except discord.errors.HTTPException as e:
                 if e.status == 429:
-                    retry_after = float(e.response.headers.get('Retry-After', initial_delay * (attempt + 1)))
+                    retry_after = float(e.response.headers.get('Retry-After', initial_delay * (2 ** attempt)))
                     logger.warning(f"Rate limited. Attempt {attempt + 1}/{max_retries}. Waiting {retry_after:.2f}s")
                     await asyncio.sleep(retry_after)
                     continue
@@ -223,7 +259,7 @@ class DiscordAPI:
                 logger.error(f"API Error: {type(e).__name__}: {str(e)}")
                 if attempt == max_retries - 1:
                     raise
-                await asyncio.sleep(initial_delay * (attempt + 1))
+                await asyncio.sleep(initial_delay * (2 ** attempt))
         
         raise Exception(f"Failed after {max_retries} attempts")
 
@@ -1025,61 +1061,76 @@ class MessageTracker:
             except:
                 pass
 
+  
     async def log_message(self, message: discord.Message):
         try:
-            await self.rate_limiter.wait_if_needed(bucket="message_log")
-            await self._log_message_impl(message)
+            async with global_rate_limiter:
+                await self._log_message_impl(message)
         except Exception as e:
             logger.error(f"❌ Failed to log message: {type(e).__name__}: {str(e)}", exc_info=True)
-
+    
     async def _log_message_impl(self, message: discord.Message):
+        # Add initial delay to prevent bursts
+        await asyncio.sleep(random.uniform(0.1, 0.5))  # Random small delay
+        
         if message.author.bot or message.channel.id not in self.monitor_channel_ids:
             return
-
+    
         if not isinstance(message.author, discord.Member):
             logger.warning("⚠️ Message author is not a Member object")
             return
-
+    
         tracked_role = message.guild.get_role(self.tracked_role_id)
         if not tracked_role or tracked_role not in message.author.roles:
             return
-
+    
         log_channel = message.guild.get_channel(self.log_channel_id)
         if not log_channel:
             logger.error("❌ Log channel not available")
             return
-
+    
         logger.info(f"✉️ Logging message from {message.author.display_name} in #{message.channel.id}")
-
+    
+        # Process message content with truncation
         content = message.content
         if len(content) > 300:
             content = content[:300] + "... [truncated]"
-
+    
+        # Create embed
         embed = discord.Embed(
             title="🎓 ED Activity Logged",
             description=f"{message.author.mention} has marked an exam or logged a course!",
             color=discord.Color.pink(),
             timestamp=message.created_at
         )
-
+    
         embed.add_field(name="Channel", value=message.channel.mention)
         embed.add_field(name="Message ID", value=message.id)
         embed.add_field(name="Content", value=content, inline=False)
         embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
-
+    
         if message.attachments:
             attachment = message.attachments[0]
             if attachment.url.lower().endswith(('png', 'jpg', 'jpeg', 'gif', 'webp')):
                 embed.set_image(url=attachment.url)
             else:
                 embed.add_field(name="Attachment", value=f"[{attachment.filename}]({attachment.url})", inline=False)
-
-        await log_channel.send(embed=embed)
-
+    
+        # Send the embed with rate limiting
+        try:
+            async with global_rate_limiter:
+                await log_channel.send(embed=embed)
+        except Exception as e:
+            logger.error(f"Failed to send message log: {str(e)}")
+            return
+    
+        # Update points with rate limiting and retry
         logger.info(f"🔢 Updating points for: {message.author.display_name}")
-        update_success = await self.bot.sheets.update_points(message.author, is_message_tracker=True)
-        logger.info(f"📊 Message tracker update {'✅ succeeded' if update_success else '❌ failed'}")
-
+        try:
+            update_success = await self.bot.sheets.update_points(message.author, is_message_tracker=True)
+            logger.info(f"📊 Message tracker update {'✅ succeeded' if update_success else '❌ failed'}")
+        except Exception as e:
+            logger.error(f"Failed to update points: {str(e)}")
     
 
 # --- Bot Initialization ---
@@ -1097,6 +1148,7 @@ bot = commands.Bot(
     heartbeat_timeout=60.0
 )
 
+global_rate_limiter = GlobalRateLimiter()
 bot.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
 bot.reaction_logger = ReactionLogger(bot)
 bot.message_tracker = MessageTracker(bot)
@@ -1118,12 +1170,7 @@ async def on_command_error(ctx, error):
         logger.error(f"Command error: {type(error).__name__}: {str(error)}")
         await ctx.send("❌ An error occurred while processing your command.", ephemeral=True)
 
-# Message Listener
-@bot.event
-async def on_message(message):
-    await bot.message_tracker.log_message(message)
-    await bot.process_commands(message)
-    
+       
 # Creating Sc command
 create_sc_command(bot)
 
@@ -1178,45 +1225,46 @@ async def on_disconnect():
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @min_rank_required(Config.HR_ROLE_ID)
 async def add_xp(interaction: discord.Interaction, user: discord.User, xp: int):
-    # Validate XP amount
-    if xp <= 0:
-        await interaction.response.send_message(
-            "❌ XP amount must be positive.",
-            ephemeral=True
-        )
-        return
-    if xp > MAX_XP_PER_ACTION:
-        await interaction.response.send_message(
-            f"❌ Cannot give more than {MAX_XP_PER_ACTION} XP at once.",
-            ephemeral=True
-        )
-        return
-
-    cleaned_name = clean_nickname(user.display_name)
-    current_xp = await bot.db.get_user_xp(user.id)
+    async with global_rate_limiter:
+        # Validate XP amount
+        if xp <= 0:
+            await interaction.response.send_message(
+                "❌ XP amount must be positive.",
+                ephemeral=True
+            )
+            return
+        if xp > MAX_XP_PER_ACTION:
+            await interaction.response.send_message(
+                f"❌ Cannot give more than {MAX_XP_PER_ACTION} XP at once.",
+                ephemeral=True
+            )
+            return
     
-    # Additional safety check
-    if current_xp > 100000:  # Extreme value check
-        await interaction.response.send_message(
-            "❌ User has unusually high XP. Contact admin.",
-            ephemeral=True
-        )
-        return
-    
-    success, new_total = await bot.db.add_xp(user.id, cleaned_name, xp)
-    
-    if success:
-        await interaction.response.send_message(
-            f"✅ Added {xp} XP to {cleaned_name}. New total: {new_total} XP"
-        )
-        # Log the XP change
-        await log_xp_to_discord(interaction.user, user, xp, new_total, "Manual Addition")
-         
-    else:
-        await interaction.response.send_message(
-            "❌ Failed to add XP. Notify admin.",
-            ephemeral=True
-        )
+        cleaned_name = clean_nickname(user.display_name)
+        current_xp = await bot.db.get_user_xp(user.id)
+        
+        # Additional safety check
+        if current_xp > 100000:  # Extreme value check
+            await interaction.response.send_message(
+                "❌ User has unusually high XP. Contact admin.",
+                ephemeral=True
+            )
+            return
+        
+        success, new_total = await bot.db.add_xp(user.id, cleaned_name, xp)
+        
+        if success:
+            await interaction.response.send_message(
+                f"✅ Added {xp} XP to {cleaned_name}. New total: {new_total} XP"
+            )
+            # Log the XP change
+            await log_xp_to_discord(interaction.user, user, xp, new_total, "Manual Addition")
+             
+        else:
+            await interaction.response.send_message(
+                "❌ Failed to add XP. Notify admin.",
+                ephemeral=True
+            )
 
 
 # /take-xp Command
@@ -1224,44 +1272,45 @@ async def add_xp(interaction: discord.Interaction, user: discord.User, xp: int):
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @min_rank_required(Config.HR_ROLE_ID)
 async def take_xp(interaction: discord.Interaction, user: discord.User, xp: int):
-    if xp <= 0:
-        await interaction.response.send_message(
-            "❌ XP amount must be positive. Use /addxp to give XP.",
-            ephemeral=True
-        )
-        return
-    if xp > MAX_XP_PER_ACTION:
-        await interaction.response.send_message(
-            f"❌ Cannot remove more than {MAX_XP_PER_ACTION} XP at once.",
-            ephemeral=True
-        )
-        return
-
-    cleaned_name = clean_nickname(user.display_name)
-    current_xp = await bot.db.get_user_xp(user.id)
+    async with global_rate_limiter:
+        if xp <= 0:
+            await interaction.response.send_message(
+                "❌ XP amount must be positive. Use /addxp to give XP.",
+                ephemeral=True
+            )
+            return
+        if xp > MAX_XP_PER_ACTION:
+            await interaction.response.send_message(
+                f"❌ Cannot remove more than {MAX_XP_PER_ACTION} XP at once.",
+                ephemeral=True
+            )
+            return
     
-    if xp > current_xp:
-        await interaction.response.send_message(
-            f"❌ User only has {current_xp} XP. Cannot take {xp}.",
-            ephemeral=True
-        )
-        return
-    
-    success, new_total = await bot.db.take_xp(user.id, cleaned_name, xp)
-    
-    if success:
-        message = f"✅ Removed {xp} XP from {cleaned_name}. New total: {new_total} XP"
-        if new_total == 0:
-            message += "\n⚠️ User's XP has reached 0"
-        await interaction.response.send_message(message)
-        # Log the XP change
-        await log_xp_to_discord(interaction.user, user, -xp, new_total, "Manual Removal")
+        cleaned_name = clean_nickname(user.display_name)
+        current_xp = await bot.db.get_user_xp(user.id)
         
-    else:
-        await interaction.response.send_message(
-            "❌ Failed to take XP. Notify admin.",
-            ephemeral=True
-        )
+        if xp > current_xp:
+            await interaction.response.send_message(
+                f"❌ User only has {current_xp} XP. Cannot take {xp}.",
+                ephemeral=True
+            )
+            return
+        
+        success, new_total = await bot.db.take_xp(user.id, cleaned_name, xp)
+        
+        if success:
+            message = f"✅ Removed {xp} XP from {cleaned_name}. New total: {new_total} XP"
+            if new_total == 0:
+                message += "\n⚠️ User's XP has reached 0"
+            await interaction.response.send_message(message)
+            # Log the XP change
+            await log_xp_to_discord(interaction.user, user, -xp, new_total, "Manual Removal")
+            
+        else:
+            await interaction.response.send_message(
+                "❌ Failed to take XP. Notify admin.",
+                ephemeral=True
+            )
 
 
 # /xp Command
@@ -1271,49 +1320,50 @@ async def take_xp(interaction: discord.Interaction, user: discord.User, xp: int)
 async def xp_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
     """Check a user's XP and leaderboard position"""
     try:
-        await interaction.response.defer()
-        
-        # Rate limiting
-        await bot.rate_limiter.wait_if_needed(bucket=f"xp_cmd_{interaction.user.id}")
-        
-        target_user = user or interaction.user
-        cleaned_name = clean_nickname(target_user.display_name)
-        
-        # Get XP and leaderboard data
-        xp = await bot.db.get_user_xp(target_user.id)
-        result = await asyncio.to_thread(
-            lambda: bot.db.supabase.table('users')
-            .select("user_id", "xp")
-            .order("xp", desc=True)
-            .execute()
-        )
-        
-        # Process leaderboard position
-        position = next(
-            (idx for idx, entry in enumerate(result.data, 1) 
-             if str(entry['user_id']) == str(target_user.id)),
-            None
-        )
-        
-        # Build embed
-        embed = discord.Embed(
-            title=f"📊 XP Profile: {cleaned_name}",
-            color=discord.Color.green()
-        ).set_thumbnail(url=target_user.display_avatar.url)
-        
-        embed.add_field(name="Current XP", value=f"```{xp}```", inline=True)
-        
-        if position:
-            embed.add_field(name="Leaderboard Position", value=f"```#{position}```", inline=True)
-            if len(result.data) > 10:
-                percentile = (position / len(result.data)) * 100
-                embed.add_field(
-                    name="Percentile", 
-                    value=f"```Top {100 - percentile:.1f}%```", 
-                    inline=False
-                )
-        
-        await interaction.followup.send(embed=embed)
+        async with global_rate_limiter:
+            await interaction.response.defer()
+            
+            # Rate limiting
+            await bot.rate_limiter.wait_if_needed(bucket=f"xp_cmd_{interaction.user.id}")
+            
+            target_user = user or interaction.user
+            cleaned_name = clean_nickname(target_user.display_name)
+            
+            # Get XP and leaderboard data
+            xp = await bot.db.get_user_xp(target_user.id)
+            result = await asyncio.to_thread(
+                lambda: bot.db.supabase.table('users')
+                .select("user_id", "xp")
+                .order("xp", desc=True)
+                .execute()
+            )
+            
+            # Process leaderboard position
+            position = next(
+                (idx for idx, entry in enumerate(result.data, 1) 
+                 if str(entry['user_id']) == str(target_user.id)),
+                None
+            )
+            
+            # Build embed
+            embed = discord.Embed(
+                title=f"📊 XP Profile: {cleaned_name}",
+                color=discord.Color.green()
+            ).set_thumbnail(url=target_user.display_avatar.url)
+            
+            embed.add_field(name="Current XP", value=f"```{xp}```", inline=True)
+            
+            if position:
+                embed.add_field(name="Leaderboard Position", value=f"```#{position}```", inline=True)
+                if len(result.data) > 10:
+                    percentile = (position / len(result.data)) * 100
+                    embed.add_field(
+                        name="Percentile", 
+                        value=f"```Top {100 - percentile:.1f}%```", 
+                        inline=False
+                    )
+            
+            await interaction.followup.send(embed=embed)
         
     except Exception as e:
         logger.error(f"XP command error: {str(e)}")
@@ -1345,44 +1395,45 @@ async def handle_command_error(interaction: discord.Interaction, error: Exceptio
 @min_rank_required(Config.RMP_ROLE_ID)  
 async def leaderboard(interaction: discord.Interaction):
     try:
-        # Rate limiting for Supabase
-        await bot.rate_limiter.wait_if_needed(bucket="supabase_query")
-        
-        # Fetch top 15 users from Supabase
-        result = bot.db.supabase.table('users') \
-            .select("user_id", "username", "xp") \
-            .order("xp", desc=True) \
-            .limit(15) \
-            .execute()
-        
-        data = result.data
-        
-        if not data:
-            await interaction.response.send_message("❌ No leaderboard data available.", ephemeral=True)
-            return
-        
-        leaderboard_lines = []
-        
-        for idx, entry in enumerate(data, start=1):
-            try:
-                user_id = int(entry['user_id'])
-                user = interaction.guild.get_member(user_id) or await bot.fetch_user(user_id)
-                display_name = clean_nickname(user.display_name) if user else entry.get('username', f"Unknown ({user_id})")
-                xp = entry['xp']
-                leaderboard_lines.append(f"**#{idx}** - {display_name}: `{xp} XP`")
-            except Exception as e:
-                logger.error(f"Error processing leaderboard entry {idx}: {str(e)}")
-                continue
-        
-        embed = discord.Embed(
-            title="🏆 XP Leaderboard (Top 15)",
-            description="\n".join(leaderboard_lines) or "No data available",
-            color=discord.Color.gold()
-        )
-        
-        embed.set_footer(text=f"Requested by {interaction.user.display_name}")
-        
-        await interaction.response.send_message(embed=embed)
+        async with global_rate_limiter:
+            # Rate limiting for Supabase
+            await bot.rate_limiter.wait_if_needed(bucket="supabase_query")
+            
+            # Fetch top 15 users from Supabase
+            result = bot.db.supabase.table('users') \
+                .select("user_id", "username", "xp") \
+                .order("xp", desc=True) \
+                .limit(15) \
+                .execute()
+            
+            data = result.data
+            
+            if not data:
+                await interaction.response.send_message("❌ No leaderboard data available.", ephemeral=True)
+                return
+            
+            leaderboard_lines = []
+            
+            for idx, entry in enumerate(data, start=1):
+                try:
+                    user_id = int(entry['user_id'])
+                    user = interaction.guild.get_member(user_id) or await bot.fetch_user(user_id)
+                    display_name = clean_nickname(user.display_name) if user else entry.get('username', f"Unknown ({user_id})")
+                    xp = entry['xp']
+                    leaderboard_lines.append(f"**#{idx}** - {display_name}: `{xp} XP`")
+                except Exception as e:
+                    logger.error(f"Error processing leaderboard entry {idx}: {str(e)}")
+                    continue
+            
+            embed = discord.Embed(
+                title="🏆 XP Leaderboard (Top 15)",
+                description="\n".join(leaderboard_lines) or "No data available",
+                color=discord.Color.gold()
+            )
+            
+            embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+            
+            await interaction.response.send_message(embed=embed)
         
     except Exception as e:
         logger.error(f"Error in /leaderboard command: {str(e)}")
@@ -1402,181 +1453,182 @@ async def give_event_xp(
     xp_amount: int,
     attendees_section: Literal["Attendees:", "Passed:"] = "Attendees:"
 ):
-    # Rate Limit
-    await bot.rate_limiter.wait_if_needed(bucket="global_xp_update")
-    # Validate XP amount first
-    if xp_amount <= 0:
-        await interaction.response.send_message(
-            "❌ XP amount must be positive.",
-            ephemeral=True
-        )
-        return
-    if xp_amount > MAX_EVENT_XP_PER_USER:
-        await interaction.response.send_message(
-            f"❌ Cannot give more than {MAX_EVENT_XP_PER_USER} XP per user in events.",
-            ephemeral=True
-        )
-        return
-
-    # Defer the response immediately to prevent timeout
-    await interaction.response.defer()
-    initial_message = await interaction.followup.send("⏳ Attempting to give XP...", wait=True)
+    async with global_rate_limiter:
+        # Rate Limit
+        await bot.rate_limiter.wait_if_needed(bucket="global_xp_update")
+        # Validate XP amount first
+        if xp_amount <= 0:
+            await interaction.response.send_message(
+                "❌ XP amount must be positive.",
+                ephemeral=True
+            )
+            return
+        if xp_amount > MAX_EVENT_XP_PER_USER:
+            await interaction.response.send_message(
+                f"❌ Cannot give more than {MAX_EVENT_XP_PER_USER} XP per user in events.",
+                ephemeral=True
+            )
+            return
     
-    try:
-        # Add timeout for the entire operation
-        async with asyncio.timeout(60):  # 60 second timeout for entire operation
-            # Rate limiting check with timeout
-            try:
-                await asyncio.wait_for(
-                    bot.rate_limiter.wait_if_needed(bucket=f"give_xp_{interaction.user.id}"),
-                    timeout=5.0
-                )
-            except asyncio.TimeoutError:
-                await initial_message.edit(content="⌛ Rate limit check timed out. Please try again.")
-                return
-
-            # Parse and validate message link
-            if not message_link.startswith('https://discord.com/channels/'):
-                await initial_message.edit(content="❌ Invalid message link format")
-                return
-                
-            try:
-                parts = message_link.split('/')
-                guild_id = int(parts[4])
-                channel_id = int(parts[5])
-                message_id = int(parts[6])
-            except (IndexError, ValueError):
-                await initial_message.edit(content="❌ Invalid message link format")
-                return
-            
-            if guild_id != interaction.guild.id:
-                await initial_message.edit(content="❌ Message must be from this server")
-                return
-                
-            # Fetch the message with timeout
-            try:
-                channel = interaction.guild.get_channel(channel_id)
-                if not channel:
-                    await initial_message.edit(content="❌ Channel not found")
-                    return
-                    
+        # Defer the response immediately to prevent timeout
+        await interaction.response.defer()
+        initial_message = await interaction.followup.send("⏳ Attempting to give XP...", wait=True)
+        
+        try:
+            # Add timeout for the entire operation
+            async with asyncio.timeout(60):  # 60 second timeout for entire operation
+                # Rate limiting check with timeout
                 try:
-                    message = await asyncio.wait_for(
-                        channel.fetch_message(message_id),
-                        timeout=10.0
+                    await asyncio.wait_for(
+                        bot.rate_limiter.wait_if_needed(bucket=f"give_xp_{interaction.user.id}"),
+                        timeout=5.0
                     )
-                except discord.NotFound:
-                    await initial_message.edit(content="❌ Message not found")
+                except asyncio.TimeoutError:
+                    await initial_message.edit(content="⌛ Rate limit check timed out. Please try again.")
                     return
-                except discord.Forbidden:
-                    await initial_message.edit(content="❌ No permission to read that channel")
+    
+                # Parse and validate message link
+                if not message_link.startswith('https://discord.com/channels/'):
+                    await initial_message.edit(content="❌ Invalid message link format")
                     return
-            except asyncio.TimeoutError:
-                await initial_message.edit(content="⌛ Timed out fetching message")
-                return
-                
-            # Process attendees section
-            content = message.content
-            section_index = content.find(attendees_section)
-            if section_index == -1:
-                await initial_message.edit(content=f"❌ Could not find '{attendees_section}' in the message")
-                return
-                
-            mentions_section = content[section_index + len(attendees_section):]
-            mentions = re.findall(r'<@!?(\d+)>', mentions_section)
-            
-            if not mentions:
-                await initial_message.edit(content=f"❌ No user mentions found after '{attendees_section}'")
-                return
-                
-            # Process users with progress updates
-            unique_mentions = list(set(mentions))
-            total_potential_xp = xp_amount * len(unique_mentions)
-            
-            if total_potential_xp > MAX_EVENT_TOTAL_XP:
-                await initial_message.edit(
-                    content=f"❌ Event would give {total_potential_xp} XP total (max is {MAX_EVENT_TOTAL_XP}). Reduce XP or attendees."
-                )
-                return
-                
-            await initial_message.edit(content=f"🎯 Processing XP for {len(unique_mentions)} users...")
-            
-            success_count = 0
-            failed_users = []
-            processed_users = 0
-            
-            for i, user_id in enumerate(unique_mentions, 1):
-                try:
-                    # Update progress every 5 users
-                    if i % 5 == 0 or i == len(unique_mentions):
-                        await initial_message.edit(
-                            content=f"⏳ Processing {i}/{len(unique_mentions)} users ({success_count} successful)..."
-                        )
                     
-                    # Rate limit between users
-                    if i > 1:
-                        await asyncio.sleep(0.75)  # Slightly longer delay
-                        
-                    member = interaction.guild.get_member(int(user_id))
-                    if not member:
-                        failed_users.append(f"Unknown user ({user_id})")
-                        continue
+                try:
+                    parts = message_link.split('/')
+                    guild_id = int(parts[4])
+                    channel_id = int(parts[5])
+                    message_id = int(parts[6])
+                except (IndexError, ValueError):
+                    await initial_message.edit(content="❌ Invalid message link format")
+                    return
+                
+                if guild_id != interaction.guild.id:
+                    await initial_message.edit(content="❌ Message must be from this server")
+                    return
+                    
+                # Fetch the message with timeout
+                try:
+                    channel = interaction.guild.get_channel(channel_id)
+                    if not channel:
+                        await initial_message.edit(content="❌ Channel not found")
+                        return
                         
                     try:
-                        current_xp = await asyncio.wait_for(
-                            bot.db.get_user_xp(member.id),
-                            timeout=5.0
+                        message = await asyncio.wait_for(
+                            channel.fetch_message(message_id),
+                            timeout=10.0
                         )
-                        if current_xp + xp_amount > 100000:
-                            failed_users.append(f"{clean_nickname(member.display_name)} (would exceed max XP)")
+                    except discord.NotFound:
+                        await initial_message.edit(content="❌ Message not found")
+                        return
+                    except discord.Forbidden:
+                        await initial_message.edit(content="❌ No permission to read that channel")
+                        return
+                except asyncio.TimeoutError:
+                    await initial_message.edit(content="⌛ Timed out fetching message")
+                    return
+                    
+                # Process attendees section
+                content = message.content
+                section_index = content.find(attendees_section)
+                if section_index == -1:
+                    await initial_message.edit(content=f"❌ Could not find '{attendees_section}' in the message")
+                    return
+                    
+                mentions_section = content[section_index + len(attendees_section):]
+                mentions = re.findall(r'<@!?(\d+)>', mentions_section)
+                
+                if not mentions:
+                    await initial_message.edit(content=f"❌ No user mentions found after '{attendees_section}'")
+                    return
+                    
+                # Process users with progress updates
+                unique_mentions = list(set(mentions))
+                total_potential_xp = xp_amount * len(unique_mentions)
+                
+                if total_potential_xp > MAX_EVENT_TOTAL_XP:
+                    await initial_message.edit(
+                        content=f"❌ Event would give {total_potential_xp} XP total (max is {MAX_EVENT_TOTAL_XP}). Reduce XP or attendees."
+                    )
+                    return
+                    
+                await initial_message.edit(content=f"🎯 Processing XP for {len(unique_mentions)} users...")
+                
+                success_count = 0
+                failed_users = []
+                processed_users = 0
+                
+                for i, user_id in enumerate(unique_mentions, 1):
+                    try:
+                        # Update progress every 5 users
+                        if i % 5 == 0 or i == len(unique_mentions):
+                            await initial_message.edit(
+                                content=f"⏳ Processing {i}/{len(unique_mentions)} users ({success_count} successful)..."
+                            )
+                        
+                        # Rate limit between users
+                        if i > 1:
+                            await asyncio.sleep(0.75)  # Slightly longer delay
+                            
+                        member = interaction.guild.get_member(int(user_id))
+                        if not member:
+                            failed_users.append(f"Unknown user ({user_id})")
                             continue
                             
-                        success, new_total = await asyncio.wait_for(
-                            bot.db.add_xp(member.id, member.display_name, xp_amount),
-                            timeout=5.0
-                        )
-                        
-                        if success:
-                            success_count += 1
-                            await interaction.followup.send(
-                                f"✨ **{clean_nickname(interaction.user.display_name)}** gave {xp_amount} XP to {member.mention} (New total: {new_total} XP)",
-                                silent=True
+                        try:
+                            current_xp = await asyncio.wait_for(
+                                bot.db.get_user_xp(member.id),
+                                timeout=5.0
                             )
-                            await log_xp_to_discord(interaction.user, member, xp_amount, new_total, f"Event: {message.jump_url}")
-        
-                        else:
-                            failed_users.append(clean_nickname(member.display_name))
+                            if current_xp + xp_amount > 100000:
+                                failed_users.append(f"{clean_nickname(member.display_name)} (would exceed max XP)")
+                                continue
+                                
+                            success, new_total = await asyncio.wait_for(
+                                bot.db.add_xp(member.id, member.display_name, xp_amount),
+                                timeout=5.0
+                            )
                             
-                    except asyncio.TimeoutError:
-                        failed_users.append(f"{clean_nickname(member.display_name)} (timeout)")
+                            if success:
+                                success_count += 1
+                                await interaction.followup.send(
+                                    f"✨ **{clean_nickname(interaction.user.display_name)}** gave {xp_amount} XP to {member.mention} (New total: {new_total} XP)",
+                                    silent=True
+                                )
+                                await log_xp_to_discord(interaction.user, member, xp_amount, new_total, f"Event: {message.jump_url}")
+            
+                            else:
+                                failed_users.append(clean_nickname(member.display_name))
+                                
+                        except asyncio.TimeoutError:
+                            failed_users.append(f"{clean_nickname(member.display_name)} (timeout)")
+                            continue
+                            
+                    except Exception as e:
+                        logger.error(f"Error processing user {user_id}: {str(e)}")
+                        failed_users.append(f"User {user_id} (error)")
                         continue
                         
-                except Exception as e:
-                    logger.error(f"Error processing user {user_id}: {str(e)}")
-                    failed_users.append(f"User {user_id} (error)")
-                    continue
-                    
-            # Final summary
-            result_message = [
-                f"✅ **XP Distribution Complete**",
-                f"**Given by:** {interaction.user.mention}",
-                f"**XP per user:** {xp_amount}",
-                f"**Successful distributions:** {success_count}",
-                f"**Total XP given:** {xp_amount * success_count}"
-            ]
-            
-            if failed_users:
-                result_message.append(f"\n**Failed distributions:** {len(failed_users)}")
-                for chunk in [failed_users[i:i + 10] for i in range(0, len(failed_users), 10)]:
-                    await interaction.followup.send("• " + "\n• ".join(chunk), ephemeral=True)
-            
-            await interaction.followup.send("\n".join(result_message))
-            
-    except asyncio.TimeoutError:
-        await initial_message.edit(content="⌛ Command timed out. Some XP may have been awarded.")
-    except Exception as e:
-        logger.error(f"Error in give_event_xp: {str(e)}", exc_info=True)
-        await initial_message.edit(content="❌ An unexpected error occurred. Please check logs.")
+                # Final summary
+                result_message = [
+                    f"✅ **XP Distribution Complete**",
+                    f"**Given by:** {interaction.user.mention}",
+                    f"**XP per user:** {xp_amount}",
+                    f"**Successful distributions:** {success_count}",
+                    f"**Total XP given:** {xp_amount * success_count}"
+                ]
+                
+                if failed_users:
+                    result_message.append(f"\n**Failed distributions:** {len(failed_users)}")
+                    for chunk in [failed_users[i:i + 10] for i in range(0, len(failed_users), 10)]:
+                        await interaction.followup.send("• " + "\n• ".join(chunk), ephemeral=True)
+                
+                await interaction.followup.send("\n".join(result_message))
+                
+        except asyncio.TimeoutError:
+            await initial_message.edit(content="⌛ Command timed out. Some XP may have been awarded.")
+        except Exception as e:
+            logger.error(f"Error in give_event_xp: {str(e)}", exc_info=True)
+            await initial_message.edit(content="❌ An unexpected error occurred. Please check logs.")
 
 
 # Discharge Command
@@ -2077,151 +2129,156 @@ async def send_rmp_welcome(member: discord.Member):
 
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
-    # Check for HR role
-    if hr_role := after.guild.get_role(Config.HR_ROLE_ID):
-        if hr_role not in before.roles and hr_role in after.roles:
-            await send_hr_welcome(after)
-    
-    # Check for RMP role
-    if rmp_role := after.guild.get_role(Config.RMP_ROLE_ID):
-        if rmp_role not in before.roles and rmp_role in after.roles:
-            await send_rmp_welcome(after)
+    async with global_rate_limiter:
+        # Check for HR role
+        if hr_role := after.guild.get_role(Config.HR_ROLE_ID):
+            if hr_role not in before.roles and hr_role in after.roles:
+                await send_hr_welcome(after)
+        
+        # Check for RMP role
+        if rmp_role := after.guild.get_role(Config.RMP_ROLE_ID):
+            if rmp_role not in before.roles and rmp_role in after.roles:
+                await send_rmp_welcome(after)
 
 #Deserter Monitor
 @bot.event
 async def on_member_remove(member: discord.Member):
-    guild = member.guild
-    if not (deserter_role := guild.get_role(Config.DESERTER_ROLE_ID)):
-        return
-
-    if deserter_role not in member.roles:
-        return
+    async with global_rate_limiter:
+        guild = member.guild
+        if not (deserter_role := guild.get_role(Config.DESERTER_ROLE_ID)):
+            return
+    
+        if deserter_role not in member.roles:
+            return
+            
+        if not (alert_channel := guild.get_channel(Config.DESERTER_ALERT_CHANNEL_ID)):
+            return
+            
+        embed = discord.Embed(
+            title="🚨 Deserter Alert",
+            description=f"{member.mention} just deserted! Please log this in BA.",
+            color=discord.Color.red()
+        )
+        embed.set_thumbnail(url=member.display_avatar.url)
         
-    if not (alert_channel := guild.get_channel(Config.DESERTER_ALERT_CHANNEL_ID)):
-        return
+        await alert_channel.send(
+            content=f"<@&{Config.HIGH_COMMAND_ROLE_ID}>",
+            embed=embed
+        )
+    
+        # For the deserter checker discharge log
+        dishonourable_embed = discord.Embed(
+            title="Discharge Log",
+            color=discord.Color.red(),
+            timestamp=datetime.now(timezone.utc)
+        )
         
-    embed = discord.Embed(
-        title="🚨 Deserter Alert",
-        description=f"{member.mention} just deserted! Please log this in BA.",
-        color=discord.Color.red()
-    )
-    embed.set_thumbnail(url=member.display_avatar.url)
-    
-    await alert_channel.send(
-        content=f"<@&{Config.HIGH_COMMAND_ROLE_ID}>",
-        embed=embed
-    )
-
-    # For the deserter checker discharge log
-    dishonourable_embed = discord.Embed(
-        title="Discharge Log",
-        color=discord.Color.red(),
-        timestamp=datetime.now(timezone.utc)
-    )
-    
-    dishonourable_embed.add_field(
-        name="Type",
-        value="🚨 Dishonourable Discharge",
-        inline=False
-    )
-    dishonourable_embed.add_field(
-        name="Reason", 
-        value="```Desertion.```",
-        inline=False
-    )
-    
-    # Add member information (assuming you have a member object)
-    cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
-    dishonourable_embed.add_field(
-        name="Discharged Members",
-        value=f"{member.mention} | {cleaned_nickname}",
-        inline=False
-    )
-    
-    dishonourable_embed.add_field(
-        name="Discharged By", 
-        value=f"None - Unauthorised",
-        inline=True
-    )
-    
-    
-    # Set footer
-    dishonourable_embed.set_footer(text="Desertion Monitor System")
-
-    # DESERTER | BLacklist logs
-    current_date = datetime.now(timezone.utc)
-    ending_date = current_date + timedelta(days=30)  # Adding approximately one month
-    
-    blacklist_embed = discord.Embed(
-        title="⛔ Blacklist",
-        color=discord.Color.red(),
-        timestamp=current_date
-    )
-    
-    blacklist_embed.add_field(
-        name="Issuer:",
-        value="MP Assistant",
-        inline=False
-    )
-    blacklist_embed.add_field(
-        name="Name:", 
-        value=f"{cleaned_nickname}",
-        inline=False
-    )
-    
-    blacklist_embed.add_field(
-        name="Starting date", 
-        value=f"<t:{int(current_date.timestamp())}:D>",
-        inline=False
-    )
-    
-    blacklist_embed.add_field(
-        name="Ending date", 
-        value=f"<t:{int(ending_date.timestamp())}:D>",
-        inline=False
-    )
-
-    blacklist_embed.add_field(
-        name="Reason:", 
-        value="Desertion.",
-        inline=False
-    )
-    
-    
-    # Set footer
-    blacklist_embed.set_footer(text="Desertion Monitor System")
-
-    try:
-        d_log = bot.get_channel(Config.D_LOG_CHANNEL_ID)
-        b_log = bot.get_channel(Config.B_LOG_CHANNEL_ID)
+        dishonourable_embed.add_field(
+            name="Type",
+            value="🚨 Dishonourable Discharge",
+            inline=False
+        )
+        dishonourable_embed.add_field(
+            name="Reason", 
+            value="```Desertion.```",
+            inline=False
+        )
         
-        if d_log:
-            await d_log.send(embed=dishonourable_embed)
-            await b_log.send(embed=blacklist_embed)
-            logger.info(f"Logged deserted member, {cleaned_nickname}.")
-        else:
-            # If main channel fails, send simple message to alternative channel
-            alt_channel = bot.get_channel(1165368316970405917)
-            if alt_channel:
-                await alt_channel.send(f"⚠️ Failed to log deserter discharge for {cleaned_nickname} in main channel")
-                logger.error(f"Failed to log deserted member {cleaned_nickname} - main channel not found")
-    except Exception as e:
-        logger.error(f"Error logging deserter discharge: {str(e)}")
+        # Add member information (assuming you have a member object)
+        cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
+        dishonourable_embed.add_field(
+            name="Discharged Members",
+            value=f"{member.mention} | {cleaned_nickname}",
+            inline=False
+        )
+        
+        dishonourable_embed.add_field(
+            name="Discharged By", 
+            value=f"None - Unauthorised",
+            inline=True
+        )
+        
+        
+        # Set footer
+        dishonourable_embed.set_footer(text="Desertion Monitor System")
+    
+        # DESERTER | BLacklist logs
+        current_date = datetime.now(timezone.utc)
+        ending_date = current_date + timedelta(days=30)  # Adding approximately one month
+        
+        blacklist_embed = discord.Embed(
+            title="⛔ Blacklist",
+            color=discord.Color.red(),
+            timestamp=current_date
+        )
+        
+        blacklist_embed.add_field(
+            name="Issuer:",
+            value="MP Assistant",
+            inline=False
+        )
+        blacklist_embed.add_field(
+            name="Name:", 
+            value=f"{cleaned_nickname}",
+            inline=False
+        )
+        
+        blacklist_embed.add_field(
+            name="Starting date", 
+            value=f"<t:{int(current_date.timestamp())}:D>",
+            inline=False
+        )
+        
+        blacklist_embed.add_field(
+            name="Ending date", 
+            value=f"<t:{int(ending_date.timestamp())}:D>",
+            inline=False
+        )
+    
+        blacklist_embed.add_field(
+            name="Reason:", 
+            value="Desertion.",
+            inline=False
+        )
+        
+        
+        # Set footer
+        blacklist_embed.set_footer(text="Desertion Monitor System")
+    
+        try:
+            d_log = bot.get_channel(Config.D_LOG_CHANNEL_ID)
+            b_log = bot.get_channel(Config.B_LOG_CHANNEL_ID)
+            
+            if d_log:
+                await d_log.send(embed=dishonourable_embed)
+                await b_log.send(embed=blacklist_embed)
+                logger.info(f"Logged deserted member, {cleaned_nickname}.")
+            else:
+                # If main channel fails, send simple message to alternative channel
+                alt_channel = bot.get_channel(1165368316970405917)
+                if alt_channel:
+                    await alt_channel.send(f"⚠️ Failed to log deserter discharge for {cleaned_nickname} in main channel")
+                    logger.error(f"Failed to log deserted member {cleaned_nickname} - main channel not found")
+        except Exception as e:
+            logger.error(f"Error logging deserter discharge: {str(e)}")
     
 
-    
-@bot.event
-async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    await bot.reaction_logger.log_reaction(payload)
-
+# Message Listener
 @bot.event
 async def on_message(message: discord.Message):
-    # Process commands first
-    await bot.process_commands(message)
+    # Process commands first with rate limiting
+    async with global_rate_limiter:
+        await bot.process_commands(message)
     
-    # Then track messages
-    await bot.message_tracker.log_message(message)
+    # Then track messages with rate limiting
+    async with global_rate_limiter:
+        await bot.message_tracker.log_message(message)
 
+# Reaction Listner
+@bot.event
+async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    async with global_rate_limiter:
+        await bot.reaction_logger.log_reaction(payload)
 # --- Flask Setup ---
 app = Flask(__name__)
 keep_alive = True
