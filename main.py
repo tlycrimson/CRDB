@@ -394,8 +394,29 @@ class ReactionLogger:
         self.tryout_log_channel_id = Config.TRYOUT_LOG_CHANNEL_ID
         self.course_log_channel_id = Config.COURSE_LOG_CHANNEL_ID
         self.activity_log_channel_id = Config.ACTIVITY_LOG_CHANNEL_ID
+        # Cache to track which messages have been processed by LD members
+        self.processed_messages = set()
     
+    def _get_processed_key(self, message_id: int, user_id: int) -> str:
+        """Generate a unique key for processed message tracking"""
+        return f"{message_id}-{user_id}"
+    
+    async def _has_ld_already_reacted(self, message: discord.Message) -> bool:
+        """Check if any LD member has already reacted to this message"""
+        guild = message.guild
+        if not guild:
+            return False
             
+        ld_role = guild.get_role(Config.LD_ROLE_ID)
+        if not ld_role:
+            return False
+            
+        for reaction in message.reactions:
+            async for user in reaction.users():
+                if isinstance(user, discord.Member) and ld_role in user.roles:
+                    return True
+        return False
+    
     async def on_ready_setup(self):
         """Verify configured channels when bot starts"""
         guild = self.bot.guilds[0]
@@ -445,6 +466,12 @@ class ReactionLogger:
             message = await DiscordAPI.execute_with_retry(
                 channel.fetch_message(payload.message_id)
             )
+            
+            # Check if any LD member has already reacted to this message
+            if await self._has_ld_already_reacted(message):
+                logger.info(f"Skipping duplicate reaction from {member.display_name} on message {payload.message_id}")
+                return
+                
             content = (message.content[:100] + "...") if len(message.content) > 100 else message.content
                 
             embed = discord.Embed(
@@ -462,7 +489,6 @@ class ReactionLogger:
             
             logger.info(f"Attempting to update points for: {member.display_name}")
             update_success = await self.bot.sheets.update_points(member)
-            
             
         except discord.NotFound:
             return
