@@ -447,6 +447,7 @@ class ReactionLogger:
         self.activity_log_channel_id = Config.ACTIVITY_LOG_CHANNEL_ID
         # Cache to track which messages have been processed by LD members
         self.processed_messages = deque(maxlen=50)
+        self.processed_keys = set()
     
     def _get_processed_key(self, message_id: int, user_id: int) -> str:
         """Generate a unique key for processed message tracking"""
@@ -493,17 +494,23 @@ class ReactionLogger:
         log_channel = guild.get_channel(self.log_channel_id)
        
         processed_key = self._get_processed_key(payload.message_id, payload.user_id)
-        if processed_key in self.processed_messages:
+        if processed_key in self.processed_keys:
             logger.info(f"Duplicate reaction detected from {member.display_name} on message {payload.message_id}, skipping.")
-            duplicatenotif = discord.Embed(
+            notif = discord.Embed(
                 title="❌ Duplicate Log Avoided",
-                description=f"{member.mention}, your log was not processed as someone has already logged it.",
+                description=f"Your log was not processed as someone has already logged it.",
                 color=discord.Color.red()
             )
-            await log_channel.send(embed=duplicatenotif)
+            await log_channel.send(content=f"<@&{member}>", embed=notif)
             return
         else:
             self.processed_messages.append(processed_key)
+            self.processed_keys.add(processed_key)
+        
+            # Keep set in sync with deque
+            while len(self.processed_keys) > self.processed_messages.maxlen:
+                oldest = self.processed_messages.popleft()
+                self.processed_keys.discard(oldest)
     
     
         if not all((channel, member, log_channel)):
