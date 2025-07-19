@@ -23,6 +23,7 @@ from roblox_commands import create_sc_command
 from datetime import datetime, timedelta, timezone
 from supabase import create_client, Client
 from time import monotonic as now
+from collections import deque
 
 
 # --- Configuration ---
@@ -125,6 +126,56 @@ async def check_dns_connectivity() -> bool:
 
 
 # --- CLASSES ---
+class ShutdownNotifier:
+    def __init__(self, bot):
+        self.bot = bot
+        self.last_activity = time.time()
+        self.shutdown_check_task = None
+
+    async def start_monitoring(self):
+        """Start checking for impending shutdowns"""
+        self.shutdown_check_task = self.bot.loop.create_task(self._shutdown_watcher())
+
+    async def _shutdown_watcher(self):
+        """Check every minute if we're about to sleep"""
+        while True:
+            await asyncio.sleep(60)  # Check every minute
+            
+            # If no activity in last 13 minutes (leaving 2 min buffer)
+            if time.time() - self.last_activity > 780:  
+                await self._notify_impending_shutdown()
+    
+    async def _notify_impending_shutdown(self):
+        """Ping LD role in the designated channel"""
+        if not hasattr(Config, 'LD_ROLE_ID') or not hasattr(Config, 'LD_ALERT_CHANNEL_ID'):
+            logger.warning("Missing LD role or channel config")
+            return
+
+        guild = self.bot.guilds[0] if self.bot.guilds else None
+        if not guild:
+            return
+
+        ld_role = guild.get_role(Config.LD_ROLE_ID)
+        channel = guild.get_channel(Config.D_LOG_CHANNEL_ID)
+
+        if not ld_role or not channel:
+            logger.error("LD role or channel not found")
+            return
+
+        try:
+            await channel.send(
+                f"{ld_role.mention} ⚠️ **Bot is about to sleep due to inactivity!** "
+                f"Wait for Crimson to wake it up.",
+                allowed_mentions=discord.AllowedMentions(roles=True)
+            )
+            logger.info("Sent shutdown warning to LD team")
+        except Exception as e:
+            logger.error(f"Failed to send shutdown alert: {e}")
+
+    def record_activity(self):
+        """Call this on any bot activity"""
+        self.last_activity = time.time()
+        
 class GlobalRateLimiter:
     def __init__(self):
         self.semaphore = asyncio.Semaphore(30)
@@ -395,27 +446,12 @@ class ReactionLogger:
         self.course_log_channel_id = Config.COURSE_LOG_CHANNEL_ID
         self.activity_log_channel_id = Config.ACTIVITY_LOG_CHANNEL_ID
         # Cache to track which messages have been processed by LD members
-        self.processed_messages = set()
+        self.processed_messages = deque(maxlen=50)
     
     def _get_processed_key(self, message_id: int, user_id: int) -> str:
         """Generate a unique key for processed message tracking"""
         return f"{message_id}-{user_id}"
-    
-    async def _has_ld_already_reacted(self, message: discord.Message) -> bool:
-        """Check if any LD member has already reacted to this message"""
-        guild = message.guild
-        if not guild:
-            return False
-            
-        ld_role = guild.get_role(Config.LD_ROLE_ID)
-        if not ld_role:
-            return False
-            
-        for reaction in message.reactions:
-            async for user in reaction.users():
-                if isinstance(user, discord.Member) and ld_role in user.roles:
-                    return True
-        return False
+        
     
     async def on_ready_setup(self):
         """Verify configured channels when bot starts"""
@@ -452,9 +488,23 @@ class ReactionLogger:
             monitor_role = guild.get_role(Config.LD_ROLE_ID)
             if not monitor_role or monitor_role not in member.roles:
                 return
-    
+                
         channel = guild.get_channel(payload.channel_id)
         log_channel = guild.get_channel(self.log_channel_id)
+       
+        processed_key = self._get_processed_key(payload.message_id, payload.user_id)
+        if processed_key in self.processed_messages:
+            logger.info(f"Duplicate reaction detected from {member.display_name} on message {payload.message_id}, skipping.")
+            duplicatenotif = discord.Embed(
+                title="❌ Duplicate Log Avoided",
+                description=f"{member.mention}, your log was not processed as someone has already logged it.",
+                color=discord.Color.red()
+            )
+            await log_channel.send(embed=duplicatenotif)
+            return
+        else:
+            self.processed_messages.add(processed_key)
+    
     
         if not all((channel, member, log_channel)):
             return
@@ -467,10 +517,6 @@ class ReactionLogger:
                 channel.fetch_message(payload.message_id)
             )
             
-            # Check if any LD member has already reacted to this message
-            if await self._has_ld_already_reacted(message):
-                logger.info(f"Skipping duplicate reaction from {member.display_name} on message {payload.message_id}")
-                return
                 
             content = (message.content[:100] + "...") if len(message.content) > 100 else message.content
                 
@@ -1218,6 +1264,10 @@ async def on_ready():
         logger.warning("SheetDB Logger not initialized properly")
     else:
         logger.info("SheetDB Logger initialized successfully")
+
+    #Shutdown Notifier
+    bot.shutdown_notifier = ShutdownNotifier(bot)
+    await bot.shutdown_notifier.start_monitoring()
 
     # Run setup for other components
     await bot.reaction_logger.on_ready_setup()
@@ -2299,6 +2349,7 @@ async def on_member_remove(member: discord.Member):
 # Message Listener
 @bot.event
 async def on_message(message: discord.Message):
+    bot.shutdown_notifier.record_activity()
     # Process commands first with rate limiting
     async with global_rate_limiter:
         await bot.process_commands(message)
@@ -2310,6 +2361,7 @@ async def on_message(message: discord.Message):
 # Reaction Listner
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
+    bot.shutdown_notifier.record_activity()
     async with global_rate_limiter:
         await bot.reaction_logger.log_reaction(payload)
 # --- Flask Setup ---
