@@ -503,7 +503,7 @@ class ReactionLogger:
             await log_channel.send(embed=duplicatenotif)
             return
         else:
-            self.processed_messages.add(processed_key)
+            self.processed_messages.append(processed_key)
     
     
         if not all((channel, member, log_channel)):
