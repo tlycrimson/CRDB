@@ -506,8 +506,8 @@ class ReactionLogger:
                 description=f"Your log was not processed as someone has already logged it.",
                 color=discord.Color.red()
             )
-            await log_channel.send(content=f"<@&{member}>", embed=notif)
-            return
+            await log_channel.send(content=member.mention, embed=notif)
+            raise Exception("Duplicate reaction detected. Stopping all logging.")
         else:
             self.processed_messages.append(processed_key)
             self.processed_keys.add(processed_key)
