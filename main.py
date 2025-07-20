@@ -126,7 +126,7 @@ async def check_dns_connectivity() -> bool:
 
 
 # --- CLASSES ---
-class ShutdownNotifier:
+'''class ShutdownNotifier:
     def __init__(self, bot):
         self.bot = bot
         self.last_activity = time.time()
@@ -178,7 +178,7 @@ class ShutdownNotifier:
 
     def record_activity(self):
         """Call this on any bot activity"""
-        self.last_activity = time.time()
+        self.last_activity = time.time())'''
 
         
 class GlobalRateLimiter:
@@ -2356,7 +2356,7 @@ async def on_member_remove(member: discord.Member):
 # Message Listener
 @bot.event
 async def on_message(message: discord.Message):
-    bot.shutdown_notifier.record_activity()
+   # bot.shutdown_notifier.record_activity()
     # Process commands first with rate limiting
     async with global_rate_limiter:
         await bot.process_commands(message)
@@ -2368,7 +2368,7 @@ async def on_message(message: discord.Message):
 # Reaction Listner
 @bot.event
 async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    bot.shutdown_notifier.record_activity()
+    #bot.shutdown_notifier.record_activity()
     async with global_rate_limiter:
         await bot.reaction_logger.log_reaction(payload)
         
