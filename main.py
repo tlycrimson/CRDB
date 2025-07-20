@@ -1273,8 +1273,8 @@ async def on_ready():
         logger.info("SheetDB Logger initialized successfully")
 
     #Shutdown Notifier
-    bot.shutdown_notifier = ShutdownNotifier(bot)
-    await bot.shutdown_notifier.start_monitoring()
+    # bot.shutdown_notifier = ShutdownNotifier(bot)
+    # await bot.shutdown_notifier.start_monitoring()
 
     # Run setup for other components
     await bot.reaction_logger.on_ready_setup()
