@@ -501,13 +501,7 @@ class ReactionLogger:
         processed_key = self._get_processed_key(payload.message_id, payload.user_id)
         if processed_key in self.processed_keys:
             logger.info(f"Duplicate reaction detected from {member.display_name} on message {payload.message_id}, skipping.")
-            notif = discord.Embed(
-                title="❌ Duplicate Log Avoided",
-                description=f"Your log was not processed as someone has already logged it.",
-                color=discord.Color.red()
-            )
-            await log_channel.send(content=member.mention, embed=notif)
-            raise Exception("Duplicate reaction detected. Stopping all logging.")
+            raise Exception("Duplicate reaction detected. Log was not processed.")
         else:
             self.processed_messages.append(processed_key)
             self.processed_keys.add(processed_key)
@@ -952,14 +946,15 @@ class ReactionLogger:
                 logger.error(f"Failed to log reaction: {type(e).__name__}: {str(e)}")
                 guild = self.bot.get_guild(payload.guild_id)
                 if guild:
+                    member = guild.get_member(payload.user_id)
                     log_channel = guild.get_channel(self.log_channel_id)
-                    if log_channel:
+                    if member and log_channel:
                         error_embed = discord.Embed(
                             title="❌ Reaction Logging Error",
                             description=str(e),
                             color=discord.Color.red()
                         )
-                        await log_channel.send(embed=error_embed)
+                        await log_channel.send(content=member.mention, embed=error_embed)
 
 class ConfirmView(discord.ui.View):
     def __init__(self, *, timeout: float = 30.0):
