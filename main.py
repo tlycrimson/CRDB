@@ -131,6 +131,7 @@ class ShutdownNotifier:
         self.bot = bot
         self.last_activity = time.time()
         self.shutdown_check_task = None
+        self.has_warned = False  
 
     async def start_monitoring(self):
         """Start checking for impending shutdowns"""
@@ -139,15 +140,18 @@ class ShutdownNotifier:
     async def _shutdown_watcher(self):
         """Check every minute if we're about to sleep"""
         while True:
-            await asyncio.sleep(60)  # Check every minute
-            
-            # If no activity in last 13 minutes (leaving 2 min buffer)
-            if time.time() - self.last_activity > 780:  
+            await asyncio.sleep(60)
+            inactivity_duration = time.time() - self.last_activity
+
+            if inactivity_duration > 780 and not self.has_warned:
                 await self._notify_impending_shutdown()
-    
+                self.has_warned = True 
+            elif inactivity_duration <= 780:
+                self.has_warned = False 
+
     async def _notify_impending_shutdown(self):
         """Ping LD role in the designated channel"""
-        if not hasattr(Config, 'LD_ROLE_ID') or not hasattr(Config, 'LD_ALERT_CHANNEL_ID'):
+        if not hasattr(Config, 'LD_ROLE_ID') or not hasattr(Config, 'D_LOG_CHANNEL_ID'):
             logger.warning("Missing LD role or channel config")
             return
 
@@ -175,6 +179,7 @@ class ShutdownNotifier:
     def record_activity(self):
         """Call this on any bot activity"""
         self.last_activity = time.time()
+
         
 class GlobalRateLimiter:
     def __init__(self):
@@ -184,7 +189,7 @@ class GlobalRateLimiter:
         self.request_count = 0
         self.last_reset = time.time()
         self.total_limited = 0
-        self._lock = asyncio.Lock()  # Added for thread safety
+        self._lock = asyncio.Lock()  
 
     async def __aenter__(self):
         await self.semaphore.acquire()
@@ -2371,6 +2376,7 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     bot.shutdown_notifier.record_activity()
     async with global_rate_limiter:
         await bot.reaction_logger.log_reaction(payload)
+        
 # --- Flask Setup ---
 app = Flask(__name__)
 keep_alive = True
