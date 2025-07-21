@@ -955,6 +955,44 @@ class ReactionLogger:
                             color=discord.Color.red()
                         )
                         await log_channel.send(content=member.mention, embed=error_embed)
+                        
+  
+    async def add_channels(self, interaction: discord.Interaction, channels: str):
+        """Add channels to monitor"""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
+            self.monitor_channel_ids.update(channel_ids)
+            await interaction.followup.send(f"✅ Added {len(channel_ids)} channels to monitoring", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Failed to add channels: {str(e)}", ephemeral=True)
+
+    async def remove_channels(self, interaction: discord.Interaction, channels: str):
+        """Remove channels from monitoring"""
+        await interaction.response.defer(ephemeral=True)
+        try:
+            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
+            self.monitor_channel_ids.difference_update(channel_ids)
+            await interaction.followup.send(f"✅ Removed {len(channel_ids)} channels from monitoring", ephemeral=True)
+        except Exception as e:
+            await interaction.followup.send(f"❌ Failed to remove channels: {str(e)}", ephemeral=True)
+
+    async def list_channels(self, interaction: discord.Interaction):
+        """List monitored channels"""
+        await interaction.response.defer(ephemeral=True)
+        if not self.monitor_channel_ids:
+            await interaction.followup.send("❌ No channels being monitored", ephemeral=True)
+            return
+
+        channel_list = "\n".join(f"• <#{cid}>" for cid in self.monitor_channel_ids)
+        embed = discord.Embed(
+            title="Monitored Message Channels",
+            description=channel_list,
+            color=discord.Color.blue()
+        )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+          
+
 
 class ConfirmView(discord.ui.View):
     def __init__(self, *, timeout: float = 30.0):
