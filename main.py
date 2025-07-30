@@ -2141,7 +2141,8 @@ async def send_hr_welcome(member: discord.Member):
             "• Uncomplete quota = strike.\n"
             "• One failed tryout allowed if your try quota portion ≥2.\n"
             "• Ask for help anytime - we're friendly!\n"
-            "• Are you Captain+ in BA? Apply for departments: [Applications](https://discord.com/channels/1165368311085809717/1165368316970405916)."
+            "• Are you Lieutenant+ in BA? Apply for the Education Department!\n"
+            "• Are you Captain+ in BA? Apply for both departments: [Applications](https://discord.com/channels/1165368311085809717/1165368316970405916)."
         ),
         color=discord.Color.gold(),  
         timestamp=datetime.now(timezone.utc)
