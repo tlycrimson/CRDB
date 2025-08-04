@@ -1105,17 +1105,6 @@ class MessageTracker:
                 logger.warning(f"⚠️ Channel ID {channel_id} not found in guild!")
         self.monitor_channel_ids = valid_channels
 
-        if log_channel := guild.get_channel(self.log_channel_id):
-            logger.info(f"📝 Log channel set to ({log_channel.id})")
-        else:
-            logger.warning(f"⚠️ Message tracker log channel {self.log_channel_id} not found!")
-            self.log_channel_id = None
-
-        if tracked_role := guild.get_role(self.tracked_role_id):
-            logger.info(f"🎯 Tracking role set to {tracked_role.id}")
-        else:
-            logger.warning(f"⚠️ Message tracker role {self.tracked_role_id} not found!")
-
     async def _safe_interaction_response(self, interaction: discord.Interaction):
         try:
             if not interaction.response.is_done():
@@ -2515,5 +2504,6 @@ if __name__ == '__main__':
     flask_thread.start()
     
     asyncio.run(run_bot())
+
 
 
