@@ -383,7 +383,7 @@ class DatabaseHandler:
             logger.error(f"Failed to log event for {user_id}: {str(e)}")
             return False
     
-    async def get_user_xp(self, user_id: str):
+    async def get_user_xp(self, user_id: str):   
         try:
             data = self.supabase.table('users').select("xp").eq("user_id", str(user_id)).execute()
             xp = data.data[0].get('xp', 0) if data.data else 0
@@ -393,15 +393,6 @@ class DatabaseHandler:
             logger.error(f"Failed to get XP for {user_id}: {str(e)}")
             return 0
     
-    async def clear_weekly_events(self):
-        try:
-            current_week = datetime.now().isocalendar()[1]
-            self.supabase.table('events').delete().lt("week_number", current_week).execute()
-            logger.info(f"Cleared events older than week {current_week}")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to clear weekly events: {str(e)}")
-            return False
 
 # Logs XP changes in logging channel
 async def log_xp_to_discord(
@@ -1758,6 +1749,80 @@ async def give_event_xp(
             logger.error(f"Error in give_event_xp: {str(e)}", exc_info=True)
             await initial_message.edit(content="❌ An unexpected error occurred. Please check logs.")
 
+# Reset Database Command
+@bot.tree.command(name="reset-db", description="Reset the LR and HR tables.")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
+async def reset_db(interaction: discord.Interaction):
+    """Reset database tables (HRs and LRs) to default values"""
+    try:
+        # Create confirmation view
+        confirm_view = ConfirmView()
+        embed = discord.Embed(
+            title="⚠️ Database Reset Confirmation",
+            description="This will reset ALL data in TEST1 and TEST2 tables to zero values.\n\n**This cannot be undone!**",
+            color=discord.Color.orange()
+        )
+        
+        # Send initial confirmation message
+        await interaction.response.send_message(
+            embed=embed,
+            view=confirm_view,
+            ephemeral=True
+        )
+
+        # Wait for confirmation
+        await confirm_view.wait()
+        
+        # Handle user response
+        if not confirm_view.value:
+            await interaction.followup.send(
+                "✅ Database reset cancelled.",
+                ephemeral=True
+            )
+            return
+
+        # User confirmed - proceed with reset
+        await interaction.followup.send(
+            "🔄 Resetting database...", 
+            ephemeral=True
+        )
+
+        # Initialize Supabase
+        supabase = create_client(SUPABASE_URL, SUPABASE_KEY)
+        
+        # Reset tables
+        supabase.table('TEST1').update({
+            'tryouts': 0, 'events': 0, 'phases': 0,
+            'courses': 0, 'inspections': 0, 'joint_events': 0
+        }).execute()
+
+        supabase.table('TEST2').update({
+            'activity': 0, 'time_guarded': 0, 'events_attended': 0
+        }).execute()
+        
+        # Send success message
+        await interaction.followup.send(
+            "✅ Database reset successfully!", 
+            ephemeral=True
+        )
+        
+        # Log the action
+        log_channel = bot.get_channel(Config.DEFAULT_LOG_CHANNEL)
+        if log_channel:
+            log_embed = discord.Embed(
+                title="⚙️ DATABASE RESET (TEST)",
+                description=f"{interaction.user.mention} has reset the database.",
+                color=discord.Color.dark_theme()
+            )
+            await log_channel.send(embed=log_embed)
+            
+    except Exception as e:
+        logger.error(f"Database reset failed: {str(e)}", exc_info=True)
+        await interaction.followup.send(
+            f"❌ Error resetting database: {str(e)}", 
+            ephemeral=True
+        )
+
 
 # Discharge Command
 @bot.tree.command(name="discharge", description="Notify members of honourable/dishonourable discharge and log it")
@@ -2451,3 +2516,4 @@ if __name__ == '__main__':
     flask_thread.start()
     
     asyncio.run(run_bot())
+
