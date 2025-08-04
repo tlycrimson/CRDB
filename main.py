@@ -1101,7 +1101,6 @@ class MessageTracker:
         for channel_id in self.monitor_channel_ids:
             if channel := guild.get_channel(channel_id):
                 valid_channels.add(channel.id)
-                logger.info(f"👁️ Monitoring channel: #{channel.name} ({channel.id})")
             else:
                 logger.warning(f"⚠️ Channel ID {channel_id} not found in guild!")
         self.monitor_channel_ids = valid_channels
@@ -2516,4 +2515,5 @@ if __name__ == '__main__':
     flask_thread.start()
     
     asyncio.run(run_bot())
+
 
