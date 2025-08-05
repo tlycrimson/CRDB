@@ -14,6 +14,7 @@ from typing import Optional, Set, Dict, List, Tuple, Any, Literal
 from decorators import min_rank_required, has_allowed_role
 from rate_limiter import RateLimiter
 from discord import app_commands
+from typing import Literal
 from config import Config
 from discord.ext import commands
 from discord.utils import escape_markdown
@@ -1737,12 +1738,8 @@ async def give_event_xp(
             logger.error(f"Error in give_event_xp: {str(e)}", exc_info=True)
             await initial_message.edit(content="❌ An unexpected error occurred. Please check logs.")
 
-# Edit a specific a specific column/row in the db command
-from discord import app_commands
-from typing import Literal
-import os
-from supabase import create_client
-
+# Edit database command
+@has_allowed_role()
 @app_commands.describe(
     user="The user whose data you want to edit",
     column="The column you want to edit",
@@ -1766,12 +1763,6 @@ async def edit_db(
 
     if not guild:
         await interaction.followup.send("❌ This command can only be used in a server.")
-        return
-
-    # Permission check (only one user allowed)
-    me = 353167234698444802
-    if invoker.id != me:
-        await interaction.followup.send("❌ You are not authorized to use this command.")
         return
 
     # Initialize Supabase client
@@ -1799,6 +1790,9 @@ async def edit_db(
             await interaction.followup.send(f"❌ Multiple records found for {user.mention} in `{table}` table. Please resolve duplicates.")
             return
 
+        # Get old value for logging
+        old_value = result.data[0].get(column, "N/A")
+
         # Try to convert value to int or float if possible
         try:
             value_converted = int(value)
@@ -1815,14 +1809,35 @@ async def edit_db(
         if hasattr(update_result, 'error') and update_result.error:
             raise Exception(f"Supabase update failed: {update_result.error}")
 
+        # Send success response
         await interaction.followup.send(
-            f"✅ Updated `{column}` for {user.mention} in `{table}` table to `{value_converted}`."
+            f"✅ Updated `{column}` for {user.mention} in `{table}` table from `{old_value}` to `{value_converted}`."
         )
+
+        # Log the action to the log channel
+        log_channel = bot.get_channel(Config.DEFAULT_LOG_CHANNEL)
+        if log_channel:
+            embed = discord.Embed(
+                title="📝 Database Edit Logged",
+                color=discord.Color.blue(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            
+            embed.add_field(name="Staff", value=f"{invoker.mention} (`{invoker.id}`)", inline=True)
+            embed.add_field(name="User", value=f"{user.mention} (`{user.id}`)", inline=True)
+            embed.add_field(name="Table", value=f"`{table}`", inline=True)
+            embed.add_field(name="Field", value=f"`{column}`", inline=True)
+            embed.add_field(name="Old Value", value=f"`{old_value}`", inline=True)
+            embed.add_field(name="New Value", value=f"`{value_converted}`", inline=True)
+            
+            try:
+                await log_channel.send(embed=embed)
+            except Exception as e:
+                logger.error(f"Failed to send log message: {str(e)}")
 
     except Exception as e:
         await interaction.followup.send(f"❌ Failed to update data: `{e}`")
         logger.error(f"Edit DB error: {str(e)}", exc_info=True)
-
 
 # Reset Database Command
 @bot.tree.command(name="reset-db", description="Reset the LR and HR tables.")
@@ -2605,6 +2620,7 @@ if __name__ == '__main__':
     flask_thread.start()
     
     asyncio.run(run_bot())
+
 
 
 
