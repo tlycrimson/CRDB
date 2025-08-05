@@ -1825,7 +1825,6 @@ async def edit_db(
             
             embed.add_field(name="Staff", value=f"{invoker.mention} (`{invoker.id}`)", inline=True)
             embed.add_field(name="User", value=f"{user.mention} (`{user.id}`)", inline=True)
-            embed.add_field(name="Table", value=f"`{table}`", inline=True)
             embed.add_field(name="Field", value=f"`{column}`", inline=True)
             embed.add_field(name="Old Value", value=f"`{old_value}`", inline=True)
             embed.add_field(name="New Value", value=f"`{value_converted}`", inline=True)
@@ -2620,6 +2619,7 @@ if __name__ == '__main__':
     flask_thread.start()
     
     asyncio.run(run_bot())
+
 
 
 
