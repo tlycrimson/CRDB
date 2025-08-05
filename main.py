@@ -1742,7 +1742,17 @@ async def give_event_xp(
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 async def reset_db(interaction: discord.Interaction):
     """Reset database tables (HRs and LRs) to default values"""
+    guild = interaction.guild
+    member = interaction.user
+
+    if Config.LD_HEAD_ROLE_ID:
+        monitor_role = guild.get_role(Config.LD_HEAD_ROLE_ID)
+        if not monitor_role or monitor_role not in member.roles:
+            return
     try:
+        # Check permissions
+
+                
         # Create confirmation view
         confirm_view = ConfirmView()
         embed = discord.Embed(
@@ -1781,13 +1791,13 @@ async def reset_db(interaction: discord.Interaction):
         supabase = create_client(url, key)
         
         # Reset TEST1 table
-        supabase.table('TEST1').update({
+        supabase.table('HRs').update({
             'tryouts': 0, 'events': 0, 'phases': 0,
             'courses': 0, 'inspections': 0, 'joint_events': 0
         }).neq('user_id', 0).execute()
         
         # Reset TEST2 table
-        supabase.table('TEST2').update({
+        supabase.table('LRs').update({
             'activity': 0, 'time_guarded': 0, 'events_attended': 0
         }).neq('user_id', 0).execute()
         
@@ -2507,6 +2517,7 @@ if __name__ == '__main__':
     flask_thread.start()
     
     asyncio.run(run_bot())
+
 
 
 
