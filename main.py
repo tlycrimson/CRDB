@@ -1738,12 +1738,12 @@ async def give_event_xp(
             await initial_message.edit(content="❌ An unexpected error occurred. Please check logs.")
 
 # Edit a specific a specific column/row in the db command
-@bot.tree.command(name="edit-db", description="Edit a specific user's record in the HR or LR table.")
 @app_commands.describe(
     user="The user whose data you want to edit",
     column="The column you want to edit",
     value="The new value to set"
 )
+@bot.tree.command(name="edit-db", description="Edit a specific user's record in the HR or LR table.")
 async def edit_db(
     interaction: discord.Interaction,
     user: discord.Member,
@@ -1754,7 +1754,6 @@ async def edit_db(
     value: str
 ):
     """Edit a user's HR or LR data depending on invoker's role"""
-
     await interaction.response.defer(ephemeral=True)
 
     invoker = interaction.user
@@ -1767,6 +1766,7 @@ async def edit_db(
     # Check Permissions
     me = 353167234698444802
     if interaction.user.id != me:
+        await interaction.followup.send("❌ You are not authorized to use this command.")
         return
 
     # Check if the invoker has the HR role
@@ -1776,32 +1776,39 @@ async def edit_db(
     # Initialize Supabase
     url = os.getenv("SUPABASE_URL")
     key = os.getenv("SUPABASE_KEY")
-    supabase = create_client(url, key)
 
+    if not url or not key:
+        await interaction.followup.send("❌ Supabase credentials not configured.")
+        return
+
+    supabase = create_client(url, key)
     user_id = str(user.id)
 
     try:
-        # Check if the user has a row
-        row = supabase.table(table).select("*").eq("user_id", user_id).single().execute()
+        # Look up user rows (no `.single()`)
+        result = supabase.table(table).select("*").eq("user_id", user_id).execute()
 
-        if row.data is None:
+        if not result.data:
             await interaction.followup.send(f"❌ No record found for {user.mention} in `{table}` table.")
+            return
+        elif len(result.data) > 1:
+            await interaction.followup.send(f"❌ Multiple records found for {user.mention} in `{table}` table. Please resolve duplicates.")
             return
 
         # Convert numeric values if possible
         try:
-            if value.isdigit():
-                value = int(value)
-            elif value.replace('.', '', 1).isdigit():
+            value = int(value)
+        except ValueError:
+            try:
                 value = float(value)
-        except:
-            pass  # Leave as string if conversion fails
+            except ValueError:
+                pass  # Leave as string
 
         # Perform the update
-        result = supabase.table(table).update({column: value}).eq("user_id", user_id).execute()
+        update_result = supabase.table(table).update({column: value}).eq("user_id", user_id).execute()
 
-        if result.error:
-            raise Exception(result.error)
+        if update_result.error:
+            raise Exception(update_result.error)
 
         await interaction.followup.send(
             f"✅ Updated `{column}` for {user.mention} in `{table}` table to `{value}`."
@@ -1810,6 +1817,7 @@ async def edit_db(
     except Exception as e:
         await interaction.followup.send(f"❌ Failed to update data: `{e}`")
         logger.error(f"Edit DB error: {str(e)}", exc_info=True)
+
 
 # Reset Database Command
 @bot.tree.command(name="reset-db", description="Reset the LR and HR tables.")
@@ -2592,6 +2600,7 @@ if __name__ == '__main__':
     flask_thread.start()
     
     asyncio.run(run_bot())
+
 
 
 
