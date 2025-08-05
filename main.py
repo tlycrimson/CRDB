@@ -1811,7 +1811,7 @@ async def edit_db(
         # Update the user's row
         update_result = supabase.table(table).update({column: value_converted}).eq("user_id", user_id).execute()
 
-        if not update_result.ok:
+        if update_result.status_code >= 400:
             raise Exception(f"Supabase update failed: {update_result.data}")
 
         await interaction.followup.send(
@@ -2604,6 +2604,7 @@ if __name__ == '__main__':
     flask_thread.start()
     
     asyncio.run(run_bot())
+
 
 
 
