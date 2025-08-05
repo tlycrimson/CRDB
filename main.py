@@ -1757,7 +1757,7 @@ async def reset_db(interaction: discord.Interaction):
         confirm_view = ConfirmView()
         embed = discord.Embed(
             title="⚠️ Database Reset Confirmation",
-            description="This will reset ALL data in TEST1 and TEST2 tables to zero values.\n\n**This cannot be undone!**",
+            description="This will reset ALL data in the LR and HR tables to zero values.\n\n**This cannot be undone!**",
             color=discord.Color.orange()
         )
         
@@ -1811,7 +1811,7 @@ async def reset_db(interaction: discord.Interaction):
         log_channel = bot.get_channel(Config.DEFAULT_LOG_CHANNEL)
         if log_channel:
             log_embed = discord.Embed(
-                title="⚙️ DATABASE RESET (TEST)",
+                title="⚙️ DATABASE RESET",
                 description=f"{interaction.user.mention} has reset the database.",
                 color=discord.Color.dark_theme()
             )
@@ -2517,6 +2517,7 @@ if __name__ == '__main__':
     flask_thread.start()
     
     asyncio.run(run_bot())
+
 
 
 
