@@ -674,7 +674,7 @@ class ReactionLogger:
             done_embed.add_field(name="Event Type", value=event_name, inline=True)  # Using extracted event name
             done_embed.add_field(name="Message", value=f"[Jump to Event]({message.jump_url})", inline=False)
             
-            await log_channel.send(embed=done_embed)
+            await log_channel.send(content=member.mention, embed=done_embed)
     
         except Exception as e:
             logger.error(f"Error processing event reaction: {str(e)}")
@@ -839,7 +839,7 @@ class ReactionLogger:
                     embed.add_field(name="Logged By", value=member.mention)
                     embed.add_field(name="Message", value=f"[Jump to Log]({message.jump_url})")
                     
-                    await log_channel.send(embed=embed)
+                    await log_channel.send(content=member.mention, embed=embed) 
                     
         except Exception as e:
             logger.error(f"Error processing activity reaction: {str(e)}")
@@ -2149,7 +2149,8 @@ async def command_list(interaction: discord.Interaction):
             "/sheetdb-test - Test SheetDB connection",
             "/sc - Security Check Roblox user",
             "/discharge - Sends discharge notification to user and logs in discharge logs",
-            "/force-update - Manually test sheets update"
+            "/force-update - Manually test sheets update",
+            "/edit-db - Edit a specific user's record in the HR or LR table"
         ],
          "⭐ XP": [
             "/add-xp - Gives xp to user",
@@ -2591,6 +2592,7 @@ if __name__ == '__main__':
     flask_thread.start()
     
     asyncio.run(run_bot())
+
 
 
 
