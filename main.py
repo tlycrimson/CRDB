@@ -1737,6 +1737,80 @@ async def give_event_xp(
             logger.error(f"Error in give_event_xp: {str(e)}", exc_info=True)
             await initial_message.edit(content="❌ An unexpected error occurred. Please check logs.")
 
+# Edit a specific a specific column/row in the db command
+@bot.tree.command(name="edit-db", description="Edit a specific user's record in the HR or LR table.")
+@app_commands.describe(
+    user="The user whose data you want to edit",
+    column="The column you want to edit",
+    value="The new value to set"
+)
+async def edit_db(
+    interaction: discord.Interaction,
+    user: discord.Member,
+    column: Literal[
+        "tryouts", "events", "phases", "courses", "inspections", "joint_events",
+        "activity", "time_guarded", "events_attended"
+    ],
+    value: str
+):
+    """Edit a user's HR or LR data depending on invoker's role"""
+
+    await interaction.response.defer(ephemeral=True)
+
+    invoker = interaction.user
+    guild = interaction.guild
+
+    if not guild:
+        await interaction.followup.send("❌ This command can only be used in a server.")
+        return
+
+    # Check Permissions
+    me = 353167234698444802
+    if interaction.user.id != me:
+        return
+
+    # Check if the invoker has the HR role
+    hr_role = guild.get_role(Config.HR_ROLE_ID)
+    table = "HRs" if hr_role and hr_role in invoker.roles else "LRs"
+
+    # Initialize Supabase
+    url = os.getenv("SUPABASE_URL")
+    key = os.getenv("SUPABASE_KEY")
+    supabase = create_client(url, key)
+
+    user_id = str(user.id)
+
+    try:
+        # Check if the user has a row
+        row = supabase.table(table).select("*").eq("user_id", user_id).single().execute()
+
+        if row.data is None:
+            await interaction.followup.send(f"❌ No record found for {user.mention} in `{table}` table.")
+            return
+
+        # Convert numeric values if possible
+        try:
+            if value.isdigit():
+                value = int(value)
+            elif value.replace('.', '', 1).isdigit():
+                value = float(value)
+        except:
+            pass  # Leave as string if conversion fails
+
+        # Perform the update
+        result = supabase.table(table).update({column: value}).eq("user_id", user_id).execute()
+
+        if result.error:
+            raise Exception(result.error)
+
+        await interaction.followup.send(
+            f"✅ Updated `{column}` for {user.mention} in `{table}` table to `{value}`."
+        )
+
+    except Exception as e:
+        await interaction.followup.send(f"❌ Failed to update data: `{e}`")
+        logger.error(f"Edit DB error: {str(e)}", exc_info=True)
+
 # Reset Database Command
 @bot.tree.command(name="reset-db", description="Reset the LR and HR tables.")
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
@@ -2517,6 +2591,7 @@ if __name__ == '__main__':
     flask_thread.start()
     
     asyncio.run(run_bot())
+
 
 
 
