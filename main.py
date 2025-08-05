@@ -1780,15 +1780,16 @@ async def reset_db(interaction: discord.Interaction):
         key = os.getenv("SUPABASE_KEY")
         supabase = create_client(url, key)
         
-        # Reset tables
+        # Reset TEST1 table
         supabase.table('TEST1').update({
             'tryouts': 0, 'events': 0, 'phases': 0,
             'courses': 0, 'inspections': 0, 'joint_events': 0
-        }).execute()
-
+        }).neq('id', 0).execute()
+        
+        # Reset TEST2 table
         supabase.table('TEST2').update({
             'activity': 0, 'time_guarded': 0, 'events_attended': 0
-        }).execute()
+        }).neq('id', 0).execute()
         
         # Send success message
         await interaction.followup.send(
@@ -2506,6 +2507,7 @@ if __name__ == '__main__':
     flask_thread.start()
     
     asyncio.run(run_bot())
+
 
 
 
