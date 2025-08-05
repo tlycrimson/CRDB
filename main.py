@@ -1789,7 +1789,7 @@ async def edit_db(
     table = "HRs" if hr_role and hr_role in user.roles else "LRs"
 
     try:
-        # Query to find rows for the user (no `.single()`)
+        # Query to find rows for the user
         result = supabase.table(table).select("*").eq("user_id", user_id).execute()
 
         if not result.data:
@@ -1811,8 +1811,9 @@ async def edit_db(
         # Update the user's row
         update_result = supabase.table(table).update({column: value_converted}).eq("user_id", user_id).execute()
 
-        if update_result.status_code >= 400:
-            raise Exception(f"Supabase update failed: {update_result.data}")
+        # Check for errors
+        if hasattr(update_result, 'error') and update_result.error:
+            raise Exception(f"Supabase update failed: {update_result.error}")
 
         await interaction.followup.send(
             f"✅ Updated `{column}` for {user.mention} in `{table}` table to `{value_converted}`."
@@ -2604,6 +2605,7 @@ if __name__ == '__main__':
     flask_thread.start()
     
     asyncio.run(run_bot())
+
 
 
 
