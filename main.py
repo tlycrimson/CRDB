@@ -1106,14 +1106,7 @@ class MessageTracker:
             else:
                 logger.warning(f"⚠️ Channel ID {channel_id} not found in guild!")
         self.monitor_channel_ids = valid_channels
-    async def connection_monitor():
-        while True:
-            await asyncio.sleep(300)  # Check every 5 minutes
-            if bot.is_closed():
-                logger.warning("Bot connection is closed - may need restart")
-            logger.info(f"Connection status: {not bot.is_closed()}, Latency: {bot.latency*1000:.0f}ms")
-
-    bot.loop.create_task(connection_monitor())
+    
 
     async def _safe_interaction_response(self, interaction: discord.Interaction):
         try:
@@ -1291,7 +1284,14 @@ create_sc_command(bot)
 async def on_ready():
     logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
     logger.info(f"Connected to {len(bot.guilds)} guild(s)")
+    async def connection_monitor():
+        while True:
+            await asyncio.sleep(300)  # Check every 5 minutes
+            if bot.is_closed():
+                logger.warning("Bot connection is closed - may need restart")
+            logger.info(f"Connection status: {not bot.is_closed()}, Latency: {bot.latency*1000:.0f}ms")
 
+    bot.loop.create_task(connection_monitor())
     # SheetDB setup
     bot.sheets = SheetDBLogger()
     if not bot.sheets.ready:
@@ -2630,6 +2630,7 @@ async def run_bot():
 
 if __name__ == '__main__':  
     asyncio.run(run_bot())
+
 
 
 
