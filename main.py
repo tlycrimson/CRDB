@@ -3,6 +3,7 @@ import re
 import time
 import asyncio
 import threading
+import requests
 import aiohttp
 import discord
 import logging
@@ -19,7 +20,6 @@ from config import Config
 from discord.ext import commands
 from discord.utils import escape_markdown
 from dotenv import load_dotenv
-from flask import Flask
 from roblox_commands import create_sc_command
 from datetime import datetime, timedelta, timezone
 from supabase import create_client, Client
@@ -1106,6 +1106,14 @@ class MessageTracker:
             else:
                 logger.warning(f"⚠️ Channel ID {channel_id} not found in guild!")
         self.monitor_channel_ids = valid_channels
+    async def connection_monitor():
+        while True:
+            await asyncio.sleep(300)  # Check every 5 minutes
+            if bot.is_closed():
+                logger.warning("Bot connection is closed - may need restart")
+            logger.info(f"Connection status: {not bot.is_closed()}, Latency: {bot.latency*1000:.0f}ms")
+
+    bot.loop.create_task(connection_monitor())
 
     async def _safe_interaction_response(self, interaction: discord.Interaction):
         try:
@@ -2579,24 +2587,29 @@ async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
     #bot.shutdown_notifier.record_activity()
     async with global_rate_limiter:
         await bot.reaction_logger.log_reaction(payload)
+
+#Wesbsocket
+@bot.event
+async def on_disconnect():
+    logger.warning("Bot disconnected from Discord")
+    if hasattr(bot, 'shared_session') and bot.shared_session:
+        await bot.shared_session.close()
+        logger.info("Closed shared HTTP session")
+
+@bot.event
+async def on_resumed():
+    logger.info("Bot successfully reconnected to Discord")
+
+@bot.event
+async def on_socket_raw_receive(msg):
+    # Log WebSocket activity to detect issues
+    pass
+
+@bot.event
+async def on_socket_raw_send(payload):
+    # Log WebSocket activity to detect issues
+    pass
         
-# --- Flask Setup ---
-app = Flask(__name__)
-keep_alive = True
-
-@app.route('/')
-def home():
-    return "Bot is running", 200
-
-@app.route('/shutdown', methods=['POST'])
-def shutdown():
-    global keep_alive
-    keep_alive = False
-    return "Shutting down...", 200
-
-def run_flask():
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host='0.0.0.0', port=port, debug=False, use_reloader=False)
 
 async def run_bot():
     while True:
@@ -2615,11 +2628,9 @@ async def run_bot():
         else:
             break
 
-if __name__ == '__main__':
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    
+if __name__ == '__main__':  
     asyncio.run(run_bot())
+
 
 
 
