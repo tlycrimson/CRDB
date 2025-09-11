@@ -11,6 +11,7 @@ import random
 import aiodns
 import socket
 import mimetypes
+import functools
 from typing import Optional, Set, Dict, List, Tuple, Any, Literal
 from decorators import min_rank_required, has_allowed_role
 from rate_limiter import RateLimiter
@@ -25,6 +26,7 @@ from datetime import datetime, timedelta, timezone
 from supabase import create_client, Client
 from time import monotonic as now
 from collections import deque
+from aiohttp.resolver import AsyncResolver
 
 
 # --- Configuration ---
@@ -65,121 +67,73 @@ GLOBAL_RATE_LIMIT = 15  # requests per minute
 COMMAND_COOLDOWN = 10    # seconds between command uses per user
 
 
-async def check_dns_connectivity() -> bool:
-    """DNS resolution with multiple fallback methods"""
-    domains = ['api.roblox.com', 'www.roblox.com']
-    dns_servers = [
-        '1.1.1.1',  # Cloudflare
-        '8.8.8.8',  # Google
-        '208.67.222.222'  # OpenDNS
-    ]
-    
-    # Try public DNS servers first
-    for server in dns_servers:
+async def check_dns_connectivity(timeout: float = 2.0) -> bool:
+    """
+    Resolve a short list of known domains in a thread so we don't block the event loop.
+    Returns True if at least one domain resolves within the timeout.
+    """
+    domains = ("api.roblox.com", "www.roblox.com")
+    async def _resolve(domain):
         try:
-            resolver = aiodns.DNSResolver()
-            resolver.nameservers = [server]
-            
-            for domain in domains:
-                try:
-                    result = await resolver.query(domain, 'A')
-                    logger.info(f"DNS {server} resolved {domain} to {result}")
-                    return True
-                except aiodns.error.DNSError as e:
-                    logger.warning(f"DNS {server} failed for {domain}: {str(e)}")
-                    continue
-        except Exception as e:
-            logger.warning(f"DNS server {server} failed: {str(e)}")
-            continue
-    
-    # Fallback to system DNS
-    try:
-        resolver = aiodns.DNSResolver()
-        for domain in domains:
-            try:
-                result = await resolver.query(domain, 'A')
-                logger.info(f"System DNS resolved {domain} to {result}")
-                return True
-            except aiodns.error.DNSError as e:
-                logger.warning(f"System DNS query failed for {domain}: {str(e)}")
-                continue
-    except Exception as e:
-        logger.warning(f"System DNS resolver failed: {str(e)}")
-
-    # Final fallback to socket (sync)
-    def sync_resolve():
-        try:
-            for domain in domains:
-                try:
-                    ip = socket.gethostbyname(domain)
-                    logger.info(f"Socket resolved {domain} to {ip}")
-                    return True
-                except socket.gaierror as e:
-                    logger.warning(f"Socket resolution failed for {domain}: {str(e)}")
-                    continue
+            # run blocking getaddrinfo in a thread
+            res = await asyncio.wait_for(
+                asyncio.to_thread(socket.getaddrinfo, domain, None),
+                timeout=timeout / len(domains)
+            )
+            return bool(res)
+        except Exception:
             return False
-        except Exception as e:
-            logger.error(f"Socket resolution error: {str(e)}")
-            return False
-    
-    loop = asyncio.get_running_loop()
-    return await loop.run_in_executor(None, sync_resolve)
 
+    results = await asyncio.gather(*[_resolve(d) for d in domains], return_exceptions=True)
+    return any(r is True for r in results)
 
 # --- CLASSES ---
-'''class ShutdownNotifier:
-    def __init__(self, bot):
+class ConnectionMonitor:
+    def __init__(self, bot, check_interval: int = 300):
         self.bot = bot
-        self.last_activity = time.time()
-        self.shutdown_check_task = None
-        self.has_warned = False  
+        self.check_interval = check_interval
+        self.last_disconnect = None
+        self.disconnect_count = 0
+        self._task = None
+        self._stopping = False
 
-    async def start_monitoring(self):
-        """Start checking for impending shutdowns"""
-        self.shutdown_check_task = self.bot.loop.create_task(self._shutdown_watcher())
-
-    async def _shutdown_watcher(self):
-        """Check every minute if we're about to sleep"""
-        while True:
-            await asyncio.sleep(60)
-            inactivity_duration = time.time() - self.last_activity
-
-            if inactivity_duration > 780 and not self.has_warned:
-                await self._notify_impending_shutdown()
-                self.has_warned = True 
-            elif inactivity_duration <= 780:
-                self.has_warned = False 
-
-    async def _notify_impending_shutdown(self):
-        """Ping LD role in the designated channel"""
-        if not hasattr(Config, 'LD_ROLE_ID') or not hasattr(Config, 'D_LOG_CHANNEL_ID'):
-            logger.warning("Missing LD role or channel config")
+    async def start(self):
+        if self._task and not self._task.done():
             return
+        self._stopping = False
+        self._task = asyncio.create_task(self._monitor_connection())
 
-        guild = self.bot.guilds[0] if self.bot.guilds else None
-        if not guild:
-            return
+    async def stop(self):
+        self._stopping = True
+        if self._task:
+            self._task.cancel()
+            try:
+                await self._task
+            except asyncio.CancelledError:
+                pass
+            self._task = None
 
-        ld_role = guild.get_role(Config.LD_ROLE_ID)
-        channel = guild.get_channel(Config.D_LOG_CHANNEL_ID)
-
-        if not ld_role or not channel:
-            logger.error("LD role or channel not found")
-            return
-
+    async def _monitor_connection(self):
         try:
-            await channel.send(
-                f"{ld_role.mention} ⚠️ **Bot is about to sleep due to inactivity!** "
-                f"Wait for Crimson to wake it up.",
-                allowed_mentions=discord.AllowedMentions(roles=True)
-            )
-            logger.info("Sent shutdown warning to LD team")
-        except Exception as e:
-            logger.error(f"Failed to send shutdown alert: {e}")
+            while not self._stopping:
+                # report status every check_interval
+                await asyncio.sleep(self.check_interval)
+                logger.info("ConnectionMonitor: bot closed=%s latency=%.0fms",
+                            self.bot.is_closed(), getattr(self.bot, "latency", 0.0) * 1000.0)
+                # reset old counters after 30 minutes
+                if self.last_disconnect and (time.time() - self.last_disconnect) > 1800:
+                    self.disconnect_count = 0
+                if self.disconnect_count > 5:
+                    logger.warning("ConnectionMonitor: high disconnect_count=%d", self.disconnect_count)
+                    # we intentionally do NOT attempt to hard-restart the process here. Render will restart
+                    # the service if the process exits; a clean restart policy should be applied externally.
+        except asyncio.CancelledError:
+            return
 
-    def record_activity(self):
-        """Call this on any bot activity"""
-        self.last_activity = time.time())'''
+    def record_disconnect(self):
+        self.last_disconnect = time.time()
+        self.disconnect_count += 1
+        logger.warning("ConnectionMonitor: recorded disconnect (count=%d)", self.disconnect_count)
 
         
 class GlobalRateLimiter:
@@ -190,30 +144,34 @@ class GlobalRateLimiter:
         self.request_count = 0
         self.last_reset = time.time()
         self.total_limited = 0
-        self._lock = asyncio.Lock()  
+        self._lock = asyncio.Lock()
 
     async def __aenter__(self):
         await self.semaphore.acquire()
         
         async with self._lock:
-            now = time.time()
+            current_time = time.time()
             self.request_count += 1
             
-            if now - self.last_reset > 60:
+            # Reset counter every minute
+            if current_time - self.last_reset > 60:
                 if self.request_count > 1000:
                     logger.warning(f"High request rate: {self.request_count}/min")
                     self.total_limited += 1
                 self.request_count = 0
-                self.last_reset = now
+                self.last_reset = current_time
             
+            # Apply backoff if we've been rate limited frequently
             base_delay = self.min_delay
             if self.total_limited > 3:
                 base_delay *= 1.5
                 
-            elapsed = now - self.last_request
+            # Wait if needed
+            elapsed = current_time - self.last_request
             if elapsed < base_delay:
                 wait_time = base_delay - elapsed
-                await asyncio.sleep(wait_time + random.uniform(0, 0.15))
+                # Add small jitter but don't block for too long
+                await asyncio.sleep(min(wait_time + random.uniform(0, 0.15), 1.0))
             
             self.last_request = time.time()
         return self
@@ -222,7 +180,7 @@ class GlobalRateLimiter:
         self.semaphore.release()
         if exc:
             logger.error(f"Error in rate limited block: {exc}")
-        return False  # Don't suppress exceptions
+        return False
         
 class EnhancedRateLimiter:
     def __init__(self, calls_per_minute: int):
@@ -307,92 +265,112 @@ class DiscordAPI:
     """Helper class for Discord API requests with retry logic"""
     @staticmethod
     async def execute_with_retry(coro, max_retries=3, initial_delay=1.0):
-        """Execute a Discord API call with automatic retry on rate limits"""
         for attempt in range(max_retries):
             try:
                 async with global_rate_limiter:
                     return await coro
             except discord.errors.HTTPException as e:
-                if e.status == 429:
-                    retry_after = float(e.response.headers.get('Retry-After', initial_delay * (2 ** attempt)))
-                    logger.warning(f"Rate limited. Attempt {attempt + 1}/{max_retries}. Waiting {retry_after:.2f}s")
+                status = getattr(e, "status", None)
+                if status == 429:
+                    retry_after = initial_delay * (2 ** attempt)
+                    # try to get header if available
+                    try:
+                        header_ra = e.response.headers.get('Retry-After')
+                        if header_ra:
+                            retry_after = float(header_ra)
+                    except Exception:
+                        pass
+                    logger.warning(f"Rate limited. Attempt {attempt+1}/{max_retries}. Waiting {retry_after:.2f}s")
                     await asyncio.sleep(retry_after)
                     continue
-                raise
-            except Exception as e:
-                logger.error(f"API Error: {type(e).__name__}: {str(e)}")
+                # other HTTP errors - rethrow after last attempt
+                logger.error(f"Discord HTTPException (non-429) on attempt {attempt+1}: {e}")
                 if attempt == max_retries - 1:
                     raise
                 await asyncio.sleep(initial_delay * (2 ** attempt))
-        
+            except Exception as e:
+                logger.error(f"API Error on attempt {attempt+1}: {type(e).__name__}: {e}")
+                if attempt == max_retries - 1:
+                    raise
+                await asyncio.sleep(initial_delay * (2 ** attempt))
         raise Exception(f"Failed after {max_retries} attempts")
+
 
 #supabase set-up
 class DatabaseHandler:
     def __init__(self):
-        self.url = os.getenv("SUPABASE_URL")
-        self.key = os.getenv("SUPABASE_KEY")
-        self.supabase = create_client(self.url, self.key)
-    
-    async def add_xp(self, user_id: str, username: str, xp: int):
-        try:
-            current_xp = await self.get_user_xp(user_id)
-            new_xp = current_xp + xp
-            
-            data, _ = self.supabase.table('users').upsert({
-                "user_id": str(user_id),
-                "username": clean_nickname(username),
-                "xp": new_xp,
-                "last_updated": datetime.now(timezone.utc).isoformat()
-            }).execute()
-            
-            logger.info(f"XP added: {user_id} gained {xp} XP (was {current_xp}, now {new_xp})")
-            return True, new_xp  # Return both success and new XP
-        except Exception as e:
-            logger.error(f"Failed to add XP for {user_id}: {str(e)}")
-            return False, current_xp
-            
-    async def take_xp(self, user_id: str, username: str, xp: int):
-        try:
-            current_xp = await self.get_user_xp(user_id)
-            new_xp = max(0, current_xp - xp)  # Prevent negative XP
-            
-            data, _ = self.supabase.table('users').upsert({
-                "user_id": str(user_id),
-                "username": clean_nickname(username),
-                "xp": new_xp,
-                "last_updated": datetime.now(timezone.utc).isoformat()
-            }).execute()
-            
-            logger.info(f"XP removed: {user_id} lost {xp} XP (was {current_xp}, now {new_xp})")
-            return True, new_xp  # Now returning both success status and new XP
-        except Exception as e:
-            logger.error(f"Failed to remove XP from {user_id}: {str(e)}")
-            return False, current_xp  # Return current XP on failure
-    
-    async def log_event(self, user_id: str, event_type: str):
-        try:
-            week_num = datetime.now().isocalendar()[1]
-            data, _ = self.supabase.table('events').insert({
-                "user_id": str(user_id),
-                "event_type": event_type,
-                "week_number": week_num
-            }).execute()
-            logger.info(f"Event logged: {user_id} - {event_type} (Week {week_num})")
-            return True
-        except Exception as e:
-            logger.error(f"Failed to log event for {user_id}: {str(e)}")
-            return False
-    
-    async def get_user_xp(self, user_id: str):   
-        try:
-            data = self.supabase.table('users').select("xp").eq("user_id", str(user_id)).execute()
-            xp = data.data[0].get('xp', 0) if data.data else 0
-            logger.debug(f"Retrieved XP for {user_id}: {xp}")  #
-            return xp
-        except Exception as e:
-            logger.error(f"Failed to get XP for {user_id}: {str(e)}")
+        url = os.getenv("SUPABASE_URL")
+        key = os.getenv("SUPABASE_KEY")
+        if not url or not key:
+            logger.warning("Supabase credentials not provided; DatabaseHandler will be inert.")
+            self.supabase = None
+        else:
+            # create sync client once (cheap); all sync calls are run in threads
+            self.supabase = create_client(url, key)
+
+    async def _run_sync(self, fn, *args, **kwargs):
+        """Helper to run sync functions in the default threadpool."""
+        return await asyncio.to_thread(functools.partial(fn, *args, **kwargs))
+
+    # Example: get user xp (was blocking)
+    async def get_user_xp(self, user_id: str) -> int:
+        if not self.supabase:
             return 0
+        def _work():
+            res = self.supabase.table('users').select("xp").eq("user_id", str(user_id)).execute()
+            return res.data[0].get('xp', 0) if getattr(res, 'data', None) else 0
+        try:
+            return await self._run_sync(_work)
+        except Exception as e:
+            logger.exception("get_user_xp failed: %s", e)
+            return 0
+
+    async def add_xp(self, user_id: str, username: str, xp: int) -> Tuple[bool, int]:
+        if not self.supabase:
+            return False, 0
+        def _work():
+            # fetch current
+            res = self.supabase.table('users').select("xp").eq("user_id", str(user_id)).execute()
+            current = res.data[0].get('xp', 0) if getattr(res, 'data', None) else 0
+            new_total = current + xp
+            # upsert new value
+            self.supabase.table('users').upsert({
+                "user_id": str(user_id),
+                "xp": new_total,
+                "username": username
+            }).execute()
+            return True, new_total
+        try:
+            return await self._run_sync(_work)
+        except Exception as e:
+            logger.exception("add_xp failed: %s", e)
+            return False, 0
+
+    async def remove_xp(self, user_id: str, xp: int) -> Tuple[bool, int]:
+        if not self.supabase:
+            return False, 0
+        def _work():
+            res = self.supabase.table('users').select("xp").eq("user_id", str(user_id)).execute()
+            current = res.data[0].get('xp', 0) if getattr(res, 'data', None) else 0
+            new_total = max(0, current - xp)
+            self.supabase.table('users').update({"xp": new_total}).eq("user_id", str(user_id)).execute()
+            return True, new_total
+        try:
+            return await self._run_sync(_work)
+        except Exception as e:
+            logger.exception("remove_xp failed: %s", e)
+            return False, current
+
+    # Generic helper to run arbitrary table queries when needed from command handlers
+    async def run_query(self, fn):
+        """Run a provided sync function that performs supabase queries"""
+        if not self.supabase:
+            raise RuntimeError("Supabase not configured")
+        try:
+            return await self._run_sync(fn)
+        except Exception as e:
+            logger.exception("run_query failed: %s", e)
+            raise
     
 
 # Logs XP changes in logging channel
@@ -431,7 +409,6 @@ async def log_xp_to_discord(
 
 # Reaction Logger for LD
 class ReactionLogger:
-    """Handles reaction monitoring and logging with hard-wired configuration"""
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.monitor_channel_ids = set(Config.DEFAULT_MONITOR_CHANNELS)
@@ -442,9 +419,40 @@ class ReactionLogger:
         self.tryout_log_channel_id = Config.TRYOUT_LOG_CHANNEL_ID
         self.course_log_channel_id = Config.COURSE_LOG_CHANNEL_ID
         self.activity_log_channel_id = Config.ACTIVITY_LOG_CHANNEL_ID
-        # Cache to track which messages have been processed by LD members
-        self.processed_messages = deque(maxlen=50)
+        
+        # Improved cache with size limits and periodic cleanup
+        self.processed_messages = deque(maxlen=100)
         self.processed_keys = set()
+        self._cleanup_task = None
+        
+    async def start_cleanup_task(self):
+        """Start periodic cleanup of processed messages"""
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+        
+        async def cleanup_loop():
+            while True:
+                await asyncio.sleep(3600)  # Cleanup every hour
+                current_time = time.time()
+                # Remove old entries to prevent memory growth
+                if len(self.processed_keys) > 200:
+                    excess = len(self.processed_keys) - 200
+                    for _ in range(excess):
+                        if self.processed_messages:
+                            old_key = self.processed_messages.popleft()
+                            self.processed_keys.discard(old_key)
+        
+        self._cleanup_task = asyncio.create_task(cleanup_loop())
+    
+    async def stop_cleanup_task(self):
+        """Stop the cleanup task"""
+        if self._cleanup_task:
+            self._cleanup_task.cancel()
+            try:
+                await self._cleanup_task
+            except asyncio.CancelledError:
+                pass
+            self._cleanup_task = None
     
     def _get_processed_key(self, message_id: int, user_id: int) -> str:
         """Generate a unique key for processed message tracking"""
@@ -615,13 +623,12 @@ class ReactionLogger:
                 logger.error(f"❌ Failed to log host {host_id}: {str(e)}")
                 
             # Extract attendees/passed
-            attendees_section = re.search(r'(?:Attendees:|Passed:)\s*((?:<@!?\d+>\s*)+)', message.content, re.IGNORECASE)  
+            attendees_section = re.search(r'(?:Attendees:|Passed:)\s*((?:<@!?\d+>\s*)+)', message.content, re.IGNORECASE)
+            if not attendees_section:
+                logger.info("No attendees/passed section found; skipping LR logging.")
+                return
             attendee_mentions = re.findall(r'<@!?(\d+)>', attendees_section.group(1))
-            
-            if not attendee_mentions:
-                logger.info("No attendees found in message. Skipping LR logging.")
-            else:
-                attendee_mentions = re.findall(r'<@!?(\d+)>', attendees_section.group(1))
+
     
             # Get HR role
             hr_role = guild.get_role(Config.HR_ROLE_ID) if Config.HR_ROLE_ID else None
@@ -853,78 +860,35 @@ class ReactionLogger:
                 )
                 await log_channel.send(embed=error_embed)
                 
-    async def _update_hr_record(self, user_id: int, username: str, **increments):
-        """Helper to update HRs table with incremental values"""
-        try:
-            existing = self.bot.db.supabase.table('HRs') \
-                .select('*') \
-                .eq('user_id', str(user_id)) \
-                .execute()
-                
-            if existing.data:
-                update_data = {'username': username}
-                for col, val in increments.items():
-                    current = existing.data[0].get(col, 0)
-                    update_data[col] = current + val
-                    
-                self.bot.db.supabase.table('HRs') \
-                    .update(update_data) \
-                    .eq('user_id', str(user_id)) \
-                    .execute()
+    async def _update_hr_record(self, user_id: int, updates: dict):
+        u_str = str(user_id)
+        def _work():
+            sup = self.bot.db.supabase
+            row = sup.table('HRs').select('*').eq('user_id', u_str).execute()
+            if getattr(row, "data", None):
+                return sup.table('HRs').update(updates).eq('user_id', u_str).execute()
             else:
-                new_data = {
-                    'user_id': str(user_id),
-                    'username': username,
-                    'events': 0,
-                    'tryouts': 0,
-                    'phases': 0,
-                    'courses': 0,
-                    'inspections': 0,
-                    'joint_events': 0
-                }
-                for col, val in increments.items():
-                    new_data[col] = val
-                    
-                self.bot.db.supabase.table('HRs').insert(new_data).execute()
-                
+                payload = {'user_id': u_str, **updates}
+                return sup.table('HRs').insert(payload).execute()
+    
+        try:
+            await self.bot.db.run_query(_work)
         except Exception as e:
-            logger.error(f"Failed to update HR record for {user_id}: {str(e)}")
-            raise
+            logger.exception("ReactionLogger._update_hr_record failed: %s", e)
 
-    async def _update_lr_record(self, user_id: int, username: str, **increments):
-        """Helper to update LRs table with incremental values"""
-        try:
-            existing = self.bot.db.supabase.table('LRs') \
-                .select('*') \
-                .eq('user_id', str(user_id)) \
-                .execute()
-                
-            if existing.data:
-                update_data = {'username': username}
-                for col, val in increments.items():
-                    current = existing.data[0].get(col, 0)
-                    update_data[col] = current + val
-                    
-                self.bot.db.supabase.table('LRs') \
-                    .update(update_data) \
-                    .eq('user_id', str(user_id)) \
-                    .execute()
+    async def _update_lr_record(self, user_id: int, updates: dict):
+        def _work():
+            u_str = str(user_id)
+            row = self.bot.db.supabase.table('LRs').select('*').eq('user_id', u_str).execute()
+            if getattr(row, "data", None):
+                return self.bot.db.supabase.table('LRs').update(updates).eq('user_id', u_str).execute()
             else:
-                new_data = {
-                    'user_id': str(user_id),
-                    'username': username,
-                    'events_attended': 0,
-                    'time_guarded': 0,
-                    'activity': 0
-                }
-                for col, val in increments.items():
-                    new_data[col] = val
-                    
-                self.bot.db.supabase.table('LRs').insert(new_data).execute()
-                
+                payload = {'user_id': u_str, **updates}
+                return self.bot.db.supabase.table('LRs').insert(payload).execute()
+        try:
+            await self.bot.db.run_query(_work)
         except Exception as e:
-            logger.error(f"Failed to update LR record for {user_id}: {str(e)}")
-            raise
+            logger.exception("ReactionLogger._update_lr_record failed: %s", e)
 
     async def log_reaction(self, payload: discord.RawReactionActionEvent):
             """Main reaction handler that routes to specific loggers"""
@@ -1087,13 +1051,28 @@ class SheetDBLogger:
 
 
 class MessageTracker:
-    """Tracks messages sent by users with a specific role in specified channels"""
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.monitor_channel_ids = set(Config.MESSAGE_TRACKER_CHANNELS)
         self.log_channel_id = Config.MESSAGE_TRACKER_LOG_CHANNEL
         self.tracked_role_id = Config.MESSAGE_TRACKER_ROLE_ID
         self.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
+        self._recent_messages = deque(maxlen=50)  
+        
+    async def log_message(self, message: discord.Message):
+        # Check for recent duplicates
+        message_key = f"{message.channel.id}-{message.id}"
+        if message_key in self._recent_messages:
+            return
+            
+        self._recent_messages.append(message_key)
+        
+        try:
+            async with global_rate_limiter:
+                await self._log_message_impl(message)
+        except Exception as e:
+            logger.error(f"Failed to log message: {type(e).__name__}: {str(e)}", exc_info=True)
+    
 
     async def on_ready_setup(self):
         """Setup monitoring when bot starts"""
@@ -1168,13 +1147,7 @@ class MessageTracker:
                 pass
 
   
-    async def log_message(self, message: discord.Message):
-        try:
-            async with global_rate_limiter:
-                await self._log_message_impl(message)
-        except Exception as e:
-            logger.error(f"❌ Failed to log message: {type(e).__name__}: {str(e)}", exc_info=True)
-    
+        
     async def _log_message_impl(self, message: discord.Message):
         # Add initial delay to prevent bursts
         await asyncio.sleep(random.uniform(0.1, 0.5))  # Random small delay
@@ -1250,8 +1223,12 @@ bot = commands.Bot(
     command_prefix="!.",
     intents=intents,
     activity=discord.Activity(type=discord.ActivityType.watching, name="out for RMP"),
-    max_messages=None,
-    heartbeat_timeout=60.0
+    max_messages=5000,  # Reduced from None to limit memory usage
+    heartbeat_timeout=60.0,
+    guild_ready_timeout=2.0,  # Faster guild readiness
+    member_cache_flush_time=3600,  # Flush cache every hour
+    chunk_guilds_at_startup=False,  # Don't chunk all members at startup
+    status=discord.Status.online
 )
 
 global_rate_limiter = GlobalRateLimiter()
@@ -1282,59 +1259,115 @@ create_sc_command(bot)
 
 @bot.event
 async def on_ready():
-    logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
-    logger.info(f"Connected to {len(bot.guilds)} guild(s)")
-    async def connection_monitor():
-        while True:
-            await asyncio.sleep(300)  # Check every 5 minutes
-            if bot.is_closed():
-                logger.warning("Bot connection is closed - may need restart")
-            logger.info(f"Connection status: {not bot.is_closed()}, Latency: {bot.latency*1000:.0f}ms")
+    logger.info("Logged in as %s (ID: %s)", bot.user, getattr(bot.user, "id", "unknown"))
+    logger.info("Connected to %d guild(s)", len(bot.guilds))
 
-    bot.loop.create_task(connection_monitor())
-    # SheetDB setup
-    bot.sheets = SheetDBLogger()
-    if not bot.sheets.ready:
-        logger.warning("SheetDB Logger not initialized properly")
-    else:
-        logger.info("SheetDB Logger initialized successfully")
+    # Close old session if it somehow exists
+    if hasattr(bot, "shared_session") and bot.shared_session and not bot.shared_session.closed:
+        await bot.shared_session.close()
 
-    #Shutdown Notifier
-    # bot.shutdown_notifier = ShutdownNotifier(bot)
-    # await bot.shutdown_notifier.start_monitoring()
-
-    # Run setup for other components
-    await bot.reaction_logger.on_ready_setup()
-    await bot.message_tracker.on_ready_setup()
-
-    # Create shared aiohttp session
+    connector = aiohttp.TCPConnector(
+        limit=15,
+        limit_per_host=4,
+        enable_cleanup_closed=True,
+        force_close=False
+    )
     bot.shared_session = aiohttp.ClientSession(
         headers={"User-Agent": USER_AGENT},
-        timeout=TIMEOUT,
-        connector=aiohttp.TCPConnector(
-            force_close=True,
-            enable_cleanup_closed=True,
-            resolver=aiohttp.AsyncResolver() if await check_dns_connectivity() else None
-        )
+        timeout=aiohttp.ClientTimeout(total=12, connect=5, sock_connect=3, sock_read=6),
+        connector=connector,
+        trust_env=True,
     )
+    logger.info("Created new shared aiohttp.ClientSession for this session")
 
-    # Sync slash commands
+    # Attach/start connection monitor and component setup
+    bot.connection_monitor = ConnectionMonitor(bot)
+    await bot.connection_monitor.start()
+
     try:
-        synced = await bot.api.execute_with_retry(
-            bot.tree.sync(),
-            max_retries=5,
-            initial_delay=2.0
-        )
-        logger.info(f"Synced {len(synced)} commands")
-    except Exception as e:
-        logger.error(f"Command sync error: {e}")
+        await asyncio.wait_for(bot.reaction_logger.on_ready_setup(), timeout=10.0)
+    except asyncio.TimeoutError:
+        logger.warning("reaction_logger.on_ready_setup timed out")
+    except Exception:
+        logger.exception("reaction_logger.on_ready_setup failed")
 
+    try:
+        await asyncio.wait_for(bot.message_tracker.on_ready_setup(), timeout=10.0)
+    except Exception:
+        logger.exception("message_tracker.on_ready_setup failed")
+
+    # Sync commands but don't block startup indefinitely
+    try:
+        await asyncio.wait_for(bot.tree.sync(), timeout=15.0)
+    except asyncio.TimeoutError:
+        logger.warning("command sync timed out (continuing)")
+    
+    bot.sheets = SheetDBLogger()
+    if not bot.sheets.ready:
+        logger.warning("SheetDB Logger not initialized properly - check GOOGLE_SCRIPT_URL etc.")
+    else:
+        logger.info("SheetDB Logger initialized")
+
+    if hasattr(bot, "reaction_logger"):
+        if not getattr(bot.reaction_logger, "_cleanup_task", None):
+            await bot.reaction_logger.start_cleanup_task()
+            logger.info("ReactionLogger cleanup task started.")
 
 @bot.event
 async def on_disconnect():
-    if hasattr(bot, 'shared_session') and bot.shared_session:
+    logger.warning("Bot disconnected from Discord")
+    if hasattr(bot.reaction_logger, "stop_cleanup_task"):
+        await bot.reaction_logger.stop_cleanup_task()
+
+    # Close the HTTP session
+    if hasattr(bot, "shared_session") and bot.shared_session and not bot.shared_session.closed:
         await bot.shared_session.close()
-        logger.info("Closed shared HTTP session")
+    bot.shared_session = None
+    logger.info("Closed shared aiohttp.ClientSession on disconnect")
+
+@bot.event
+async def on_resumed():
+    logger.info("Bot successfully resumed (session resumption). Recreating HTTP session only if necessary.")
+    if not getattr(bot, "shared_session", None) or bot.shared_session.closed:
+        # recreate session (same logic as on_ready)
+        connector = aiohttp.TCPConnector(limit=15, limit_per_host=4, enable_cleanup_closed=True)
+        try:
+            resolver_ok = await check_dns_connectivity()
+        except Exception:
+            resolver_ok = False
+        if resolver_ok:
+            try:
+                connector.resolver = aiohttp.AsyncResolver()
+            except Exception:
+                pass
+        bot.shared_session = aiohttp.ClientSession(
+            headers={"User-Agent": USER_AGENT},
+            timeout=aiohttp.ClientTimeout(total=12, connect=5, sock_connect=3, sock_read=6),
+            connector=connector,
+            trust_env=True
+        )
+        logger.info("Recreated shared aiohttp.ClientSession after resume")
+
+@bot.event
+async def on_message(message: discord.Message):
+    # Single canonical message handler: lightweight, non-blocking
+    if message.author.bot:
+        return
+    # process commands (must await so commands work)
+    try:
+        await bot.process_commands(message)
+    except Exception:
+        logger.exception("Error while processing commands for message %s", getattr(message, "id", None))
+
+    # background message tracking - fire-and-forget with wrapper safe
+    async def _background_message_track(msg):
+        try:
+            await bot.message_tracker.log_message(msg)
+        except Exception:
+            logger.exception("message_tracker.log_message failed")
+
+    asyncio.create_task(_background_message_track(message))
+
         
 # --- Commands --- 
 # /addxp Command
@@ -1413,7 +1446,7 @@ async def take_xp(interaction: discord.Interaction, user: discord.User, xp: int)
             )
             return
         
-        success, new_total = await bot.db.take_xp(user.id, cleaned_name, xp)
+        success, new_total = await bot.db.remove_xp(user.id, xp)
         
         if success:
             message = f"✅ Removed {xp} XP from {cleaned_name}. New total: {new_total} XP"
@@ -1748,191 +1781,89 @@ async def give_event_xp(
             await initial_message.edit(content="❌ An unexpected error occurred. Please check logs.")
 
 # Edit database command
-@has_allowed_role()
-@app_commands.describe(
-    user="The user whose data you want to edit",
-    column="The column you want to edit",
-    value="The new value to set"
-)
 @bot.tree.command(name="edit-db", description="Edit a specific user's record in the HR or LR table.")
-async def edit_db(
-    interaction: discord.Interaction,
-    user: discord.Member,
-    column: Literal[
-        "tryouts", "events", "phases", "courses", "inspections", "joint_events",
-        "activity", "time_guarded", "events_attended"
-    ],
-    value: str
-):
-    """Edit a user's HR or LR data depending on the target user's role"""
+async def edit_db(interaction: discord.Interaction, user: discord.Member, column: str, value: str):
     await interaction.response.defer(ephemeral=True)
-
-    invoker = interaction.user
     guild = interaction.guild
-
     if not guild:
         await interaction.followup.send("❌ This command can only be used in a server.")
         return
 
-    # Initialize Supabase client
-    url = os.getenv("SUPABASE_URL")
-    key = os.getenv("SUPABASE_KEY")
-    if not url or not key:
-        await interaction.followup.send("❌ Supabase credentials not configured.")
+    ld_role = guild.get_role(Config.LD_ROLE_ID)
+    if not (ld_role and ld_role in interaction.user.roles):
+        await interaction.followup.send("❌ You don’t have permission to use this command.", ephemeral=True)
         return
-    supabase = create_client(url, key)
 
-    user_id = str(user.id)
-
-    # Determine table based on target user's roles
     hr_role = guild.get_role(Config.HR_ROLE_ID)
     table = "HRs" if hr_role and hr_role in user.roles else "LRs"
+    user_id = str(user.id)
+
+    def _work():
+        sup = bot.db.supabase
+        res = sup.table(table).select("*").eq("user_id", user_id).execute()
+        return res
 
     try:
-        # Query to find rows for the user
-        result = supabase.table(table).select("*").eq("user_id", user_id).execute()
-
-        if not result.data:
+        res = await bot.db.run_query(_work)
+        if not res.data:
             await interaction.followup.send(f"❌ No record found for {user.mention} in `{table}` table.")
             return
-        elif len(result.data) > 1:
-            await interaction.followup.send(f"❌ Multiple records found for {user.mention} in `{table}` table. Please resolve duplicates.")
+        if len(res.data) > 1:
+            await interaction.followup.send(f"❌ Multiple records found for {user.mention} in `{table}` table.")
             return
 
-        # Get old value for logging
-        old_value = result.data[0].get(column, "N/A")
-
-        # Try to convert value to int or float if possible
+        old_value = res.data[0].get(column, "N/A")
         try:
             value_converted = int(value)
         except ValueError:
             try:
                 value_converted = float(value)
             except ValueError:
-                value_converted = value  # Keep as string
+                value_converted = value
 
-        # Update the user's row
-        update_result = supabase.table(table).update({column: value_converted}).eq("user_id", user_id).execute()
+        def _update_work():
+            return bot.db.supabase.table(table).update({column: value_converted}).eq("user_id", user_id).execute()
 
-        # Check for errors
-        if hasattr(update_result, 'error') and update_result.error:
-            raise Exception(f"Supabase update failed: {update_result.error}")
-
-        # Send success response
+        await bot.db.run_query(_update_work)
         await interaction.followup.send(
-            f"✅ Updated `{column}` for {user.mention} in `{table}` table from `{old_value}` to `{value_converted}`."
+            f"✅ Updated `{column}` for {user.mention} from `{old_value}` to `{value_converted}`."
         )
-
-        # Log the action to the log channel
-        log_channel = bot.get_channel(Config.DEFAULT_LOG_CHANNEL)
-        if log_channel:
-            embed = discord.Embed(
-                title="📝 Database Edit Logged",
-                color=discord.Color.blue(),
-                timestamp=datetime.now(timezone.utc)
-            )
-            
-            embed.add_field(name="Staff", value=f"{invoker.mention} (`{invoker.id}`)", inline=True)
-            embed.add_field(name="User", value=f"{user.mention} (`{user.id}`)", inline=True)
-            embed.add_field(name="Field", value=f"`{column}`", inline=True)
-            embed.add_field(name="Old Value", value=f"`{old_value}`", inline=True)
-            embed.add_field(name="New Value", value=f"`{value_converted}`", inline=True)
-            
-            try:
-                await log_channel.send(embed=embed)
-            except Exception as e:
-                logger.error(f"Failed to send log message: {str(e)}")
-
     except Exception as e:
+        logger.exception("edit_db failed: %s", e)
         await interaction.followup.send(f"❌ Failed to update data: `{e}`")
-        logger.error(f"Edit DB error: {str(e)}", exc_info=True)
 
 # Reset Database Command
 @bot.tree.command(name="reset-db", description="Reset the LR and HR tables.")
-@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 async def reset_db(interaction: discord.Interaction):
-    """Reset database tables (HRs and LRs) to default values"""
+    await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
-    member = interaction.user
+    if not guild:
+        await interaction.followup.send("❌ This command can only be used in a server.")
+        return
 
-    if Config.LD_HEAD_ROLE_ID:
-        monitor_role = guild.get_role(Config.LD_HEAD_ROLE_ID)
-        if not monitor_role or monitor_role not in member.roles:
-            return
-    try:
-        # Check permissions
+    ld_head_role = guild.get_role(Config.LD_HEAD_ROLE_ID)
+    if not (ld_head_role and ld_head_role in interaction.user.roles):
+        await interaction.followup.send("❌ You don’t have permission to use this command.", ephemeral=True)
+        return
 
-                
-        # Create confirmation view
-        confirm_view = ConfirmView()
-        embed = discord.Embed(
-            title="⚠️ Database Reset Confirmation",
-            description="This will reset ALL data in the LR and HR tables to zero values.\n\n**This cannot be undone!**",
-            color=discord.Color.orange()
-        )
-        
-        # Send initial confirmation message
-        await interaction.response.send_message(
-            embed=embed,
-            view=confirm_view,
-            ephemeral=True
-        )
 
-        # Wait for confirmation
-        await confirm_view.wait()
-        
-        # Handle user response
-        if not confirm_view.value:
-            await interaction.followup.send(
-                "✅ Database reset cancelled.",
-                ephemeral=True
-            )
-            return
-
-        # User confirmed - proceed with reset
-        await interaction.followup.send(
-            "🔄 Resetting database...", 
-            ephemeral=True
-        )
-
-        # Initialize Supabase
-        url = os.getenv("SUPABASE_URL")
-        key = os.getenv("SUPABASE_KEY")
-        supabase = create_client(url, key)
-        
-        # Reset TEST1 table
-        supabase.table('HRs').update({
+    def _reset_work():
+        sup = bot.db.supabase
+        sup.table('HRs').update({
             'tryouts': 0, 'events': 0, 'phases': 0,
             'courses': 0, 'inspections': 0, 'joint_events': 0
         }).neq('user_id', 0).execute()
-        
-        # Reset TEST2 table
-        supabase.table('LRs').update({
+        sup.table('LRs').update({
             'activity': 0, 'time_guarded': 0, 'events_attended': 0
         }).neq('user_id', 0).execute()
-        
-        # Send success message
-        await interaction.followup.send(
-            "✅ Database reset successfully!", 
-            ephemeral=True
-        )
-        
-        # Log the action
-        log_channel = bot.get_channel(Config.DEFAULT_LOG_CHANNEL)
-        if log_channel:
-            log_embed = discord.Embed(
-                title="⚙️ DATABASE RESET",
-                description=f"{interaction.user.mention} has reset the database.",
-                color=discord.Color.dark_theme()
-            )
-            await log_channel.send(embed=log_embed)
-            
+        return True
+
+    try:
+        await bot.db.run_query(_reset_work)
+        await interaction.followup.send("✅ Database reset successfully!", ephemeral=True)
     except Exception as e:
-        logger.error(f"Database reset failed: {str(e)}", exc_info=True)
-        await interaction.followup.send(
-            f"❌ Error resetting database: {str(e)}", 
-            ephemeral=True
-        )
+        logger.exception("reset_db failed: %s", e)
+        await interaction.followup.send(f"❌ Error resetting database: {e}", ephemeral=True)
 
 
 # Discharge Command
@@ -2569,36 +2500,6 @@ async def on_member_remove(member: discord.Member):
             logger.error(f"Error logging deserter discharge: {str(e)}")
     
 
-# Message Listener
-@bot.event
-async def on_message(message: discord.Message):
-   # bot.shutdown_notifier.record_activity()
-    # Process commands first with rate limiting
-    async with global_rate_limiter:
-        await bot.process_commands(message)
-    
-    # Then track messages with rate limiting
-    async with global_rate_limiter:
-        await bot.message_tracker.log_message(message)
-
-# Reaction Listner
-@bot.event
-async def on_raw_reaction_add(payload: discord.RawReactionActionEvent):
-    #bot.shutdown_notifier.record_activity()
-    async with global_rate_limiter:
-        await bot.reaction_logger.log_reaction(payload)
-
-#Wesbsocket
-@bot.event
-async def on_disconnect():
-    logger.warning("Bot disconnected from Discord")
-    if hasattr(bot, 'shared_session') and bot.shared_session:
-        await bot.shared_session.close()
-        logger.info("Closed shared HTTP session")
-
-@bot.event
-async def on_resumed():
-    logger.info("Bot successfully reconnected to Discord")
 
 @bot.event
 async def on_socket_raw_receive(msg):
@@ -2628,8 +2529,55 @@ async def run_bot():
         else:
             break
 
+async def run_bot_forever():
+    backoff = 1.0
+    max_backoff = 300.0
+    consecutive_failures = 0
+    
+    while True:
+        try:
+            logger.info(f"Starting Discord client (attempt {consecutive_failures + 1})...")
+            await bot.start(TOKEN)
+            
+            # Reset backoff on successful run
+            backoff = 1.0
+            consecutive_failures = 0
+            
+        except KeyboardInterrupt:
+            logger.info("KeyboardInterrupt received; shutting down bot.")
+            try:
+                await bot.close()
+            finally:
+                break
+                
+        except discord.errors.HTTPException as e:
+            consecutive_failures += 1
+            if getattr(e, "status", None) == 429:
+                retry_after = float(e.response.headers.get('Retry-After', 30) if getattr(e, "response", None) else 30)
+                logger.warning(f"Rate limited during login. Waiting {retry_after}s.")
+                await asyncio.sleep(retry_after)
+                continue
+            logger.error(f"HTTPException in run loop: {e}")
+            
+        except Exception as e:
+            consecutive_failures += 1
+            logger.error(f"Unexpected error in Discord client: {type(e).__name__}: {e}")
+
+        # Exponential backoff with jitter
+        sleep_time = min(max_backoff, backoff * (2 ** consecutive_failures))
+        sleep_time *= random.uniform(0.8, 1.2)  # Add jitter
+        
+        logger.info(f"Discord client stopped; restarting in {sleep_time:.1f}s")
+        await asyncio.sleep(sleep_time)
+        backoff = sleep_time
+
 if __name__ == '__main__':  
-    asyncio.run(run_bot())
+    try:
+        asyncio.run(run_bot_forever())
+    except Exception as e:
+        logger.critical(f"Fatal error running bot: {e}", exc_info=True)
+        raise
+
 
 
 
