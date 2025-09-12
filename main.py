@@ -1214,22 +1214,33 @@ class MessageTracker:
 
 # --- Bot Initialization ---
 intents = discord.Intents.default()
-intents.members = True
-intents.message_content = True
 intents.guilds = True
+intents.members = True               # Requires privileged intent in Developer Portal
+intents.message_content = True       # Requires privileged intent in Developer Portal
 intents.reactions = True
 
 bot = commands.Bot(
     command_prefix="!.",
     intents=intents,
-    activity=discord.Activity(type=discord.ActivityType.watching, name="out for RMP"),
-    max_messages=5000,  # Reduced from None to limit memory usage
+    activity=discord.Activity(
+        type=discord.ActivityType.watching,
+        name="out for RMP"
+    ),
+    max_messages=5000,              # Reduced from None to limit memory usage
     heartbeat_timeout=60.0,
-    guild_ready_timeout=2.0,  # Faster guild readiness
-    member_cache_flush_time=3600,  # Flush cache every hour
+    guild_ready_timeout=2.0,        # Faster guild readiness
+    member_cache_flush_time=3600,   # Flush cache every hour
     chunk_guilds_at_startup=False,  # Don't chunk all members at startup
     status=discord.Status.online
 )
+
+# --- Intents validation logging ---
+if not intents.members:
+    logger.warning("Privileged intent 'members' is disabled in code. Some checks may fail.")
+if not intents.message_content:
+    logger.warning("Privileged intent 'message_content' is disabled in code. Message tracker will not work.")
+logger.info("Bot initialized with intents: members=%s, message_content=%s, reactions=%s, guilds=%s",
+            intents.members, intents.message_content, intents.reactions, intents.guilds)
 
 global_rate_limiter = GlobalRateLimiter()
 bot.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
@@ -2577,6 +2588,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
