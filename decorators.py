@@ -11,22 +11,22 @@ def has_allowed_role():
             )
             return False
 
-        member = interaction.guild.get_member(interaction.user.id)
-        if not member:
+        # Prefer guild member, but fallback to interaction.user
+        member = interaction.guild.get_member(interaction.user.id) or interaction.user
+        if not isinstance(member, discord.Member):
             await interaction.response.send_message(
-                "Member not found.", 
+                "Member not found in guild (intents may be missing).", 
                 ephemeral=True
             )
             return False
             
-        if member == 353167234698444802:
+        # ✅ Fix: check by ID, not object
+        if member.id == 353167234698444802:
             return True
 
-        # Check administrator first
         if member.guild_permissions.administrator:
             return True
 
-        # Check for allowed role
         allowed_role = interaction.guild.get_role(Config.LD_ROLE_ID)
         if allowed_role and allowed_role in member.roles:
             return True
@@ -47,15 +47,15 @@ def min_rank_required(required_role_id: int):
             )
             return False
 
-        member = interaction.guild.get_member(interaction.user.id)
-        if not member:
+        # Prefer cached member, fallback to interaction.user
+        member = interaction.guild.get_member(interaction.user.id) or interaction.user
+        if not isinstance(member, discord.Member):
             await interaction.response.send_message(
-                "Member not found.", 
+                "Member not found in guild (intents may be missing).", 
                 ephemeral=True
             )
             return False
 
-        # Check administrator first
         if member.guild_permissions.administrator:
             return True
 
@@ -67,10 +67,9 @@ def min_rank_required(required_role_id: int):
             )
             return False
 
-        # Check if any of the member's roles meets or exceeds required position
-        for role in member.roles:
-            if role.position >= required_role.position:
-                return True
+        # Check role hierarchy
+        if any(role.position >= required_role.position for role in member.roles):
+            return True
 
         await interaction.response.send_message(
             f"⛔ You need at least the {required_role.mention} role.",
@@ -78,4 +77,3 @@ def min_rank_required(required_role_id: int):
         )
         return False
     return app_commands.check(predicate)
-
