@@ -472,6 +472,7 @@ class ReactionLogger:
         if not guild.get_channel(self.log_channel_id):
             logger.warning(f"Default log channel {self.log_channel_id} not found!")
             self.log_channel_id = None
+
             
     async def _log_reaction_impl(self, payload: discord.RawReactionActionEvent):
         guild = self.bot.get_guild(payload.guild_id)
@@ -487,8 +488,15 @@ class ReactionLogger:
             return
     
         member = guild.get_member(payload.user_id)
-        if not member:
-            return
+        if member is None:
+            try:
+                member = await guild.fetch_member(payload.user_id)
+            except discord.NotFound:
+                logger.info("Member not found for reaction event; skipping")
+                return
+            except Exception:
+                logger.exception("Failed to fetch member for reaction", exc_info=True)
+                return
             
         if Config.LD_ROLE_ID:
             monitor_role = guild.get_role(Config.LD_ROLE_ID)
@@ -501,7 +509,7 @@ class ReactionLogger:
         processed_key = self._get_processed_key(payload.message_id, payload.user_id)
         if processed_key in self.processed_keys:
             logger.info(f"Duplicate reaction detected from {member.display_name} on message {payload.message_id}, skipping.")
-            raise Exception("Duplicate reaction detected. Log was not processed.")
+	   return
         else:
             self.processed_messages.append(processed_key)
             self.processed_keys.add(processed_key)
@@ -518,10 +526,17 @@ class ReactionLogger:
         try:
             # Add small delay before processing
             await asyncio.sleep(0.5)
-            
-            message = await DiscordAPI.execute_with_retry(
-                channel.fetch_message(payload.message_id)
-            )
+
+            try:
+                message = await channel.fetch_message(payload.message_id)
+            except discord.Notfound:
+                return
+
+            if not isinstance(message.author, discord.Member):
+                try:
+                    author_member = await guild.fetch_member(message.author.id)
+                except Exception:
+                    author_member = None
             
                 
             content = (message.content[:100] + "...") if len(message.content) > 100 else message.content
@@ -870,25 +885,25 @@ class ReactionLogger:
             else:
                 payload = {'user_id': u_str, **updates}
                 return sup.table('HRs').insert(payload).execute()
-    
         try:
             await self.bot.db.run_query(_work)
-        except Exception as e:
-            logger.exception("ReactionLogger._update_hr_record failed: %s", e)
+        except Exception:
+            logger.exception("ReactionLogger._update_hr_record failed")
 
     async def _update_lr_record(self, user_id: int, updates: dict):
+        u_str = str(user_id)
         def _work():
-            u_str = str(user_id)
-            row = self.bot.db.supabase.table('LRs').select('*').eq('user_id', u_str).execute()
+            sup = self.bot.db.supabase
+            row = sup.table('LRs').select('*').eq('user_id', u_str).execute()
             if getattr(row, "data", None):
-                return self.bot.db.supabase.table('LRs').update(updates).eq('user_id', u_str).execute()
+                return sup.table('LRs').update(updates).eq('user_id', u_str).execute()
             else:
                 payload = {'user_id': u_str, **updates}
-                return self.bot.db.supabase.table('LRs').insert(payload).execute()
+                return sup.table('LRs').insert(payload).execute()
         try:
             await self.bot.db.run_query(_work)
-        except Exception as e:
-            logger.exception("ReactionLogger._update_lr_record failed: %s", e)
+        except Exception:
+            logger.exception("ReactionLogger._update_lr_record failed")
 
     async def log_reaction(self, payload: discord.RawReactionActionEvent):
             """Main reaction handler that routes to specific loggers"""
@@ -912,8 +927,23 @@ class ReactionLogger:
                         )
                         await log_channel.send(content=member.mention, embed=error_embed)
                         
-  
+      # --- Event listeners ---
+    async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
+        """Triggered when a reaction is added anywhere the bot can see."""
+        try:
+            await self.log_reaction(payload)
+        except Exception as e:
+            logger.error(f"ReactionLogger.on_raw_reaction_add failed: {e}", exc_info=True)
+
+    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
+        """Triggered when a reaction is removed anywhere the bot can see."""
+        try:
+            await self.log_reaction(payload)
+        except Exception as e:
+            logger.error(f"ReactionLogger.on_raw_reaction_remove failed: {e}", exc_info=True)
+
     async def add_channels(self, interaction: discord.Interaction, channels: str):
+
         """Add channels to monitor"""
         await interaction.response.defer(ephemeral=True)
         try:
@@ -1085,8 +1115,9 @@ class MessageTracker:
             else:
                 logger.warning(f"⚠️ Channel ID {channel_id} not found in guild!")
         self.monitor_channel_ids = valid_channels
-    
+	
 
+  
     async def _safe_interaction_response(self, interaction: discord.Interaction):
         try:
             if not interaction.response.is_done():
@@ -1155,9 +1186,18 @@ class MessageTracker:
         if message.author.bot or message.channel.id not in self.monitor_channel_ids:
             return
     
+        # Ensure we have a Member object (fetch if needed)
         if not isinstance(message.author, discord.Member):
-            logger.warning("⚠️ Message author is not a Member object")
-            return
+            try:
+                member = await message.guild.fetch_member(message.author.id)
+            except discord.NotFound:
+                logger.warning("⚠️ Message author not found as member; skipping")
+                return
+            except Exception as e:
+                logger.exception("Failed to fetch message author as member", exc_info=True)
+                return
+        else:
+            member = message.author
     
         tracked_role = message.guild.get_role(self.tracked_role_id)
         if not tracked_role or tracked_role not in message.author.roles:
@@ -1168,7 +1208,7 @@ class MessageTracker:
             logger.error("❌ Log channel not available")
             return
     
-        logger.info(f"✉️ Logging message from {message.author.display_name} in #{message.channel.id}")
+        logger.info(f"✉️ Logging message from {message.display_name} in #{message.channel.id}")
     
         # Process message content with truncation
         content = message.content
@@ -1206,7 +1246,7 @@ class MessageTracker:
         # Update points with rate limiting and retry
         logger.info(f"🔢 Updating points for: {message.author.display_name}")
         try:
-            update_success = await self.bot.sheets.update_points(message.author, is_message_tracker=True)
+            update_success = await self.bot.sheets.update_points(member, is_message_tracker=True)
             logger.info(f"📊 Message tracker update {'✅ succeeded' if update_success else '❌ failed'}")
         except Exception as e:
             logger.error(f"Failed to update points: {str(e)}")
@@ -2588,24 +2628,4 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
