@@ -451,8 +451,16 @@ class ReactionLogger:
         self._cleanup_task = None
 
     async def setup(self):
+    async def setup(self, interaction=None, log_channel=None, monitor_channels=None):
+        """Setup reaction logger with optional parameters"""
+        if interaction and log_channel and monitor_channels:
+            # Setup from command
+            channel_ids = [int(cid.strip()) for cid in monitor_channels.split(',')]
+            self.monitor_channel_ids = set(channel_ids)
+            self.log_channel_id = log_channel.id
+            await interaction.followup.send("✅ Reaction tracking setup complete", ephemeral=True)
+            
         """Register event listeners and validate DB connection."""
-        self.bot.add_listener(self.log_reaction, "on_raw_reaction_add")
         # Supabase connection check
         try:
             await self.bot.db.run_query(lambda: self.bot.db.supabase.table("LD").select("count").limit(1).execute())
@@ -1290,11 +1298,16 @@ async def on_ready():
     await bot.connection_monitor.start()
 
     try:
-        await asyncio.wait_for(bot.reaction_logger.on_ready_setup(), timeout=10.0)
-    except asyncio.TimeoutError:
-        logger.warning("reaction_logger.on_ready_setup timed out")
-    except Exception:
-        logger.exception("reaction_logger.on_ready_setup failed")
+        await bot.reaction_logger.setup()  
+        logger.info("✅ ReactionLogger setup complete")
+    except Exception as e:
+        logger.error(f"❌ ReactionLogger setup failed: {e}")
+    # Setup reaction logger channels
+    try:
+        await bot.reaction_logger.on_ready_setup()
+        logger.info("✅ ReactionLogger channel validation complete")
+    except Exception as e:
+        logger.error(f"❌ ReactionLogger channel validation failed: {e}")
 
     try:
         await asyncio.wait_for(bot.message_tracker.on_ready_setup(), timeout=10.0)
@@ -2172,7 +2185,15 @@ async def reaction_setup(
     log_channel: discord.TextChannel,
     monitor_channels: str
 ):
-    await bot.reaction_logger.setup(interaction, log_channel, monitor_channels)
+    """Setup reaction tracking"""
+    await interaction.response.defer(ephemeral=True)
+    try:
+        channel_ids = [int(cid.strip()) for cid in monitor_channels.split(',')]
+        bot.reaction_logger.monitor_channel_ids = set(channel_ids)
+        bot.reaction_logger.log_channel_id = log_channel.id
+        await interaction.followup.send("✅ Reaction tracking setup complete", ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Setup failed: {str(e)}", ephemeral=True)
 
 @bot.tree.command(name="reaction-add", description="Add channels to monitor")
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
@@ -2632,6 +2653,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
