@@ -509,7 +509,7 @@ class ReactionLogger:
         processed_key = self._get_processed_key(payload.message_id, payload.user_id)
         if processed_key in self.processed_keys:
             logger.info(f"Duplicate reaction detected from {member.display_name} on message {payload.message_id}, skipping.")
-	   return
+	   		return
         else:
             self.processed_messages.append(processed_key)
             self.processed_keys.add(processed_key)
@@ -2628,4 +2628,5 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
