@@ -2520,12 +2520,12 @@ async def on_socket_raw_send(payload):
     # Log WebSocket activity to detect issues
     pass
 
-# Event Listener
-@bot.tree.listener()
+# Command Listener
+@bot.tree.on_command_completion
 async def on_app_command_completion(interaction: discord.Interaction, command: discord.app_commands.Command):
     guild = interaction.guild
     if not guild:
-        return  # skip DMs
+        return  # Skip DMs
 
     log_channel = guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
     if not log_channel:
@@ -2543,6 +2543,7 @@ async def on_app_command_completion(interaction: discord.Interaction, command: d
     embed.add_field(name="User", value=f"{user.mention} (`{user.id}`)", inline=False)
     embed.add_field(name="Channel", value=interaction.channel.mention, inline=False)
 
+    # Add arguments if present
     if interaction.data and "options" in interaction.data:
         args = ", ".join(
             f"`{opt['name']}`: {opt.get('value', 'N/A')}"
@@ -2617,6 +2618,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
