@@ -509,7 +509,7 @@ class ReactionLogger:
         processed_key = self._get_processed_key(payload.message_id, payload.user_id)
         if processed_key in self.processed_keys:
             logger.info(f"Duplicate reaction detected from {member.display_name} on message {payload.message_id}, skipping.")
-	   		raise Exception("Duplicate reaction detected. Log was not processed.")
+               raise Exception("Duplicate reaction detected. Log was not processed.")
         else:
             self.processed_messages.append(processed_key)
             self.processed_keys.add(processed_key)
@@ -1115,7 +1115,7 @@ class MessageTracker:
             else:
                 logger.warning(f"⚠️ Channel ID {channel_id} not found in guild!")
         self.monitor_channel_ids = valid_channels
-	
+    
 
   
     async def _safe_interaction_response(self, interaction: discord.Interaction):
@@ -2628,6 +2628,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
