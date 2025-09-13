@@ -578,8 +578,14 @@ class ReactionLogger:
             return
      
         member = guild.get_member(payload.user_id)
+        member = guild.get_member(user_id)
         if not member:
-            return
+            try:
+                member = await guild.fetch_member(user_id)
+            except discord.NotFound:
+                logger.warning(f"Member {user_id} not found in guild")
+                return
+
             
         ld_role = guild.get_role(Config.LD_ROLE_ID)
         if not ld_role or ld_role not in member.roles:
@@ -730,10 +736,14 @@ class ReactionLogger:
         if not guild:
             return
             
-        member = guild.get_member(payload.user_id)
+        member = guild.get_member(user_id)
         if not member:
-            return
-            
+            try:
+                member = await guild.fetch_member(user_id)
+            except discord.NotFound:
+                logger.warning(f"Member {user_id} not found in guild")
+                return
+
         ld_role = guild.get_role(Config.LD_ROLE_ID)
         if not ld_role or ld_role not in member.roles:
             return
@@ -802,9 +812,14 @@ class ReactionLogger:
         if not guild:
             return
             
-        member = guild.get_member(payload.user_id)
+        member = guild.get_member(user_id)
         if not member:
-            return
+            try:
+                member = await guild.fetch_member(user_id)
+            except discord.NotFound:
+                logger.warning(f"Member {user_id} not found in guild")
+                return
+
             
         ld_role = guild.get_role(Config.LD_ROLE_ID)
         if not ld_role or ld_role not in member.roles:
@@ -917,7 +932,14 @@ class ReactionLogger:
                 logger.error(f"Failed to log reaction: {type(e).__name__}: {str(e)}")
                 guild = self.bot.get_guild(payload.guild_id)
                 if guild:
-                    member = guild.get_member(payload.user_id)
+                    member = guild.get_member(user_id)
+                    if not member:
+                        try:
+                            member = await guild.fetch_member(user_id)
+                        except discord.NotFound:    
+                            logger.warning(f"Member {user_id} not found in guild")
+                            return
+
                     log_channel = guild.get_channel(self.log_channel_id)
                     if member and log_channel:
                         error_embed = discord.Embed(
@@ -1200,7 +1222,7 @@ class MessageTracker:
             member = message.author
     
         tracked_role = message.guild.get_role(self.tracked_role_id)
-        if not tracked_role or tracked_role not in message.author.roles:
+        if not tracked_role or tracked_role not in member.roles:
             return
     
         log_channel = message.guild.get_channel(self.log_channel_id)
@@ -1208,7 +1230,7 @@ class MessageTracker:
             logger.error("❌ Log channel not available")
             return
     
-        logger.info(f"✉️ Logging message from {message.display_name} in #{message.channel.id}")
+        logger.info(f"✉️ Logging message from {member.display_name} in #{message.channel.id}")
     
         # Process message content with truncation
         content = message.content
@@ -1218,7 +1240,7 @@ class MessageTracker:
         # Create embed
         embed = discord.Embed(
             title="🎓 ED Activity Logged",
-            description=f"{message.author.mention} has marked an exam or logged a course!",
+            description=f"{member.mention} has marked an exam or logged a course!",
             color=discord.Color.pink(),
             timestamp=message.created_at
         )
@@ -1244,7 +1266,7 @@ class MessageTracker:
             return
     
         # Update points with rate limiting and retry
-        logger.info(f"🔢 Updating points for: {message.author.display_name}")
+        logger.info(f"🔢 Updating points for: {member.display_name}")
         try:
             update_success = await self.bot.sheets.update_points(member, is_message_tracker=True)
             logger.info(f"📊 Message tracker update {'✅ succeeded' if update_success else '❌ failed'}")
@@ -1269,8 +1291,8 @@ bot = commands.Bot(
     max_messages=5000,              # Reduced from None to limit memory usage
     heartbeat_timeout=60.0,
     guild_ready_timeout=2.0,        # Faster guild readiness
-    member_cache_flush_time=3600,   # Flush cache every hour
-    chunk_guilds_at_startup=False,  # Don't chunk all members at startup
+    member_cache_flush_time=None,   #  Does not flush cache 
+    chunk_guilds_at_startup=True,  # Chunks all members at once
     status=discord.Status.online
 )
 
@@ -1772,8 +1794,11 @@ async def give_event_xp(
                             
                         member = interaction.guild.get_member(int(user_id))
                         if not member:
-                            failed_users.append(f"Unknown user ({user_id})")
-                            continue
+                            try:
+                                member = await interaction.guild.fetch_member(int(user_id))
+                            except discord.NotFound:
+                                failed_users.append(f"User {user_id} (not in guild)")
+                                continue
                             
                         try:
                             current_xp = await asyncio.wait_for(
@@ -1833,20 +1858,28 @@ async def give_event_xp(
 
 # Edit database command
 @bot.tree.command(name="edit-db", description="Edit a specific user's record in the HR or LR table.")
-async def edit_db(interaction: discord.Interaction, user: discord.Member, column: str, value: str):
+async def edit_db(interaction: discord.Interaction, user: discord.User, column: str, value: str):
     await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
     if not guild:
         await interaction.followup.send("❌ This command can only be used in a server.")
         return
-
+        
+    member = guild.get_member(user.id)
+    if not member:
+        try:
+            member = await guild.fetch_member(user.id)
+        except discord.NotFound:
+            await interaction.followup.send(f"❌ {user.mention} not found in this server.")
+            return
+            
     ld_role = guild.get_role(Config.LD_ROLE_ID)
     if not (ld_role and ld_role in interaction.user.roles):
         await interaction.followup.send("❌ You don’t have permission to use this command.", ephemeral=True)
         return
 
     hr_role = guild.get_role(Config.HR_ROLE_ID)
-    table = "HRs" if hr_role and hr_role in user.roles else "LRs"
+    table = "HRs" if hr_role and hr_role in member.roles else "LRs"
     user_id = str(user.id)
 
     def _work():
@@ -2561,7 +2594,38 @@ async def on_socket_raw_receive(msg):
 async def on_socket_raw_send(payload):
     # Log WebSocket activity to detect issues
     pass
-        
+
+# Event Listener
+@bot.tree.listener()
+async def on_app_command_completion(interaction: discord.Interaction, command: discord.app_commands.Command):
+    guild = interaction.guild
+    if not guild:
+        return  # skip DMs
+
+    log_channel = guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
+    if not log_channel:
+        return
+
+    user = interaction.user
+    logger.info(f"⚙️ Command executed: /{command.name} by {user.display_name} ({user.id})")
+
+    embed = discord.Embed(
+        title="⚙️ Command Executed",
+        description=f"**/{command.qualified_name}**",
+        color=discord.Color.blurple(),
+        timestamp=discord.utils.utcnow()
+    )
+    embed.add_field(name="User", value=f"{user.mention} (`{user.id}`)", inline=False)
+    embed.add_field(name="Channel", value=interaction.channel.mention, inline=False)
+
+    if interaction.data and "options" in interaction.data:
+        args = ", ".join(
+            f"`{opt['name']}`: {opt.get('value', 'N/A')}"
+            for opt in interaction.data["options"]
+        )
+        embed.add_field(name="Arguments", value=args, inline=False)
+
+    await log_channel.send(embed=embed)
 
 async def run_bot():
     while True:
@@ -2628,6 +2692,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
