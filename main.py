@@ -438,11 +438,33 @@ class ReactionLogger:
         self.tryout_log_channel_id = Config.TRYOUT_LOG_CHANNEL_ID
         self.course_log_channel_id = Config.COURSE_LOG_CHANNEL_ID
         self.activity_log_channel_id = Config.ACTIVITY_LOG_CHANNEL_ID
-        
-        # Improved cache with size limits and periodic cleanup
+
         self.processed_messages = deque(maxlen=100)
         self.processed_keys = set()
         self._cleanup_task = None
+
+    async def setup(self):
+        """Register event listeners and validate DB connection."""
+        self.bot.add_listener(self.log_reaction, "on_raw_reaction_add")
+        # Supabase connection check
+        try:
+            await self.bot.db.run_query(lambda: self.bot.db.supabase.table("LD").select("count").limit(1).execute())
+            logger.info("✅ Supabase connection validated")
+        except Exception as e:
+            logger.error(f"❌ Supabase connection failed: {e}")
+
+    async def _retry_db(self, func, retries: int = 3, delay: float = 1.0):
+        """Retry wrapper for DB ops with exponential backoff."""
+        for attempt in range(retries):
+            try:
+                return await self.bot.db.run_query(func)
+            except Exception as e:
+                if attempt == retries - 1:
+                    logger.error(f"DB operation failed after {retries} attempts: {e}")
+                    raise
+                wait_time = delay * (2 ** attempt)
+                logger.warning(f"DB operation failed ({e}), retrying in {wait_time:.1f}s...")
+                await asyncio.sleep(wait_time)
         
     async def start_cleanup_task(self):
         """Start periodic cleanup of processed messages"""
@@ -576,216 +598,179 @@ class ReactionLogger:
                 await log_channel.send(embed=error_embed)
 
    
-    async def _log_event_reaction_impl(self, payload: discord.RawReactionActionEvent):
+    async def _log_event_reaction_impl(self, payload: discord.RawReactionActionEvent, member: discord.Member):
+        """Handle event logging without confirmation"""
         if payload.channel_id not in self.event_channel_ids or str(payload.emoji) != "✅":
             return
-    
-        guild = self.bot.get_guild(payload.guild_id)
+
+        guild = member.guild
         if not guild:
             return
-    
-        user_id = payload.user_id
-        member = guild.get_member(user_id) or await guild.fetch_member(user_id)
-    
-        if not member:
-            logger.warning(f"Member {user_id} not found in guild")
-            return
-    
+
         ld_role = guild.get_role(Config.LD_ROLE_ID)
         if not ld_role or ld_role not in member.roles:
             return
-    
+
         channel = guild.get_channel(payload.channel_id)
         log_channel = guild.get_channel(self.log_channel_id)
         if not channel or not log_channel:
             return
-    
+
         try:
-            await asyncio.sleep(0.5)
+            await asyncio.sleep(0.5)  # Prevent bursts
             message = await channel.fetch_message(payload.message_id)
-    
-            # Host
-            host_match = re.search(r'host:\s*<@!?(\d+)>', message.content, re.IGNORECASE)
-            host_id = int(host_match.group(1)) if host_match else message.author.id
+
+            # Extract host
+            host_mention = re.search(r'host:\s*<@!?(\d+)>', message.content, re.IGNORECASE)
+            host_id = int(host_mention.group(1)) if host_mention else message.author.id
             host_member = guild.get_member(host_id) or await guild.fetch_member(host_id)
-            if not host_member:
-                return
-    
+
+            cleaned_host_name = clean_nickname(host_member.display_name)
+
             # Determine event type
             hr_update_field = "events"
             if payload.channel_id == Config.W_EVENT_LOG_CHANNEL_ID:
                 if re.search(r'\bjoint\b', message.content, re.IGNORECASE):
                     hr_update_field = "joint_events"
-                elif re.search(r'\b(inspection|pi)\b', message.content, re.IGNORECASE):
+                elif re.search(r'\b(inspection|pi|Inspection)\b', message.content, re.IGNORECASE):
                     hr_update_field = "inspections"
-    
+
             event_name_match = re.search(r'Event:\s*(.*?)(?:\n|$)', message.content, re.IGNORECASE)
             event_name = event_name_match.group(1).strip() if event_name_match else hr_update_field.replace("_", " ").title()
-    
-            # Update HR record
+
+            # Update HR table
             await self._update_hr_record(host_member, {hr_update_field: 1})
-    
-            # Attendees
+            logger.info(f"✅ Logged host {cleaned_host_name} to HR table")
+
+            # Process attendees
             attendees_section = re.search(r'(?:Attendees:|Passed:)\s*((?:<@!?\d+>\s*)+)', message.content, re.IGNORECASE)
             if not attendees_section:
-                logger.info("No attendees/passed section found; skipping LR logging.")
                 return
-    
-            attendee_ids = re.findall(r'<@!?(\d+)>', attendees_section.group(1))
+            attendee_mentions = re.findall(r'<@!?(\d+)>', attendees_section.group(1))
+
             hr_role = guild.get_role(Config.HR_ROLE_ID)
-            success_count = 0
-    
-            for att_id in attendee_ids:
-                att_member = guild.get_member(int(att_id)) or await guild.fetch_member(int(att_id))
-                if not att_member:
+            hr_attendees, success_count = [], 0
+
+            for attendee_id in attendee_mentions:
+                attendee_member = guild.get_member(int(attendee_id)) or await guild.fetch_member(int(attendee_id))
+                if not attendee_member:
                     continue
-                if hr_role and hr_role in att_member.roles:
+                if hr_role and hr_role in attendee_member.roles:
+                    hr_attendees.append(attendee_id)
                     continue
-                await self._update_lr_record(att_member, {"events_attended": 1})
+                await self._update_lr_record(attendee_member, {"events_attended": 1})
                 success_count += 1
-    
-            # Send completion embed
+
+            # Embed
             done_embed = discord.Embed(title="✅ Event Logged Successfully", color=discord.Color.green())
             done_embed.add_field(name="Host", value=host_member.mention, inline=True)
             done_embed.add_field(name="Attendees Recorded", value=str(success_count), inline=True)
+            if hr_attendees:
+                done_embed.add_field(name="HR Attendees Excluded", value=str(len(hr_attendees)), inline=False)
             done_embed.add_field(name="Logged By", value=member.mention, inline=False)
             done_embed.add_field(name="Event Type", value=event_name, inline=True)
             done_embed.add_field(name="Message", value=f"[Jump to Event]({message.jump_url})", inline=False)
+
             await log_channel.send(content=member.mention, embed=done_embed)
-    
+
         except Exception as e:
-            logger.error(f"Error processing event reaction: {str(e)}")
-            if log_channel:
-                await log_channel.send(embed=discord.Embed(
-                    title="❌ Event Log Error", description=str(e), color=discord.Color.red()
-                ))
+            logger.error(f"Error processing event reaction: {e}")
+            await log_channel.send(embed=discord.Embed(title="❌ Event Log Error", description=str(e), color=discord.Color.red()))
 
 
 
-    async def _log_training_reaction_impl(self, payload: discord.RawReactionActionEvent):
-        channel_id = payload.channel_id
-        if str(payload.emoji) != "✅":
-            return
-    
-        col_map = {
+    async def _log_training_reaction_impl(self, payload: discord.RawReactionActionEvent, member: discord.Member):
+        """Handle training logs (phases, tryouts, courses)"""
+        mapping = {
             self.phase_log_channel_id: "phases",
             self.tryout_log_channel_id: "tryouts",
             self.course_log_channel_id: "courses",
         }
-        column_to_update = col_map.get(channel_id)
-        if not column_to_update:
+        column_to_update = mapping.get(payload.channel_id)
+        if not column_to_update or str(payload.emoji) != "✅":
             return
-    
-        guild = self.bot.get_guild(payload.guild_id)
-        if not guild:
-            return
-    
-        user_id = payload.user_id
-        member = guild.get_member(user_id) or await guild.fetch_member(user_id)
-        if not member:
-            logger.warning(f"Member {user_id} not found in guild")
-            return
-    
+
+        guild = member.guild
         ld_role = guild.get_role(Config.LD_ROLE_ID)
         if not ld_role or ld_role not in member.roles:
             return
-    
+
         try:
             await asyncio.sleep(0.5)
-            message = await guild.get_channel(channel_id).fetch_message(payload.message_id)
-    
-            # Host from message
-            host_match = re.search(r'host:\s*<@!?(\d+)>', message.content, re.IGNORECASE)
-            host_id = int(host_match.group(1)) if host_match else message.author.id
-            host_member = guild.get_member(host_id) or await guild.fetch_member(host_id)
-            if not host_member:
-                return
-    
-            await self._update_hr_record(host_member, {column_to_update: 1})
-    
-            # Log embed
+            message = await guild.get_channel(payload.channel_id).fetch_message(payload.message_id)
+
+            user_mention = re.search(r'host:\s*<@!?(\d+)>', message.content, re.IGNORECASE)
+            user_id = int(user_mention.group(1)) if user_mention else message.author.id
+            user_member = guild.get_member(user_id) or await guild.fetch_member(user_id)
+
+            await self._update_hr_record(user_member, {column_to_update: 1})
+
+            title = {
+                "phases": "📊 Phase Logged",
+                "tryouts": "📊 Tryout Logged",
+                "courses": "📊 Course Logged",
+            }.get(column_to_update, "📊 Training Logged")
+
             log_channel = guild.get_channel(self.log_channel_id)
             if log_channel:
-                titles = {
-                    self.phase_log_channel_id: "📊 Phase Logged",
-                    self.tryout_log_channel_id: "📊 Tryout Logged",
-                    self.course_log_channel_id: "📊 Course Logged"
-                }
-                embed = discord.Embed(title=titles[channel_id], color=discord.Color.blue())
-                embed.add_field(name="Host", value=host_member.mention)
+                embed = discord.Embed(title=title, color=discord.Color.blue())
+                embed.add_field(name="Host", value=user_member.mention)
                 embed.add_field(name="Logged By", value=member.mention)
                 await log_channel.send(embed=embed)
-    
+
         except Exception as e:
-            logger.error(f"Error processing {column_to_update} reaction: {str(e)}")
+            logger.error(f"Error processing {column_to_update} reaction: {e}")
             log_channel = guild.get_channel(self.log_channel_id)
             if log_channel:
-                await log_channel.send(embed=discord.Embed(
-                    title="❌ Training Log Error", description=str(e), color=discord.Color.red()
-                ))
+                await log_channel.send(embed=discord.Embed(title="❌ Training Log Error", description=str(e), color=discord.Color.red()))
 
 
-    async def _log_activity_reaction_impl(self, payload: discord.RawReactionActionEvent):
-        channel_id = payload.channel_id
-        if str(payload.emoji) != "✅":
+    async def _log_activity_reaction_impl(self, payload: discord.RawReactionActionEvent, member: discord.Member):
+        """Handle activity logs (time guarded and activity)"""
+        if payload.channel_id != self.activity_log_channel_id or str(payload.emoji) != "✅":
             return
-    
-        col_map = {
-            self.phase_log_channel_id: "phases",
-            self.tryout_log_channel_id: "tryouts",
-            self.course_log_channel_id: "courses",
-        }
-        column_to_update = col_map.get(channel_id)
-        if not column_to_update:
-            return
-    
-        guild = self.bot.get_guild(payload.guild_id)
-        if not guild:
-            return
-    
-        user_id = payload.user_id
-        member = guild.get_member(user_id) or await guild.fetch_member(user_id)
-        if not member:
-            logger.warning(f"Member {user_id} not found in guild")
-            return
-    
+
+        guild = member.guild
         ld_role = guild.get_role(Config.LD_ROLE_ID)
         if not ld_role or ld_role not in member.roles:
             return
-    
+
         try:
             await asyncio.sleep(0.5)
-            message = await guild.get_channel(channel_id).fetch_message(payload.message_id)
-    
-            # Host from message
-            host_match = re.search(r'host:\s*<@!?(\d+)>', message.content, re.IGNORECASE)
-            host_id = int(host_match.group(1)) if host_match else message.author.id
-            host_member = guild.get_member(host_id) or await guild.fetch_member(host_id)
-            if not host_member:
-                return
-    
-            await self._update_hr_record(host_member, {column_to_update: 1})
-    
-            # Log embed
-            log_channel = guild.get_channel(self.log_channel_id)
-            if log_channel:
-                titles = {
-                    self.phase_log_channel_id: "📊 Phase Logged",
-                    self.tryout_log_channel_id: "📊 Tryout Logged",
-                    self.course_log_channel_id: "📊 Course Logged"
-                }
-                embed = discord.Embed(title=titles[channel_id], color=discord.Color.blue())
-                embed.add_field(name="Host", value=host_member.mention)
-                embed.add_field(name="Logged By", value=member.mention)
-                await log_channel.send(embed=embed)
-    
+            message = await guild.get_channel(payload.channel_id).fetch_message(payload.message_id)
+
+            user_mention = re.search(r'<@!?(\d+)>', message.content)
+            user_id = int(user_mention.group(1)) if user_mention else message.author.id
+            user_member = guild.get_member(user_id) or await guild.fetch_member(user_id)
+
+            updates = {}
+            time_match = re.search(r'Time:\s*(\d+)', message.content)
+            if time_match:
+                if "Guarded:" in message.content:
+                    updates["time_guarded"] = int(time_match.group(1))
+                else:
+                    updates["activity"] = int(time_match.group(1))
+
+            if updates:
+                await self._update_lr_record(user_member, updates)
+
+                log_channel = guild.get_channel(self.log_channel_id)
+                if log_channel:
+                    embed = discord.Embed(title="⏱ Activity Logged", color=discord.Color.green())
+                    embed.add_field(name="Member", value=user_member.mention)
+                    if "activity" in updates:
+                        embed.add_field(name="Activity Time", value=f"{updates['activity']} mins")
+                    if "time_guarded" in updates:
+                        embed.add_field(name="Guarded Time", value=f"{updates['time_guarded']} mins")
+                    embed.add_field(name="Logged By", value=member.mention)
+                    embed.add_field(name="Message", value=f"[Jump to Log]({message.jump_url})")
+                    await log_channel.send(content=member.mention, embed=embed)
+
         except Exception as e:
-            logger.error(f"Error processing {column_to_update} reaction: {str(e)}")
+            logger.error(f"Error processing activity reaction: {e}")
             log_channel = guild.get_channel(self.log_channel_id)
             if log_channel:
-                await log_channel.send(embed=discord.Embed(
-                    title="❌ Training Log Error", description=str(e), color=discord.Color.red()
-                ))
+                await log_channel.send(embed=discord.Embed(title="❌ Activity Log Error", description=str(e), color=discord.Color.red()))
 
                 
     async def _update_hr_record(self, member: discord.Member, updates: dict):
@@ -794,9 +779,18 @@ class ReactionLogger:
         def _work():
             sup = self.bot.db.supabase
             row = sup.table('HRs').select('*').eq('user_id', u_str).execute()
+    
             if getattr(row, "data", None):
+                existing = row.data[0]
+                # Increment numerical fields
+                incremented = {}
+                for key, value in updates.items():
+                    if isinstance(value, int):
+                        incremented[key] = existing.get(key, 0) + value
+                    else:
+                        incremented[key] = value
                 return sup.table('HRs').update({
-                    **updates,
+                    **incremented,
                     "username": clean_nickname(member.display_name)
                 }).eq('user_id', u_str).execute()
             else:
@@ -811,16 +805,26 @@ class ReactionLogger:
             await self.bot.db.run_query(_work)
         except Exception:
             logger.exception("ReactionLogger._update_hr_record failed")
-
+    
+    
     async def _update_lr_record(self, member: discord.Member, updates: dict):
         u_str = str(member.id)
     
         def _work():
             sup = self.bot.db.supabase
             row = sup.table('LRs').select('*').eq('user_id', u_str).execute()
+    
             if getattr(row, "data", None):
+                existing = row.data[0]
+                # Increment numerical fields
+                incremented = {}
+                for key, value in updates.items():
+                    if isinstance(value, int):
+                        incremented[key] = existing.get(key, 0) + value
+                    else:
+                        incremented[key] = value
                 return sup.table('LRs').update({
-                    **updates,
+                    **incremented,
                     "username": clean_nickname(member.display_name)
                 }).eq('user_id', u_str).execute()
             else:
@@ -836,34 +840,37 @@ class ReactionLogger:
         except Exception:
             logger.exception("ReactionLogger._update_lr_record failed")
 
-    async def log_reaction(self, payload: discord.RawReactionActionEvent):
-            """Main reaction handler that routes to specific loggers"""
-            try:
-                await self.rate_limiter.wait_if_needed(bucket="reaction_log")
-                await self._log_reaction_impl(payload)
-                await self._log_event_reaction_impl(payload)
-                await self._log_training_reaction_impl(payload)
-                await self._log_activity_reaction_impl(payload)
-            except Exception as e:
-                logger.error(f"Failed to log reaction: {type(e).__name__}: {str(e)}")
-                guild = self.bot.get_guild(payload.guild_id)
-                if guild:
-                    member = guild.get_member(user_id)
-                    if not member:
-                        try:
-                            member = await guild.fetch_member(user_id)
-                        except discord.NotFound:    
-                            logger.warning(f"Member {user_id} not found in guild")
-                            return
 
-                    log_channel = guild.get_channel(self.log_channel_id)
-                    if member and log_channel:
-                        error_embed = discord.Embed(
-                            title="❌ Reaction Logging Error",
-                            description=str(e),
-                            color=discord.Color.red()
-                        )
-                        await log_channel.send(content=member.mention, embed=error_embed)
+    async def log_reaction(self, payload: discord.RawReactionActionEvent):
+        """Main reaction handler that routes to specific loggers."""
+        guild = self.bot.get_guild(payload.guild_id)
+        if not guild:
+            return
+
+        member = guild.get_member(payload.user_id)
+        if not member:
+            try:
+                member = await guild.fetch_member(payload.user_id)
+            except discord.NotFound:
+                logger.warning(f"Member {payload.user_id} not found in guild")
+                return
+
+        try:
+            await self.rate_limiter.wait_if_needed(bucket="reaction_log")
+            await self._log_reaction_impl(payload)
+            await self._log_event_reaction_impl(payload, member)
+            await self._log_training_reaction_impl(payload, member)
+            await self._log_activity_reaction_impl(payload, member)
+        except Exception as e:
+            logger.error(f"Failed to log reaction: {type(e).__name__}: {e}")
+            log_channel = guild.get_channel(self.log_channel_id)
+            if log_channel:
+                error_embed = discord.Embed(
+                    title="❌ Reaction Logging Error",
+                    description=str(e),
+                    color=discord.Color.red(),
+                )
+                await log_channel.send(content=member.mention, embed=error_embed)
                         
       # --- Event listeners ---
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
@@ -2610,6 +2617,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
