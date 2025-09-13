@@ -2521,37 +2521,40 @@ async def on_socket_raw_send(payload):
     pass
 
 # Command Listener
-@bot.tree.on_command_completion
-async def on_app_command_completion(interaction: discord.Interaction, command: discord.app_commands.Command):
-    guild = interaction.guild
-    if not guild:
-        return  # Skip DMs
+@bot.event
+async def on_interaction(interaction: discord.Interaction):
+    # Check if this is a command completion
+    if interaction.command is not None and interaction.type == discord.InteractionType.application_command:
+        guild = interaction.guild
+        if not guild:
+            return  # Skip DMs
 
-    log_channel = guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
-    if not log_channel:
-        return
+        log_channel = guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
+        if not log_channel:
+            return
 
-    user = interaction.user
-    logger.info(f"⚙️ Command executed: /{command.name} by {user.display_name} ({user.id})")
+        user = interaction.user
+        command = interaction.command
+        logger.info(f"⚙️ Command executed: /{command.name} by {user.display_name} ({user.id})")
 
-    embed = discord.Embed(
-        title="⚙️ Command Executed",
-        description=f"**/{command.qualified_name}**",
-        color=discord.Color.blurple(),
-        timestamp=discord.utils.utcnow()
-    )
-    embed.add_field(name="User", value=f"{user.mention} (`{user.id}`)", inline=False)
-    embed.add_field(name="Channel", value=interaction.channel.mention, inline=False)
-
-    # Add arguments if present
-    if interaction.data and "options" in interaction.data:
-        args = ", ".join(
-            f"`{opt['name']}`: {opt.get('value', 'N/A')}"
-            for opt in interaction.data["options"]
+        embed = discord.Embed(
+            title="⚙️ Command Executed",
+            description=f"**/{command.qualified_name}**",
+            color=discord.Color.blurple(),
+            timestamp=discord.utils.utcnow()
         )
-        embed.add_field(name="Arguments", value=args, inline=False)
+        embed.add_field(name="User", value=f"{user.mention} (`{user.id}`)", inline=False)
+        embed.add_field(name="Channel", value=interaction.channel.mention, inline=False)
 
-    await log_channel.send(embed=embed)
+        # Add arguments if present
+        if interaction.data and "options" in interaction.data:
+            args = ", ".join(
+                f"`{opt['name']}`: {opt.get('value', 'N/A')}"
+                for opt in interaction.data["options"]
+            )
+            embed.add_field(name="Arguments", value=args, inline=False)
+
+        await log_channel.send(embed=embed)
 
 async def run_bot():
     while True:
@@ -2618,6 +2621,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
