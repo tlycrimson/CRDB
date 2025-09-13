@@ -374,19 +374,26 @@ class DatabaseHandler:
 
     async def increment_points(self, table: str, member: discord.Member, points_awarded: int):
         try:
-            # Fetch existing record (if any)
-            res = await bot.db.supabase.table(table).select("points").eq("user_id", member.id).execute()
-            current_points = res.data[0]["points"] if res.data else 0
-    
-            # Upsert with new total
-            await bot.db.supabase.table(table).upsert({
-                "user_id": member.id,
-                "username": clean_nickname(member.display_name),
-                "points": current_points + points_awarded,
-                "created_at": discord.utils.utcnow()
-            }).execute()
-    
-            logger.info(f"📊 Updated {table} points for {member.display_name} ({member.id}): {current_points} ➝ {current_points + points_awarded}")
+            # Use the _run_sync helper to execute the supabase operations
+            def _work():
+                # Fetch existing record (if any)
+                res = self.supabase.table(table).select("points").eq("user_id", str(member.id)).execute()
+                current_points = res.data[0]["points"] if res.data and len(res.data) > 0 else 0
+                
+                # Upsert with new total
+                self.supabase.table(table).upsert({
+                    "user_id": str(member.id),
+                    "username": clean_nickname(member.display_name),
+                    "points": current_points + points_awarded
+                }).execute()
+                
+                return current_points, current_points + points_awarded
+            
+            # Run the synchronous operation in a thread
+            old_points, new_points = await self._run_sync(_work)
+            
+            logger.info(f"📊 Updated {table} points for {member.display_name} ({member.id}): {old_points} ➝ {new_points}")
+            
         except Exception as e:
             logger.error(f"❌ Failed to increment points in {table}: {e}")
 
@@ -2621,6 +2628,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
