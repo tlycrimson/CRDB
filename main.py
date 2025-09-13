@@ -371,6 +371,25 @@ class DatabaseHandler:
         except Exception as e:
             logger.exception("run_query failed: %s", e)
             raise
+
+    async def increment_points(self, table: str, member: discord.Member, points_awarded: int):
+        try:
+            # Fetch existing record (if any)
+            res = await bot.db.supabase.table(table).select("points").eq("user_id", member.id).execute()
+            current_points = res.data[0]["points"] if res.data else 0
+    
+            # Upsert with new total
+            await bot.db.supabase.table(table).upsert({
+                "user_id": member.id,
+                "username": clean_nickname(member.display_name),
+                "points": current_points + points_awarded,
+                "created_at": discord.utils.utcnow()
+            }).execute()
+    
+            logger.info(f"📊 Updated {table} points for {member.display_name} ({member.id}): {current_points} ➝ {current_points + points_awarded}")
+        except Exception as e:
+            logger.error(f"❌ Failed to increment points in {table}: {e}")
+
     
 
 # Logs XP changes in logging channel
@@ -529,7 +548,7 @@ class ReactionLogger:
 
             try:
                 message = await channel.fetch_message(payload.message_id)
-            except discord.Notfound:
+            except discord.NotFound:
                 return
 
             if not isinstance(message.author, discord.Member):
@@ -556,6 +575,8 @@ class ReactionLogger:
             
             logger.info(f"Attempting to update points for: {member.display_name}")
             update_success = await self.bot.sheets.update_points(member)
+            points_awarded = 1
+            await self.bot.db.increment_points("LD", member, points_awarded)
             
         except discord.NotFound:
             return
@@ -1270,6 +1291,8 @@ class MessageTracker:
         try:
             update_success = await self.bot.sheets.update_points(member, is_message_tracker=True)
             logger.info(f"📊 Message tracker update {'✅ succeeded' if update_success else '❌ failed'}")
+            points_awarded = 1
+            await self.bot.db.increment_points("ED", member, points_awarded)
         except Exception as e:
             logger.error(f"Failed to update points: {str(e)}")
     
@@ -2692,6 +2715,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
