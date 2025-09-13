@@ -450,7 +450,6 @@ class ReactionLogger:
         self.processed_keys = set()
         self._cleanup_task = None
 
-    async def setup(self):
     async def setup(self, interaction=None, log_channel=None, monitor_channels=None):
         """Setup reaction logger with optional parameters"""
         if interaction and log_channel and monitor_channels:
@@ -1048,6 +1047,7 @@ class MessageTracker:
         self.tracked_role_id = Config.MESSAGE_TRACKER_ROLE_ID
         self.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
         self._recent_messages = deque(maxlen=50)  
+        self._processed_messages = set()
         
     async def log_message(self, message: discord.Message):
         # Check for recent duplicates
@@ -1138,37 +1138,52 @@ class MessageTracker:
                 pass
 
   
+    async def handle_message(self, message: discord.Message):
+        """Handle incoming messages for tracking"""
+        try:
+            # Check for recent duplicates
+            message_key = f"{message.channel.id}-{message.id}"
+            if message_key in self._recent_messages:
+                return
+                
+            self._recent_messages.append(message_key)
+            
+            # Process the message
+            await self._log_message_impl(message)
+            
+        except Exception as e:
+            logger.error(f"Failed to handle message: {type(e).__name__}: {str(e)}", exc_info=True)
+
         
     async def _log_message_impl(self, message: discord.Message):
-        # Add initial delay to prevent bursts
-        await asyncio.sleep(random.uniform(0.1, 0.5))  # Random small delay
-        
+        """Main implementation for logging messages"""
         if message.author.bot or message.channel.id not in self.monitor_channel_ids:
             return
     
-        # Ensure we have a Member object (fetch if needed)
+        # Ensure we have a Member object
         if not isinstance(message.author, discord.Member):
             try:
                 member = await message.guild.fetch_member(message.author.id)
             except discord.NotFound:
-                logger.warning("⚠️ Message author not found as member; skipping")
+                logger.warning(f"Member {message.author.id} not found in guild")
                 return
             except Exception as e:
-                logger.exception("Failed to fetch message author as member", exc_info=True)
+                logger.error(f"Failed to fetch member: {e}")
                 return
         else:
             member = message.author
     
+        # Check if user has the tracked role
         tracked_role = message.guild.get_role(self.tracked_role_id)
         if not tracked_role or tracked_role not in member.roles:
             return
     
         log_channel = message.guild.get_channel(self.log_channel_id)
         if not log_channel:
-            logger.error("❌ Log channel not available")
+            logger.error("❌ Message tracker log channel not found")
             return
     
-        logger.info(f"✉️ Logging message from {member.display_name} in #{message.channel.id}")
+        logger.info(f"✉️ Logging message from {member.display_name} in #{message.channel.name}")
     
         # Process message content with truncation
         content = message.content
@@ -1183,8 +1198,8 @@ class MessageTracker:
             timestamp=message.created_at
         )
     
-        embed.add_field(name="Channel", value=message.channel.mention)
-        embed.add_field(name="Message ID", value=message.id)
+        embed.add_field(name="Channel", value=message.channel.mention, inline=True)
+        embed.add_field(name="Message ID", value=f"`{message.id}`", inline=True)
         embed.add_field(name="Content", value=content, inline=False)
         embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
     
@@ -1195,23 +1210,27 @@ class MessageTracker:
             else:
                 embed.add_field(name="Attachment", value=f"[{attachment.filename}]({attachment.url})", inline=False)
     
-        # Send the embed with rate limiting
+        # Send the embed
         try:
-            async with global_rate_limiter:
-                await log_channel.send(embed=embed)
+            await log_channel.send(embed=embed)
+            logger.info(f"✅ Message logged for {member.display_name}")
+            
+            # Update points
+            logger.info(f"🔢 Updating points for: {member.display_name}")
+            try:
+                update_success = await self.bot.sheets.update_points(member, is_message_tracker=True)
+                logger.info(f"📊 Message tracker update {'✅ succeeded' if update_success else '❌ failed'}")
+                
+                # Update database
+                points_awarded = 1
+                await self.bot.db.increment_points("ED", member, points_awarded)
+                logger.info(f"✅ Updated ED points for {member.display_name}")
+                
+            except Exception as e:
+                logger.error(f"Failed to update points: {str(e)}")
+                
         except Exception as e:
             logger.error(f"Failed to send message log: {str(e)}")
-            return
-    
-        # Update points with rate limiting and retry
-        logger.info(f"🔢 Updating points for: {member.display_name}")
-        try:
-            update_success = await self.bot.sheets.update_points(member, is_message_tracker=True)
-            logger.info(f"📊 Message tracker update {'✅ succeeded' if update_success else '❌ failed'}")
-            points_awarded = 1
-            await self.bot.db.increment_points("ED", member, points_awarded)
-        except Exception as e:
-            logger.error(f"Failed to update points: {str(e)}")
     
 
 # --- Bot Initialization ---
@@ -1297,6 +1316,11 @@ async def on_ready():
     bot.connection_monitor = ConnectionMonitor(bot)
     await bot.connection_monitor.start()
 
+    # Register reaction event listeners
+    bot.add_listener(bot.reaction_logger.on_raw_reaction_add, 'on_raw_reaction_add')
+    bot.add_listener(bot.reaction_logger.on_raw_reaction_remove, 'on_raw_reaction_remove')
+    logger.info("✅ Reaction event listeners registered")
+
     try:
         await bot.reaction_logger.setup()  
         logger.info("✅ ReactionLogger setup complete")
@@ -1310,9 +1334,10 @@ async def on_ready():
         logger.error(f"❌ ReactionLogger channel validation failed: {e}")
 
     try:
-        await asyncio.wait_for(bot.message_tracker.on_ready_setup(), timeout=10.0)
-    except Exception:
-        logger.exception("message_tracker.on_ready_setup failed")
+        await bot.message_tracker.on_ready_setup()
+        logger.info("✅ Message tracker setup complete")
+    except Exception as e:
+        logger.error(f"❌ Message tracker setup failed: {e}")  
 
     # Sync commands but don't block startup indefinitely
     try:
@@ -1368,21 +1393,22 @@ async def on_resumed():
 
 @bot.event
 async def on_message(message: discord.Message):
-    # Single canonical message handler: lightweight, non-blocking
+    # Ignore bot messages
     if message.author.bot:
         return
-    # process commands (must await so commands work)
+        
+    # Process commands (must await so commands work)
     try:
         await bot.process_commands(message)
     except Exception:
         logger.exception("Error while processing commands for message %s", getattr(message, "id", None))
 
-    # background message tracking - fire-and-forget with wrapper safe
+    # Background message tracking - fire-and-forget
     async def _background_message_track(msg):
         try:
-            await bot.message_tracker.log_message(msg)
+            await bot.message_tracker.handle_message(msg)
         except Exception:
-            logger.exception("message_tracker.log_message failed")
+            logger.exception("message_tracker.handle_message failed")
 
     asyncio.create_task(_background_message_track(message))
 
@@ -2653,6 +2679,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
