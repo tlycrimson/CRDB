@@ -1872,6 +1872,10 @@ async def reset_db(interaction: discord.Interaction):
         sup.table('LRs').update({
             'activity': 0, 'time_guarded': 0, 'events_attended': 0
         }).neq('user_id', 0).execute()
+        sup.table('ED').update({
+            'points': 0}).neq('user_id', 0).execute()
+        sup.table('LD').update({
+            'points': 0}).neq('user_id', 0).execute()
         return True
 
     try:
@@ -2628,6 +2632,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
