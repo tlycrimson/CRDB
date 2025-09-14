@@ -1773,6 +1773,10 @@ async def on_ready():
     # Close old session if it somehow exists
     if hasattr(bot, "shared_session") and bot.shared_session and not bot.shared_session.closed:
         await bot.shared_session.close()
+        
+    # Initialize gradients
+    initialize_gradients()
+    logger.info("✅ Pre-generated rank card gradients")
 
     connector = aiohttp.TCPConnector(
         limit=15,
@@ -1867,6 +1871,7 @@ async def on_resumed():
         await asyncio.sleep(0.5)  # Small delay for stability
         await bot.reaction_logger.on_ready_setup()
         await bot.message_tracker.on_ready_setup()
+        
         if not getattr(bot.reaction_logger, "_cleanup_task", None):
             await bot.reaction_logger.start_cleanup_task()
         logger.info("✅ Restored ReactionLogger and MessageTracker after resume.")
@@ -3399,6 +3404,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
