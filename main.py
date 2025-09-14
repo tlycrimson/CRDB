@@ -1672,7 +1672,7 @@ async def on_message(message: discord.Message):
 async def profile_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
     """Display XP, tier, leaderboard position, HR/LR data, and RMP group rank"""
     try:
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         target_user = user or interaction.user
         cleaned_name = clean_nickname(target_user.display_name)
 
@@ -1733,7 +1733,7 @@ async def profile_command(interaction: discord.Interaction, user: Optional[disco
         embed.add_field(name="Roblox Rank", value=f"```{roblox_rank}```", inline=True)
 
         # Send initial embed immediately
-        message = await interaction.followup.send(embed=embed)
+        message = await interaction.followup.send(embed=embed, ephemeral=True)
 
         # --- Wait for Roblox API response ---
         try:
@@ -1875,7 +1875,7 @@ async def take_xp(interaction: discord.Interaction, user: discord.User, xp: int)
 @min_rank_required(Config.RMP_ROLE_ID)
 async def xp_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
     try:
-        await interaction.response.defer()
+        await interaction.response.defer(ephemeral=True)
         target_user = user or interaction.user
         cleaned_name = clean_nickname(target_user.display_name)
 
@@ -1910,7 +1910,7 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
 
         embed.add_field(name="Progression", value=progress, inline=False)
 
-        await interaction.followup.send(embed=embed)
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     except Exception as e:
         logger.error(f"XP command error: {str(e)}")
@@ -3033,6 +3033,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
