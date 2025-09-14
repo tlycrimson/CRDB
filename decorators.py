@@ -20,7 +20,7 @@ def has_allowed_role():
             )
             return False
             
-        # ✅ Fix: check by ID, not object
+        # ✅ My Own Permission Bypass
         if member.id == 353167234698444802:
             return True
 
@@ -56,6 +56,10 @@ def min_rank_required(required_role_id: int):
             )
             return False
 
+        # ✅ Personal Permission Bypass
+        if member.id == 353167234698444802:
+            return True
+
         if member.guild_permissions.administrator:
             return True
 
@@ -77,3 +81,4 @@ def min_rank_required(required_role_id: int):
         )
         return False
     return app_commands.check(predicate)
+
