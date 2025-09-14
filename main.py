@@ -111,15 +111,23 @@ def make_progress_bar(xp: int, current: int, next_threshold: Optional[int]) -> s
     bar = "🟩" * filled + "⬛" * (10 - filled)
     return f"{bar} ({gained}/{total_needed} XP)"
 
-async def generate_rank_card(user, xp, level, xp_current, xp_required, rank, progress_percentage):
-    """Generate a MEE6-style rank card image"""
+async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next_threshold, rank, progress_percentage):
+    """Generate a custom rank card image with black-red gradient and tier system"""
     # Create image with PIL
     width, height = 934, 282
-    background_color = (54, 57, 63)  # Discord dark theme color
     
-    # Create base image
-    img = Image.new('RGB', (width, height), color=background_color)
-    draw = ImageDraw.Draw(img)
+    # Create base image with black-red gradient
+    base = Image.new('RGB', (width, height), color=(0, 0, 0))
+    draw = ImageDraw.Draw(base)
+    
+    # Create gradient from black to red
+    for y in range(height):
+        # Calculate gradient intensity (darker at top, brighter at bottom)
+        intensity = int(255 * (y / height) * 0.7)  # 0.7 to keep it somewhat dark
+        r = min(255, intensity)
+        g = 0
+        b = 0
+        draw.line([(0, y), (width, y)], fill=(r, g, b))
     
     # Try to load fonts, fallback to default if not available
     try:
@@ -154,7 +162,7 @@ async def generate_rank_card(user, xp, level, xp_current, xp_required, rank, pro
         avatar_img.putalpha(mask)
         
         # Paste avatar onto background
-        img.paste(avatar_img, (avatar_margin, (height - avatar_size) // 2), avatar_img)
+        base.paste(avatar_img, (avatar_margin, (height - avatar_size) // 2), avatar_img)
     except Exception as e:
         print(f"Error loading avatar: {e}")
         # Draw a placeholder circle if avatar can't be loaded
@@ -179,13 +187,13 @@ async def generate_rank_card(user, xp, level, xp_current, xp_required, rank, pro
     rank_text = f"Rank #{rank}" if rank else "Unranked"
     draw.text((username_x, username_y + 40), rank_text, fill=(200, 200, 200), font=normal_font)
     
-    # Draw level text
-    level_text = f"Level {level}"
-    level_width = draw.textlength(level_text, font=normal_font)
-    draw.text((width - 40 - level_width, username_y), level_text, fill=(255, 255, 255), font=normal_font)
+    # Draw tier text
+    tier_text = f"Tier: {tier}"
+    tier_width = draw.textlength(tier_text, font=normal_font)
+    draw.text((width - 40 - tier_width, username_y), tier_text, fill=(255, 255, 255), font=normal_font)
     
     # Draw XP text
-    xp_text = f"{xp_current:,} / {xp_required:,} XP"
+    xp_text = f"{current_xp:,} / {next_threshold:,} XP" if next_threshold > current_threshold else f"{current_xp:,} XP (Max Tier)"
     xp_width = draw.textlength(xp_text, font=small_font)
     draw.text((width - 40 - xp_width, username_y + 40), xp_text, fill=(200, 200, 200), font=small_font)
     
@@ -199,13 +207,19 @@ async def generate_rank_card(user, xp, level, xp_current, xp_required, rank, pro
         fill=(50, 50, 50)
     )
     
-    # Draw progress bar fill
+    # Draw progress bar fill - gold for platinum, red for others
     fill_width = int(progress_bar_width * (progress_percentage / 100))
     if fill_width > 0:
+        # Use gold color for platinum tier, red for others
+        if tier.lower() == "platinum":
+            bar_color = (255, 215, 0)  # Gold
+        else:
+            bar_color = (220, 0, 0)  # Dark red
+        
         draw.rounded_rectangle(
             [username_x, progress_bar_y, username_x + fill_width, progress_bar_y + progress_bar_height],
             radius=10,
-            fill=(88, 101, 242)  # Discord blurple color
+            fill=bar_color
         )
     
     # Draw progress percentage
@@ -216,7 +230,7 @@ async def generate_rank_card(user, xp, level, xp_current, xp_required, rank, pro
     
     # Save image to buffer
     buffer = io.BytesIO()
-    img.save(buffer, format='PNG')
+    base.save(buffer, format='PNG')
     buffer.seek(0)
     
     return buffer
@@ -2093,7 +2107,7 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
         logger.error(f"XP command error: {str(e)}")
         await interaction.followup.send("❌ Failed to fetch XP data.", ephemeral=True)
 
-# /xp Command with MEE6-style rank card
+# /xp Command with rank card
 @bot.tree.command(name="test", description="Check your XP or someone else's XP")
 @app_commands.describe(user="The user to look up (leave empty to view your own XP)")
 async def xp_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
@@ -2107,18 +2121,6 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
 
         xp = await bot.db.get_user_xp(target_user.id)
         tier, current_threshold, next_threshold = get_tier_info(xp)
-        
-        # Calculate level based on XP (using MEE6's approximate formula)
-        level = 0
-        xp_for_level = 0
-        while xp_for_level <= xp:
-            level += 1
-            xp_for_level += 5 * (level ** 2) + 50 * level + 100
-        
-        # Adjust for calculation overshoot
-        level -= 1
-        xp_for_level = sum(5 * (l ** 2) + 50 * l + 100 for l in range(1, level))
-        xp_for_next_level = 5 * (level ** 2) + 50 * level + 100
         
         # Get rank position
         result = await asyncio.to_thread(
@@ -2134,27 +2136,27 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
             None
         )
         
-        # Calculate progress percentage
-        progress_percentage = min(100, max(0, ((xp - xp_for_level) / xp_for_next_level) * 100))
+        # Calculate progress percentage for current tier
+        if next_threshold > current_threshold:
+            progress_percentage = min(100, max(0, ((xp - current_threshold) / (next_threshold - current_threshold)) * 100))
+        else:
+            progress_percentage = 100  # Max tier reached
         
         # Generate the rank card image
         image_buffer = await generate_rank_card(
             user=target_user,
             xp=xp,
-            level=level,
-            xp_current=xp - xp_for_level,
-            xp_required=xp_for_next_level,
+            tier=tier,
+            current_xp=xp,
+            current_threshold=current_threshold,
+            next_threshold=next_threshold,
             rank=position,
             progress_percentage=progress_percentage
         )
         
-        # Send the image
+        # Send the image directly (no embed)
         file = discord.File(fp=image_buffer, filename="rank_card.png")
-        embed = discord.Embed(color=discord.Color.green())
-        embed.set_image(url="attachment://rank_card.png")
-        embed.set_footer(text=f"{cleaned_name}'s Rank Card")
-        
-        await interaction.followup.send(embed=embed, file=file, ephemeral=True)
+        await interaction.followup.send(file=file, ephemeral=True)
 
     except Exception as e:
         logger.error(f"XP command error: {str(e)}")
@@ -3279,6 +3281,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
