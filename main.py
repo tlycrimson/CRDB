@@ -1984,7 +1984,7 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
         await interaction.followup.send("❌ Failed to fetch XP data.", ephemeral=True)
 
 # /xp Command with MEE6-style rank card
-@bot.tree.command(name="xp", description="Check your XP or someone else's XP")
+@bot.tree.command(name="test", description="Check your XP or someone else's XP")
 @app_commands.describe(user="The user to look up (leave empty to view your own XP)")
 async def xp_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
     if interaction.user.id != 353167234698444802:
@@ -3259,6 +3259,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
