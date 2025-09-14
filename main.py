@@ -2150,7 +2150,8 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
 @app_commands.describe(user="The user to look up (leave empty to view your own XP)")
 async def xp_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
     if interaction.user.id != 353167234698444802:
-    await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        return
     return
     try:
         await interaction.response.defer(ephemeral=True)
@@ -3329,6 +3330,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
