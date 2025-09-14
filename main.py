@@ -134,7 +134,7 @@ def create_avatar_image(avatar_data: bytes, size: int) -> Image.Image:
     return avatar_img
 
 
-def load_font(font_size: int, bold: bool = False) -> ImageFont.Font:
+def load_font(font_size: int, bold: bool = False):
     """Load font with fallbacks"""
     try:
         font_paths = [
@@ -216,7 +216,16 @@ async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next
     if len(display_name) > 15:
         display_name = display_name[:12] + "..."
     
-    draw.text((username_x, username_y), display_name, fill=(255, 255, 255), font=title_font)
+    # Use textbbox for modern Pillow versions, fallback to textsize for older versions
+    try:
+        # Modern Pillow (>=8.0.0)
+        bbox = draw.textbbox((0, 0), display_name, font=title_font)
+        text_width = bbox[2] - bbox[0]
+        draw.text((username_x, username_y), display_name, fill=(255, 255, 255), font=title_font)
+    except AttributeError:
+        # Older Pillow versions
+        text_width = draw.textsize(display_name, font=title_font)[0]
+        draw.text((username_x, username_y), display_name, fill=(255, 255, 255), font=title_font)
     
     # Draw rank text
     rank_text = f"Rank #{rank}" if rank else "Unranked"
@@ -224,7 +233,14 @@ async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next
     
     # Draw tier text
     tier_text = f"Tier: {tier}" if tier else "No Tier"
-    tier_width = draw.textlength(tier_text, font=normal_font)
+    try:
+        # Modern Pillow
+        bbox = draw.textbbox((0, 0), tier_text, font=normal_font)
+        tier_width = bbox[2] - bbox[0]
+    except AttributeError:
+        # Older Pillow
+        tier_width = draw.textsize(tier_text, font=normal_font)[0]
+    
     draw.text((width - 40 - tier_width, username_y), tier_text, fill=(255, 255, 255), font=normal_font)
     
     # Draw XP text
@@ -233,7 +249,14 @@ async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next
     else:
         xp_text = f"{current_xp:,} XP (Max Tier)"
     
-    xp_width = draw.textlength(xp_text, font=small_font)
+    try:
+        # Modern Pillow
+        bbox = draw.textbbox((0, 0), xp_text, font=small_font)
+        xp_width = bbox[2] - bbox[0]
+    except AttributeError:
+        # Older Pillow
+        xp_width = draw.textsize(xp_text, font=small_font)[0]
+    
     draw.text((width - 40 - xp_width, username_y + 40), xp_text, fill=(200, 200, 200), font=small_font)
     
     # Draw progress bar background
@@ -263,7 +286,14 @@ async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next
     
     # Draw progress percentage
     progress_text = f"{progress_percentage:.1f}%"
-    progress_text_width = draw.textlength(progress_text, font=small_font)
+    try:
+        # Modern Pillow
+        bbox = draw.textbbox((0, 0), progress_text, font=small_font)
+        progress_text_width = bbox[2] - bbox[0]
+    except AttributeError:
+        # Older Pillow
+        progress_text_width = draw.textsize(progress_text, font=small_font)[0]
+    
     progress_text_x = username_x + (progress_bar_width - progress_text_width) // 2
     draw.text((progress_text_x, progress_bar_y + 5), progress_text, fill=(255, 255, 255), font=small_font)
     
@@ -2152,9 +2182,14 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
     if interaction.user.id != 353167234698444802:
         await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
         return
-    return
     try:
         await interaction.response.defer(ephemeral=True)
+        target_user = user or interaction.user
+        
+        # Validate user exists
+        if not target_user:
+            await interaction.followup.send("❌ User not found.", ephemeral=True)
+            return
 
         cleaned_name = clean_nickname(target_user.display_name)
 
@@ -2211,6 +2246,8 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
     except Exception as e:
         logger.error(f"XP command error: {str(e)}", exc_info=True)
         await interaction.followup.send("❌ An unexpected error occurred.", ephemeral=True)
+
+
 
 
 
@@ -3330,6 +3367,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
