@@ -2212,79 +2212,59 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
         logger.error(f"XP command error: {str(e)}")
         await interaction.followup.send("❌ Failed to fetch XP data.", ephemeral=True)
 
+CARD_WIDTH, CARD_HEIGHT = 800, 250
+FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
+FONT_LARGE = ImageFont.truetype(FONT_PATH, 36)
+FONT_SMALL = ImageFont.truetype(FONT_PATH, 22)
+
 # /xp Command with rank card
 @bot.tree.command(name="test", description="Check your XP or someone else's XP")
 @app_commands.describe(user="The user to look up (leave empty to view your own XP)")
-async def xp_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
+async def test_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
     if interaction.user.id != 353167234698444802:
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+        await interaction.response.send_message(":x: You don't have permission to use this command.", ephemeral=True)
         return
-    try:
-        await interaction.response.defer(ephemeral=True)
-        target_user = user or interaction.user
-        
-        # Validate user exists
-        if not target_user:
-            await interaction.followup.send("❌ User not found.", ephemeral=True)
-            return
+    await interaction.response.defer()
+    target = user or interaction.user
+    cleaned_name = clean_nickname(target.display_name)
 
-        cleaned_name = clean_nickname(target_user.display_name)
+    xp = await bot.db.get_user_xp(target.id)
+    tier_name, current_threshold, next_threshold = get_tier_info(xp)
 
-        xp = await bot.db.get_user_xp(target_user.id) or 0
-        tier, current_threshold, next_threshold = get_tier_info(xp)
-        
-        # Get rank position with efficient query
-        result = await asyncio.to_thread(
-            lambda: bot.db.supabase.table('users')
-            .select("user_id")
-            .order("xp", desc=True)
-            .execute()
-        )
+    # --- Base card ---
+    card = Image.new("RGBA", (CARD_WIDTH, CARD_HEIGHT), (30, 30, 30, 255))
+    draw = ImageDraw.Draw(card)
 
-        # Efficient rank lookup
-        user_ids = [str(entry['user_id']) for entry in result.data]
-        position = user_ids.index(str(target_user.id)) + 1 if str(target_user.id) in user_ids else None
-        
-        # Handle None values from get_tier_info()
-        current_threshold = current_threshold or 0
-        
-        if next_threshold is None:
-            # Max tier reached - set next_threshold to avoid division issues
-            next_threshold = current_threshold + 1 if current_threshold is not None else xp + 1
-        
-        # Calculate progress percentage for current tier
-        if next_threshold > current_threshold:
-            progress_percentage = min(100, max(0, ((xp - current_threshold) / (next_threshold - current_threshold)) * 100))
-        else:
-            progress_percentage = 100  # Max tier reached
-        
-        # Generate the rank card image
-        image_buffer = await generate_rank_card(
-            user=target_user,
-            xp=xp,
-            tier=tier,
-            current_xp=xp,
-            current_threshold=current_threshold,
-            next_threshold=next_threshold,
-            rank=position,
-            progress_percentage=progress_percentage
-        )
-        
-        # Send the image with proper resource cleanup
-        try:
-            file = discord.File(fp=image_buffer, filename="rank_card.png")
-            await interaction.followup.send(file=file, ephemeral=True)
-        finally:
-            image_buffer.close()
+    # --- Username ---
+    display_name = cleaned_name if len(cleaned_name) <= 25 else cleaned_name[:22] + "..."
+    draw.text((170, 40), display_name, font=FONT_LARGE, fill=(255, 255, 255))
 
-    except discord.HTTPException as e:
-        logger.error(f"Discord API error in XP command: {e}")
-        await interaction.followup.send("❌ Failed to send response.", ephemeral=True)
-    except Exception as e:
-        logger.error(f"XP command error: {str(e)}", exc_info=True)
-        await interaction.followup.send("❌ An unexpected error occurred.", ephemeral=True)
+    # --- XP + Tier ---
+    draw.text((170, 90), f"{xp:,} XP | {tier_name}", font=FONT_SMALL, fill=(200, 200, 200))
 
+    # --- Progress Bar ---
+    if next_threshold:
+        progress = (xp - current_threshold) / (next_threshold - current_threshold)
+        bar_x, bar_y, bar_w, bar_h = 170, 140, 550, 25
+        filled_w = int(bar_w * progress)
+        bar_color = (255, 0, 0) if tier_name != ":star2: Platinum" else (255, 215, 0)
+        draw.rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], fill=(50, 50, 50))
+        draw.rectangle([bar_x, bar_y, bar_x + filled_w, bar_y + bar_h], fill=bar_color)
+    else:
+        draw.text((170, 140), "MAX LEVEL", font=FONT_SMALL, fill=(255, 215, 0))
 
+    # --- Avatar ---
+    avatar_asset = target.display_avatar.replace(size=128)
+    async with bot.shared_session.get(str(avatar_asset)) as resp:
+        avatar_bytes = await resp.read()
+    avatar = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA").resize((128, 128))
+    card.paste(avatar, (20, 60), avatar)
+
+    # --- Send ---
+    buffer = io.BytesIO()
+    card.save(buffer, format="PNG", optimize=True)
+    buffer.seek(0)
+    await interaction.followup.send(file=discord.File(buffer, "rank.png"), ephemeral=True)
 
 
 
@@ -3404,6 +3384,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
