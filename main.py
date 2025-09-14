@@ -397,6 +397,32 @@ class DatabaseHandler:
         except Exception as e:
             logger.error(f"❌ Failed to increment points in {table}: {e}")
 
+
+# Clean up old processed reactions and messages in db
+async def start_cleanup_task(self):
+    """Clean up old database entries periodically"""
+    async def cleanup_loop():
+        while True:
+            await asyncio.sleep(86400)  # Cleanup daily
+            try:
+                # Clean entries older than 30 days
+                def _cleanup():
+                    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
+                    self.bot.db.supabase.table('processed_messages')\
+                        .delete()\
+                        .lt('processed_at', cutoff.isoformat())\
+                        .execute()
+                    self.bot.db.supabase.table('processed_reactions')\
+                        .delete()\
+                        .lt('processed_at', cutoff.isoformat())\
+                        .execute()
+                await self.bot.db.run_query(_cleanup)
+                logger.info("Cleaned up old processed messages/reactions")
+            except Exception as e:
+                logger.error(f"Error in cleanup task: {e}")
+    
+    self._cleanup_task = asyncio.create_task(cleanup_loop())
+
     
 
 # Logs XP changes in logging channel
@@ -527,6 +553,56 @@ class ReactionLogger:
         if not guild.get_channel(self.log_channel_id):
             logger.warning(f"Default log channel {self.log_channel_id} not found!")
             self.log_channel_id = None
+            
+    async def is_reaction_processed(self, message_id: int, user_id: int) -> bool:
+        """Check if reaction was already processed"""
+        try:
+            def _check():
+                res = self.bot.db.supabase.table('processed_reactions')\
+                    .select('id')\
+                    .eq('message_id', message_id)\
+                    .eq('user_id', user_id)\
+                    .execute()
+                return len(res.data) > 0
+            return await self.bot.db.run_query(_check)
+        except Exception as e:
+            logger.error(f"Error checking processed reaction: {e}")
+            return False
+
+    async def mark_reaction_processed(self, message_id: int, user_id: int):
+        """Mark reaction as processed"""
+        try:
+            def _insert():
+                self.bot.db.supabase.table('processed_reactions')\
+                    .insert({
+                        'message_id': message_id,
+                        'user_id': user_id
+                    })\
+                    .execute()
+            await self.bot.db.run_query(_insert)
+        except Exception as e:
+            logger.error(f"Error marking reaction processed: {e}")
+
+    async def log_reaction(self, payload: discord.RawReactionActionEvent):
+        """Main reaction handler"""
+        # Database check
+        if await self.is_reaction_processed(payload.message_id, payload.user_id):
+            logger.info(f"DB: Duplicate reaction from {payload.user_id}")
+            return
+            
+        # Memory check
+        processed_key = self._get_processed_key(payload.message_id, payload.user_id)
+        if processed_key in self.processed_keys:
+            return
+            
+        # Mark as processed
+        self.processed_messages.append(processed_key)
+        self.processed_keys.add(processed_key)
+        await self.mark_reaction_processed(payload.message_id, payload.user_id)
+        
+        # Process the reaction (remove duplicate checks from _log_reaction_impl)
+        await self._log_reaction_impl(payload)
+
 
             
     async def _log_reaction_impl(self, payload: discord.RawReactionActionEvent):
@@ -560,19 +636,6 @@ class ReactionLogger:
     
         channel = guild.get_channel(payload.channel_id)
         log_channel = guild.get_channel(self.log_channel_id)
-    
-        processed_key = self._get_processed_key(payload.message_id, payload.user_id)
-        if processed_key in self.processed_keys:
-            logger.info(f"Duplicate reaction detected from {member.display_name} on message {payload.message_id}, skipping.")
-            if log_channel:
-                await log_channel.send(f"⚠️ Duplicate reaction: {member.mention} on message {payload.message_id}")
-            return
-        else:
-            self.processed_messages.append(processed_key)
-            self.processed_keys.add(processed_key)
-            while len(self.processed_keys) > self.processed_messages.maxlen:
-                oldest = self.processed_messages.popleft()
-                self.processed_keys.discard(oldest)
     
         if not all((channel, member, log_channel)):
             return
@@ -1047,7 +1110,7 @@ class MessageTracker:
         self.tracked_role_id = Config.MESSAGE_TRACKER_ROLE_ID
         self.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
         self._recent_messages = deque(maxlen=50)  
-        self._processed_messages = set()
+
         
     async def log_message(self, message: discord.Message):
         # Check for recent duplicates
@@ -1062,6 +1125,48 @@ class MessageTracker:
                 await self._log_message_impl(message)
         except Exception as e:
             logger.error(f"Failed to log message: {type(e).__name__}: {str(e)}", exc_info=True)
+            
+    async def is_message_processed(self, message_key: str) -> bool:
+        """Check if message was already processed in database"""
+        try:
+            def _check():
+                res = self.bot.db.supabase.table('processed_messages')\
+                    .select('id')\
+                    .eq('message_key', message_key)\
+                    .execute()
+                return len(res.data) > 0
+            return await self.bot.db.run_query(_check)
+        except Exception as e:
+            logger.error(f"Error checking processed message: {e}")
+            return False
+
+    async def mark_message_processed(self, message_key: str):
+        """Mark message as processed in database"""
+        try:
+            def _insert():
+                self.bot.db.supabase.table('processed_messages')\
+                    .insert({
+                        'message_key': message_key,
+                        'processed_at': datetime.now(timezone.utc).isoformat()
+                    })\
+                    .execute()
+            await self.bot.db.run_query(_insert)
+        except Exception as e:
+            logger.error(f"Error marking message processed: {e}")
+
+    async def _log_message_impl(self, message: discord.Message):
+        message_key = f"{message.channel.id}-{message.id}"
+        
+        # Check database first
+        if await self.is_message_processed(message_key):
+            return
+            
+        # Then check recent in-memory cache
+        if message_key in self._recent_messages:
+            return
+            
+        self._recent_messages.append(message_key)
+        await self.mark_message_processed(message_key)
     
 
     async def on_ready_setup(self):
@@ -1137,23 +1242,27 @@ class MessageTracker:
             except:
                 pass
 
-  
     async def handle_message(self, message: discord.Message):
         """Handle incoming messages for tracking"""
         try:
-            # Check for recent duplicates
             message_key = f"{message.channel.id}-{message.id}"
+            
+            # Check database FIRST (persistent across restarts)
+            if await self.is_message_processed(message_key):
+                return
+                
+            # Then check memory (current session only)
             if message_key in self._recent_messages:
                 return
                 
+            # Mark as processed in memory
             self._recent_messages.append(message_key)
             
-            # Process the message
+            # Process the message (NO duplicate checks in _log_message_impl)
             await self._log_message_impl(message)
             
         except Exception as e:
             logger.error(f"Failed to handle message: {type(e).__name__}: {str(e)}", exc_info=True)
-
         
     async def _log_message_impl(self, message: discord.Message):
         """Main implementation for logging messages"""
@@ -1225,6 +1334,10 @@ class MessageTracker:
                 points_awarded = 1
                 await self.bot.db.increment_points("ED", member, points_awarded)
                 logger.info(f"✅ Updated ED points for {member.display_name}")
+
+                # MARK AS PROCESSED IN DATABASE AT THE END
+                message_key = f"{message.channel.id}-{message.id}"
+                await self.mark_message_processed(message_key)
                 
             except Exception as e:
                 logger.error(f"Failed to update points: {str(e)}")
@@ -2679,6 +2792,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
