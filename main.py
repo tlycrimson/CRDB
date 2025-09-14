@@ -13,6 +13,7 @@ import aiodns
 import socket
 import mimetypes
 import functools
+import numpy as np
 from typing import Optional, Set, Dict, List, Tuple, Any, Literal
 from decorators import min_rank_required, has_allowed_role
 from rate_limiter import RateLimiter
@@ -29,6 +30,7 @@ from time import monotonic as now
 from collections import deque
 from aiohttp.resolver import AsyncResolver
 from PIL import Image, ImageDraw, ImageFont, ImageFilter
+from functools import lru_cache
 
 # --- Configuration ---
 load_dotenv()
@@ -155,24 +157,54 @@ def load_font(font_size: int, bold: bool = False):
     # Ultimate fallback
     return ImageFont.load_default()
 
+import numpy as np
+
+def create_gradient_background(width, height):
+    """Create a smooth black to red gradient background using numpy"""
+    try:
+        # Create vertical gradient array
+        y_coords = np.arange(height)
+        red_values = np.uint8(255 * (y_coords / height) * 0.7)
+        
+        # Create RGB array
+        gradient = np.zeros((height, width, 3), dtype=np.uint8)
+        gradient[:, :, 0] = red_values[:, np.newaxis]  # Red channel
+        
+        return Image.fromarray(gradient, 'RGB')
+    except Exception as e:
+        logger.warning(f"Failed to create gradient with numpy: {e}")
+        # Fallback to simpler method
+        base = Image.new('RGB', (width, height), color=(0, 0, 0))
+        draw = ImageDraw.Draw(base)
+        for y in range(0, height, 2):  # Draw every other line for performance
+            intensity = int(255 * (y / height) * 0.7)
+            draw.line([(0, y), (width, y)], fill=(intensity, 0, 0))
+            if y + 1 < height:
+                draw.line([(0, y+1), (width, y+1)], fill=(intensity, 0, 0))
+        return base
+
+# Pre-generate the gradient at startup
+COMMON_BACKGROUND = None
+
+def initialize_gradients():
+    """Pre-generate gradients at startup"""
+    global COMMON_BACKGROUND
+    COMMON_BACKGROUND = create_gradient_background(934, 282)
+
 
 async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next_threshold, rank, progress_percentage):
     """Generate a custom rank card image with black-red gradient and tier system"""
     # Create image with PIL
     width, height = 934, 282
     
-    # Create base image with black-red gradient
-    base = Image.new('RGB', (width, height), color=(0, 0, 0))
-    draw = ImageDraw.Draw(base)
+    # Use pre-generated background
+    if COMMON_BACKGROUND:
+        base = COMMON_BACKGROUND.copy()
+    else:
+        # Fallback if not initialized
+        base = create_gradient_background(width, height)
     
-    # Create gradient from black to red
-    for y in range(height):
-        # Calculate gradient intensity (darker at top, brighter at bottom)
-        intensity = int(255 * (y / height) * 0.7)  # 0.7 to keep it somewhat dark
-        r = min(255, intensity)
-        g = 0
-        b = 0
-        draw.line([(0, y), (width, y)], fill=(r, g, b))
+    draw = ImageDraw.Draw(base)
     
     # Load fonts with fallbacks
     title_font = load_font(30, bold=True)
@@ -297,9 +329,9 @@ async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next
     progress_text_x = username_x + (progress_bar_width - progress_text_width) // 2
     draw.text((progress_text_x, progress_bar_y + 5), progress_text, fill=(255, 255, 255), font=small_font)
     
-    # Save image to buffer
+    # Save image with optimization
     buffer = io.BytesIO()
-    base.save(buffer, format='PNG')
+    base.save(buffer, format='PNG', optimize=True)
     buffer.seek(0)
     
     return buffer
@@ -3367,6 +3399,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
