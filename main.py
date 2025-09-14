@@ -111,6 +111,51 @@ def make_progress_bar(xp: int, current: int, next_threshold: Optional[int]) -> s
     bar = "🟩" * filled + "⬛" * (10 - filled)
     return f"{bar} ({gained}/{total_needed} XP)"
 
+async def download_avatar(user: discord.User) -> Optional[bytes]:
+    """Download user avatar asynchronously"""
+    try:
+        return await user.display_avatar.read()
+    except Exception as e:
+        logger.warning(f"Failed to download avatar for {user}: {e}")
+        return None
+
+
+def create_avatar_image(avatar_data: bytes, size: int) -> Image.Image:
+    """Create circular avatar image from bytes"""
+    avatar_img = Image.open(io.BytesIO(avatar_data)).convert("RGBA")
+    avatar_img = avatar_img.resize((size, size), Image.LANCZOS)
+    
+    # Create circular mask
+    mask = Image.new('L', (size, size), 0)
+    draw_mask = ImageDraw.Draw(mask)
+    draw_mask.ellipse((0, 0, size, size), fill=255)
+    avatar_img.putalpha(mask)
+    
+    return avatar_img
+
+
+def load_font(font_size: int, bold: bool = False) -> ImageFont.Font:
+    """Load font with fallbacks"""
+    try:
+        font_paths = [
+            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans.ttf",
+            "arialbd.ttf" if bold else "arial.ttf",
+            "Arial Bold.ttf" if bold else "Arial.ttf"
+        ]
+        
+        for font_path in font_paths:
+            try:
+                return ImageFont.truetype(font_path, font_size)
+            except:
+                continue
+    except Exception as e:
+        logger.warning(f"Font loading failed: {e}")
+    
+    # Ultimate fallback
+    return ImageFont.load_default()
+
+
 async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next_threshold, rank, progress_percentage):
     """Generate a custom rank card image with black-red gradient and tier system"""
     # Create image with PIL
@@ -129,53 +174,33 @@ async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next
         b = 0
         draw.line([(0, y), (width, y)], fill=(r, g, b))
     
-    # Try to load fonts, fallback to default if not available
-    try:
-        # Try to use a font that's likely available on Render
-        try:
-            title_font = ImageFont.truetype("arialbd.ttf", 30)
-            normal_font = ImageFont.truetype("arial.ttf", 24)
-            small_font = ImageFont.truetype("arial.ttf", 20)
-        except:
-            # Fallback to default font
-            title_font = ImageFont.load_default()
-            normal_font = ImageFont.load_default()
-            small_font = ImageFont.load_default()
-    except:
-        # Ultimate fallback
-        title_font = None
-        normal_font = None
-        small_font = None
+    # Load fonts with fallbacks
+    title_font = load_font(30, bold=True)
+    normal_font = load_font(24)
+    small_font = load_font(20)
     
     # Draw user avatar
     avatar_size = 180
     avatar_margin = 40
     
-    # Download avatar using aiohttp
-    try:
-        async with aiohttp.ClientSession() as session:
-            async with session.get(str(user.display_avatar.url)) as response:
-                if response.status == 200:
-                    avatar_data = await response.read()
-                    
-                    avatar_img = Image.open(io.BytesIO(avatar_data)).convert("RGBA")
-                    avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
-                    
-                    # Create circular mask for avatar
-                    mask = Image.new('L', (avatar_size, avatar_size), 0)
-                    draw_mask = ImageDraw.Draw(mask)
-                    draw_mask.ellipse((0, 0, avatar_size, avatar_size), fill=255)
-                    
-                    # Apply mask to avatar
-                    avatar_img.putalpha(mask)
-                    
-                    # Paste avatar onto background
-                    base.paste(avatar_img, (avatar_margin, (height - avatar_size) // 2), avatar_img)
-                else:
-                    raise Exception(f"Avatar download failed with status {response.status}")
-    except Exception as e:
-        print(f"Error loading avatar: {e}")
-        # Draw a placeholder circle if avatar can't be loaded
+    # Download avatar asynchronously
+    avatar_data = await download_avatar(user)
+    
+    if avatar_data:
+        try:
+            avatar_img = create_avatar_image(avatar_data, avatar_size)
+            # Paste avatar onto background
+            base.paste(avatar_img, (avatar_margin, (height - avatar_size) // 2), avatar_img)
+        except Exception as e:
+            logger.warning(f"Avatar processing failed: {e}")
+            # Draw placeholder if avatar processing fails
+            draw.ellipse(
+                [avatar_margin, (height - avatar_size) // 2, 
+                 avatar_margin + avatar_size, (height - avatar_size) // 2 + avatar_size],
+                fill=(100, 100, 100)
+            )
+    else:
+        # Draw placeholder if avatar download fails
         draw.ellipse(
             [avatar_margin, (height - avatar_size) // 2, 
              avatar_margin + avatar_size, (height - avatar_size) // 2 + avatar_size],
@@ -191,27 +216,16 @@ async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next
     if len(display_name) > 15:
         display_name = display_name[:12] + "..."
     
-    # Use font if available, otherwise use default
-    if title_font:
-        draw.text((username_x, username_y), display_name, fill=(255, 255, 255), font=title_font)
-    else:
-        draw.text((username_x, username_y), display_name, fill=(255, 255, 255))
+    draw.text((username_x, username_y), display_name, fill=(255, 255, 255), font=title_font)
     
     # Draw rank text
     rank_text = f"Rank #{rank}" if rank else "Unranked"
-    if normal_font:
-        draw.text((username_x, username_y + 40), rank_text, fill=(200, 200, 200), font=normal_font)
-    else:
-        draw.text((username_x, username_y + 40), rank_text, fill=(200, 200, 200))
+    draw.text((username_x, username_y + 40), rank_text, fill=(200, 200, 200), font=normal_font)
     
     # Draw tier text
     tier_text = f"Tier: {tier}" if tier else "No Tier"
-    if normal_font:
-        tier_width = draw.textlength(tier_text, font=normal_font)
-        draw.text((width - 40 - tier_width, username_y), tier_text, fill=(255, 255, 255), font=normal_font)
-    else:
-        tier_width = draw.textlength(tier_text)
-        draw.text((width - 40 - tier_width, username_y), tier_text, fill=(255, 255, 255))
+    tier_width = draw.textlength(tier_text, font=normal_font)
+    draw.text((width - 40 - tier_width, username_y), tier_text, fill=(255, 255, 255), font=normal_font)
     
     # Draw XP text
     if next_threshold > current_threshold:
@@ -219,12 +233,8 @@ async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next
     else:
         xp_text = f"{current_xp:,} XP (Max Tier)"
     
-    if small_font:
-        xp_width = draw.textlength(xp_text, font=small_font)
-        draw.text((width - 40 - xp_width, username_y + 40), xp_text, fill=(200, 200, 200), font=small_font)
-    else:
-        xp_width = draw.textlength(xp_text)
-        draw.text((width - 40 - xp_width, username_y + 40), xp_text, fill=(200, 200, 200))
+    xp_width = draw.textlength(xp_text, font=small_font)
+    draw.text((width - 40 - xp_width, username_y + 40), xp_text, fill=(200, 200, 200), font=small_font)
     
     # Draw progress bar background
     progress_bar_width = width - username_x - 40
@@ -253,14 +263,9 @@ async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next
     
     # Draw progress percentage
     progress_text = f"{progress_percentage:.1f}%"
-    if small_font:
-        progress_text_width = draw.textlength(progress_text, font=small_font)
-        progress_text_x = username_x + (progress_bar_width - progress_text_width) // 2
-        draw.text((progress_text_x, progress_bar_y + 5), progress_text, fill=(255, 255, 255), font=small_font)
-    else:
-        progress_text_width = draw.textlength(progress_text)
-        progress_text_x = username_x + (progress_bar_width - progress_text_width) // 2
-        draw.text((progress_text_x, progress_bar_y + 5), progress_text, fill=(255, 255, 255))
+    progress_text_width = draw.textlength(progress_text, font=small_font)
+    progress_text_x = username_x + (progress_bar_width - progress_text_width) // 2
+    draw.text((progress_text_x, progress_bar_y + 5), progress_text, fill=(255, 255, 255), font=small_font)
     
     # Save image to buffer
     buffer = io.BytesIO()
@@ -268,7 +273,7 @@ async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next
     buffer.seek(0)
     
     return buffer
-
+    
 # Global rate limiter configuration
 GLOBAL_RATE_LIMIT = 15  # requests per minute
 COMMAND_COOLDOWN = 10    # seconds between command uses per user
@@ -2145,36 +2150,33 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
 @app_commands.describe(user="The user to look up (leave empty to view your own XP)")
 async def xp_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
     if interaction.user.id != 353167234698444802:
-        await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
-        return
+    await interaction.response.send_message("❌ You don't have permission to use this command.", ephemeral=True)
+    return
     try:
         await interaction.response.defer(ephemeral=True)
-        target_user = user or interaction.user
+
         cleaned_name = clean_nickname(target_user.display_name)
 
-        xp = await bot.db.get_user_xp(target_user.id)
+        xp = await bot.db.get_user_xp(target_user.id) or 0
         tier, current_threshold, next_threshold = get_tier_info(xp)
         
-        # Get rank position
+        # Get rank position with efficient query
         result = await asyncio.to_thread(
             lambda: bot.db.supabase.table('users')
-            .select("user_id", "xp")
+            .select("user_id")
             .order("xp", desc=True)
             .execute()
         )
 
-        position = next(
-            (idx for idx, entry in enumerate(result.data, 1)
-             if str(entry['user_id']) == str(target_user.id)),
-            None
-        )
+        # Efficient rank lookup
+        user_ids = [str(entry['user_id']) for entry in result.data]
+        position = user_ids.index(str(target_user.id)) + 1 if str(target_user.id) in user_ids else None
         
         # Handle None values from get_tier_info()
-        if current_threshold is None:
-            current_threshold = 0
+        current_threshold = current_threshold or 0
         
         if next_threshold is None:
-            # Max tier reached - set next_threshold to current_threshold + 1 to avoid division by zero
+            # Max tier reached - set next_threshold to avoid division issues
             next_threshold = current_threshold + 1 if current_threshold is not None else xp + 1
         
         # Calculate progress percentage for current tier
@@ -2195,16 +2197,19 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
             progress_percentage=progress_percentage
         )
         
-        # Send the image directly (no embed)
-        file = discord.File(fp=image_buffer, filename="rank_card.png")
-        await interaction.followup.send(file=file, ephemeral=True)
+        # Send the image with proper resource cleanup
+        try:
+            file = discord.File(fp=image_buffer, filename="rank_card.png")
+            await interaction.followup.send(file=file, ephemeral=True)
+        finally:
+            image_buffer.close()
 
+    except discord.HTTPException as e:
+        logger.error(f"Discord API error in XP command: {e}")
+        await interaction.followup.send("❌ Failed to send response.", ephemeral=True)
     except Exception as e:
-        logger.error(f"XP command error: {str(e)}")
-        await interaction.followup.send("❌ Failed to fetch XP data.", ephemeral=True)
-
-
-
+        logger.error(f"XP command error: {str(e)}", exc_info=True)
+        await interaction.followup.send("❌ An unexpected error occurred.", ephemeral=True)
 
 
 
@@ -3324,6 +3329,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
