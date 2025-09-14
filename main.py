@@ -1,5 +1,6 @@
 import os
 import re
+import io
 import time
 import asyncio
 import threading
@@ -27,7 +28,7 @@ from supabase import create_client, Client
 from time import monotonic as now
 from collections import deque
 from aiohttp.resolver import AsyncResolver
-
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 
 # --- Configuration ---
 load_dotenv()
@@ -110,6 +111,115 @@ def make_progress_bar(xp: int, current: int, next_threshold: Optional[int]) -> s
     bar = "🟩" * filled + "⬛" * (10 - filled)
     return f"{bar} ({gained}/{total_needed} XP)"
 
+async def generate_rank_card(user, xp, level, xp_current, xp_required, rank, progress_percentage):
+    """Generate a MEE6-style rank card image"""
+    # Create image with PIL
+    width, height = 934, 282
+    background_color = (54, 57, 63)  # Discord dark theme color
+    
+    # Create base image
+    img = Image.new('RGB', (width, height), color=background_color)
+    draw = ImageDraw.Draw(img)
+    
+    # Try to load fonts, fallback to default if not available
+    try:
+        title_font = ImageFont.truetype("arialbd.ttf", 30)
+        normal_font = ImageFont.truetype("arial.ttf", 24)
+        small_font = ImageFont.truetype("arial.ttf", 20)
+    except:
+        # Fallback to default font if custom fonts not available
+        title_font = ImageFont.load_default()
+        normal_font = ImageFont.load_default()
+        small_font = ImageFont.load_default()
+    
+    # Draw user avatar
+    avatar_size = 180
+    avatar_margin = 40
+    
+    # Download avatar using aiohttp
+    try:
+        async with aiohttp.ClientSession() as session:
+            async with session.get(str(user.display_avatar.url)) as response:
+                avatar_data = await response.read()
+        
+        avatar_img = Image.open(io.BytesIO(avatar_data)).convert("RGBA")
+        avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
+        
+        # Create circular mask for avatar
+        mask = Image.new('L', (avatar_size, avatar_size), 0)
+        draw_mask = ImageDraw.Draw(mask)
+        draw_mask.ellipse((0, 0, avatar_size, avatar_size), fill=255)
+        
+        # Apply mask to avatar
+        avatar_img.putalpha(mask)
+        
+        # Paste avatar onto background
+        img.paste(avatar_img, (avatar_margin, (height - avatar_size) // 2), avatar_img)
+    except Exception as e:
+        print(f"Error loading avatar: {e}")
+        # Draw a placeholder circle if avatar can't be loaded
+        draw.ellipse(
+            [avatar_margin, (height - avatar_size) // 2, 
+             avatar_margin + avatar_size, (height - avatar_size) // 2 + avatar_size],
+            fill=(100, 100, 100)
+        )
+    
+    # Draw user name
+    username_x = avatar_margin * 2 + avatar_size
+    username_y = 70
+    
+    # Truncate username if too long
+    display_name = user.display_name
+    if len(display_name) > 15:
+        display_name = display_name[:12] + "..."
+    
+    draw.text((username_x, username_y), display_name, fill=(255, 255, 255), font=title_font)
+    
+    # Draw rank text
+    rank_text = f"Rank #{rank}" if rank else "Unranked"
+    draw.text((username_x, username_y + 40), rank_text, fill=(200, 200, 200), font=normal_font)
+    
+    # Draw level text
+    level_text = f"Level {level}"
+    level_width = draw.textlength(level_text, font=normal_font)
+    draw.text((width - 40 - level_width, username_y), level_text, fill=(255, 255, 255), font=normal_font)
+    
+    # Draw XP text
+    xp_text = f"{xp_current:,} / {xp_required:,} XP"
+    xp_width = draw.textlength(xp_text, font=small_font)
+    draw.text((width - 40 - xp_width, username_y + 40), xp_text, fill=(200, 200, 200), font=small_font)
+    
+    # Draw progress bar background
+    progress_bar_width = width - username_x - 40
+    progress_bar_height = 30
+    progress_bar_y = username_y + 90
+    draw.rounded_rectangle(
+        [username_x, progress_bar_y, username_x + progress_bar_width, progress_bar_y + progress_bar_height],
+        radius=10,
+        fill=(50, 50, 50)
+    )
+    
+    # Draw progress bar fill
+    fill_width = int(progress_bar_width * (progress_percentage / 100))
+    if fill_width > 0:
+        draw.rounded_rectangle(
+            [username_x, progress_bar_y, username_x + fill_width, progress_bar_y + progress_bar_height],
+            radius=10,
+            fill=(88, 101, 242)  # Discord blurple color
+        )
+    
+    # Draw progress percentage
+    progress_text = f"{progress_percentage:.1f}%"
+    progress_text_width = draw.textlength(progress_text, font=small_font)
+    progress_text_x = username_x + (progress_bar_width - progress_text_width) // 2
+    draw.text((progress_text_x, progress_bar_y + 5), progress_text, fill=(255, 255, 255), font=small_font)
+    
+    # Save image to buffer
+    buffer = io.BytesIO()
+    img.save(buffer, format='PNG')
+    buffer.seek(0)
+    
+    return buffer
 
 
 # Global rate limiter configuration
@@ -2051,97 +2161,7 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
         await interaction.followup.send("❌ Failed to fetch XP data.", ephemeral=True)
 
 
-async def generate_rank_card(user, xp, level, xp_current, xp_required, rank, progress_percentage):
-    """Generate a MEE6-style rank card image"""
-    # Create image with PIL
-    width, height = 934, 282
-    background_color = (54, 57, 63)  # Discord dark theme color
-    
-    # Create base image
-    img = Image.new('RGB', (width, height), color=background_color)
-    draw = ImageDraw.Draw(img)
-    
-    # Load fonts (you'll need to provide font files)
-    try:
-        title_font = ImageFont.truetype("arialbd.ttf", 30)
-        normal_font = ImageFont.truetype("arial.ttf", 24)
-        small_font = ImageFont.truetype("arial.ttf", 20)
-    except:
-        # Fallback to default font if custom fonts not available
-        title_font = ImageFont.load_default()
-        normal_font = ImageFont.load_default()
-        small_font = ImageFont.load_default()
-    
-    # Draw user avatar
-    avatar_size = 180
-    avatar_margin = 40
-    
-    # Download and process avatar
-    avatar_data = await user.display_avatar.read()
-    avatar_img = Image.open(io.BytesIO(avatar_data)).convert("RGBA")
-    avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
-    
-    # Create circular mask for avatar
-    mask = Image.new('L', (avatar_size, avatar_size), 0)
-    draw_mask = ImageDraw.Draw(mask)
-    draw_mask.ellipse((0, 0, avatar_size, avatar_size), fill=255)
-    
-    # Apply mask to avatar
-    avatar_img.putalpha(mask)
-    
-    # Paste avatar onto background
-    img.paste(avatar_img, (avatar_margin, (height - avatar_size) // 2), avatar_img)
-    
-    # Draw user name
-    username_x = avatar_margin * 2 + avatar_size
-    username_y = 70
-    draw.text((username_x, username_y), user.display_name, fill=(255, 255, 255), font=title_font)
-    
-    # Draw rank text
-    rank_text = f"Rank #{rank}" if rank else "Unranked"
-    draw.text((username_x, username_y + 40), rank_text, fill=(200, 200, 200), font=normal_font)
-    
-    # Draw level text
-    level_text = f"Level {level}"
-    level_width = draw.textlength(level_text, font=normal_font)
-    draw.text((width - 40 - level_width, username_y), level_text, fill=(255, 255, 255), font=normal_font)
-    
-    # Draw XP text
-    xp_text = f"{xp_current:,} / {xp_required:,} XP"
-    xp_width = draw.textlength(xp_text, font=small_font)
-    draw.text((width - 40 - xp_width, username_y + 40), xp_text, fill=(200, 200, 200), font=small_font)
-    
-    # Draw progress bar background
-    progress_bar_width = width - username_x - 40
-    progress_bar_height = 30
-    progress_bar_y = username_y + 90
-    draw.rounded_rectangle(
-        [username_x, progress_bar_y, username_x + progress_bar_width, progress_bar_y + progress_bar_height],
-        radius=10,
-        fill=(50, 50, 50)
-    )
-    
-    # Draw progress bar fill
-    fill_width = int(progress_bar_width * (progress_percentage / 100))
-    if fill_width > 0:
-        draw.rounded_rectangle(
-            [username_x, progress_bar_y, username_x + fill_width, progress_bar_y + progress_bar_height],
-            radius=10,
-            fill=(88, 101, 242)  # Discord blurple color
-        )
-    
-    # Draw progress percentage
-    progress_text = f"{progress_percentage:.1f}%"
-    progress_text_width = draw.textlength(progress_text, font=small_font)
-    progress_text_x = username_x + (progress_bar_width - progress_text_width) // 2
-    draw.text((progress_text_x, progress_bar_y + 5), progress_text, fill=(255, 255, 255), font=small_font)
-    
-    # Save image to buffer
-    buffer = io.BytesIO()
-    img.save(buffer, format='PNG')
-    buffer.seek(0)
-    
-    return buffer
+
 
 async def handle_command_error(interaction: discord.Interaction, error: Exception):
     """Centralized error handling for commands"""
@@ -3259,6 +3279,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
