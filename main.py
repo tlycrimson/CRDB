@@ -131,14 +131,21 @@ async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next
     
     # Try to load fonts, fallback to default if not available
     try:
-        title_font = ImageFont.truetype("arialbd.ttf", 30)
-        normal_font = ImageFont.truetype("arial.ttf", 24)
-        small_font = ImageFont.truetype("arial.ttf", 20)
+        # Try to use a font that's likely available on Render
+        try:
+            title_font = ImageFont.truetype("arialbd.ttf", 30)
+            normal_font = ImageFont.truetype("arial.ttf", 24)
+            small_font = ImageFont.truetype("arial.ttf", 20)
+        except:
+            # Fallback to default font
+            title_font = ImageFont.load_default()
+            normal_font = ImageFont.load_default()
+            small_font = ImageFont.load_default()
     except:
-        # Fallback to default font if custom fonts not available
-        title_font = ImageFont.load_default()
-        normal_font = ImageFont.load_default()
-        small_font = ImageFont.load_default()
+        # Ultimate fallback
+        title_font = None
+        normal_font = None
+        small_font = None
     
     # Draw user avatar
     avatar_size = 180
@@ -148,21 +155,24 @@ async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next
     try:
         async with aiohttp.ClientSession() as session:
             async with session.get(str(user.display_avatar.url)) as response:
-                avatar_data = await response.read()
-        
-        avatar_img = Image.open(io.BytesIO(avatar_data)).convert("RGBA")
-        avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
-        
-        # Create circular mask for avatar
-        mask = Image.new('L', (avatar_size, avatar_size), 0)
-        draw_mask = ImageDraw.Draw(mask)
-        draw_mask.ellipse((0, 0, avatar_size, avatar_size), fill=255)
-        
-        # Apply mask to avatar
-        avatar_img.putalpha(mask)
-        
-        # Paste avatar onto background
-        base.paste(avatar_img, (avatar_margin, (height - avatar_size) // 2), avatar_img)
+                if response.status == 200:
+                    avatar_data = await response.read()
+                    
+                    avatar_img = Image.open(io.BytesIO(avatar_data)).convert("RGBA")
+                    avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
+                    
+                    # Create circular mask for avatar
+                    mask = Image.new('L', (avatar_size, avatar_size), 0)
+                    draw_mask = ImageDraw.Draw(mask)
+                    draw_mask.ellipse((0, 0, avatar_size, avatar_size), fill=255)
+                    
+                    # Apply mask to avatar
+                    avatar_img.putalpha(mask)
+                    
+                    # Paste avatar onto background
+                    base.paste(avatar_img, (avatar_margin, (height - avatar_size) // 2), avatar_img)
+                else:
+                    raise Exception(f"Avatar download failed with status {response.status}")
     except Exception as e:
         print(f"Error loading avatar: {e}")
         # Draw a placeholder circle if avatar can't be loaded
@@ -181,21 +191,40 @@ async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next
     if len(display_name) > 15:
         display_name = display_name[:12] + "..."
     
-    draw.text((username_x, username_y), display_name, fill=(255, 255, 255), font=title_font)
+    # Use font if available, otherwise use default
+    if title_font:
+        draw.text((username_x, username_y), display_name, fill=(255, 255, 255), font=title_font)
+    else:
+        draw.text((username_x, username_y), display_name, fill=(255, 255, 255))
     
     # Draw rank text
     rank_text = f"Rank #{rank}" if rank else "Unranked"
-    draw.text((username_x, username_y + 40), rank_text, fill=(200, 200, 200), font=normal_font)
+    if normal_font:
+        draw.text((username_x, username_y + 40), rank_text, fill=(200, 200, 200), font=normal_font)
+    else:
+        draw.text((username_x, username_y + 40), rank_text, fill=(200, 200, 200))
     
     # Draw tier text
-    tier_text = f"Tier: {tier}"
-    tier_width = draw.textlength(tier_text, font=normal_font)
-    draw.text((width - 40 - tier_width, username_y), tier_text, fill=(255, 255, 255), font=normal_font)
+    tier_text = f"Tier: {tier}" if tier else "No Tier"
+    if normal_font:
+        tier_width = draw.textlength(tier_text, font=normal_font)
+        draw.text((width - 40 - tier_width, username_y), tier_text, fill=(255, 255, 255), font=normal_font)
+    else:
+        tier_width = draw.textlength(tier_text)
+        draw.text((width - 40 - tier_width, username_y), tier_text, fill=(255, 255, 255))
     
     # Draw XP text
-    xp_text = f"{current_xp:,} / {next_threshold:,} XP" if next_threshold > current_threshold else f"{current_xp:,} XP (Max Tier)"
-    xp_width = draw.textlength(xp_text, font=small_font)
-    draw.text((width - 40 - xp_width, username_y + 40), xp_text, fill=(200, 200, 200), font=small_font)
+    if next_threshold > current_threshold:
+        xp_text = f"{current_xp:,} / {next_threshold:,} XP"
+    else:
+        xp_text = f"{current_xp:,} XP (Max Tier)"
+    
+    if small_font:
+        xp_width = draw.textlength(xp_text, font=small_font)
+        draw.text((width - 40 - xp_width, username_y + 40), xp_text, fill=(200, 200, 200), font=small_font)
+    else:
+        xp_width = draw.textlength(xp_text)
+        draw.text((width - 40 - xp_width, username_y + 40), xp_text, fill=(200, 200, 200))
     
     # Draw progress bar background
     progress_bar_width = width - username_x - 40
@@ -211,7 +240,7 @@ async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next
     fill_width = int(progress_bar_width * (progress_percentage / 100))
     if fill_width > 0:
         # Use gold color for platinum tier, red for others
-        if tier.lower() == "platinum":
+        if tier and tier.lower() == "platinum":
             bar_color = (255, 215, 0)  # Gold
         else:
             bar_color = (220, 0, 0)  # Dark red
@@ -224,9 +253,14 @@ async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next
     
     # Draw progress percentage
     progress_text = f"{progress_percentage:.1f}%"
-    progress_text_width = draw.textlength(progress_text, font=small_font)
-    progress_text_x = username_x + (progress_bar_width - progress_text_width) // 2
-    draw.text((progress_text_x, progress_bar_y + 5), progress_text, fill=(255, 255, 255), font=small_font)
+    if small_font:
+        progress_text_width = draw.textlength(progress_text, font=small_font)
+        progress_text_x = username_x + (progress_bar_width - progress_text_width) // 2
+        draw.text((progress_text_x, progress_bar_y + 5), progress_text, fill=(255, 255, 255), font=small_font)
+    else:
+        progress_text_width = draw.textlength(progress_text)
+        progress_text_x = username_x + (progress_bar_width - progress_text_width) // 2
+        draw.text((progress_text_x, progress_bar_y + 5), progress_text, fill=(255, 255, 255))
     
     # Save image to buffer
     buffer = io.BytesIO()
@@ -234,7 +268,6 @@ async def generate_rank_card(user, xp, tier, current_xp, current_threshold, next
     buffer.seek(0)
     
     return buffer
-
 
 # Global rate limiter configuration
 GLOBAL_RATE_LIMIT = 15  # requests per minute
@@ -2136,6 +2169,14 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
             None
         )
         
+        # Handle None values from get_tier_info()
+        if current_threshold is None:
+            current_threshold = 0
+        
+        if next_threshold is None:
+            # Max tier reached - set next_threshold to current_threshold + 1 to avoid division by zero
+            next_threshold = current_threshold + 1 if current_threshold is not None else xp + 1
+        
         # Calculate progress percentage for current tier
         if next_threshold > current_threshold:
             progress_percentage = min(100, max(0, ((xp - current_threshold) / (next_threshold - current_threshold)) * 100))
@@ -2161,6 +2202,8 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
     except Exception as e:
         logger.error(f"XP command error: {str(e)}")
         await interaction.followup.send("❌ Failed to fetch XP data.", ephemeral=True)
+
+
 
 
 
@@ -3281,6 +3324,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
