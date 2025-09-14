@@ -1901,176 +1901,6 @@ async def on_message(message: discord.Message):
 
         
 # --- COMMANDS --- 
-@bot.tree.command(name="profile", description="View a comprehensive profile of yourself or another user")
-@app_commands.describe(user="The user to look up (leave empty to view your own profile)")
-@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-@min_rank_required(Config.RMP_ROLE_ID) 
-async def profile_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
-    """Display comprehensive profile with all available data"""
-    try:
-        await interaction.response.defer(ephemeral=True)
-        target_user = user or interaction.user
-        cleaned_name = clean_nickname(target_user.display_name)
-
-        # --- Get all data concurrently for better performance ---
-        xp_task = asyncio.create_task(bot.db.get_user_xp(target_user.id))
-        leaderboard_task = asyncio.create_task(
-            asyncio.to_thread(
-                lambda: bot.db.supabase.table('users')
-                .select("user_id", "xp")
-                .order("xp", desc=True)
-                .execute()
-            )
-        )
-        roblox_task = asyncio.create_task(
-            RobloxAPI.get_roblox_rank(target_user.display_name)
-        )
-
-        # --- HR/LR Table Data ---
-        guild = interaction.guild
-        member = guild.get_member(target_user.id)
-        stats_data = None
-        table_type = None
-        all_stats = {}  # Will store all extracted stats
-        
-        if member:
-            # Determine which table to query
-            if guild.get_role(Config.HR_ROLE_ID) in member.roles:
-                table_type = "HR"
-                def _query():
-                    return bot.db.supabase.table("HRs").select("*").eq("user_id", str(member.id)).execute()
-            else:
-                table_type = "LR" 
-                def _query():
-                    return bot.db.supabase.table("LRs").select("*").eq("user_id", str(member.id)).execute()
-            
-            # Execute query and extract all data
-            row = await bot.db.run_query(_query)
-            if row.data:
-                stats_data = row.data[0]
-                # Extract all meaningful data, converting keys to readable format
-                for key, value in stats_data.items():
-                    if key not in ("id", "user_id", "username") and value is not None:
-                        readable_key = key.replace('_', ' ').title()
-                        all_stats[readable_key] = value
-
-        # --- Wait for async tasks ---
-        xp = await xp_task
-        leaderboard_result = await leaderboard_task
-        
-        try:
-            roblox_rank = await asyncio.wait_for(roblox_task, timeout=8.0)
-        except (asyncio.TimeoutError, Exception):
-            roblox_rank = "Not Found"
-
-        # --- Process results ---
-        tier = get_tier_name(xp)
-        
-        position = next(
-            (idx for idx, entry in enumerate(leaderboard_result.data, 1)
-             if str(entry['user_id']) == str(target_user.id)),
-            None
-        )
-
-        # --- Build Comprehensive Embed ---
-        embed = discord.Embed(
-            title=f"🪪 Comprehensive Profile: {cleaned_name}",
-            color=discord.Color.blue(),
-            timestamp=discord.utils.utcnow()
-        ).set_thumbnail(url=target_user.display_avatar.url)
-
-        # --- Basic Information Section ---
-        embed.add_field(name="👤 User", value=f"{target_user.mention}\n`{target_user.id}`", inline=False)
-        embed.add_field(name="📊 XP", value=f"```{xp}```", inline=True)
-        embed.add_field(name="🏆 Tier", value=f"```{tier}```", inline=True)
-        
-        if position:
-            total_users = len(leaderboard_result.data)
-            percentile = (position / total_users) * 100
-            embed.add_field(
-                name="📈 Leaderboard", 
-                value=f"```#{position}/{total_users}\nTop {percentile:.1f}%```", 
-                inline=True
-            )
-
-        embed.add_field(name="🎮 Roblox Rank", value=f"```{roblox_rank}```", inline=True)
-        embed.add_field(name="👥 Member Type", value=f"```{table_type or 'Not Tracked'}```", inline=True)
-
-        # --- Detailed Statistics Section (if available) ---
-        if all_stats:
-            # Group stats into categories for better organization
-            event_stats = {}
-            training_stats = {}
-            activity_stats = {}
-            other_stats = {}
-            
-            for key, value in all_stats.items():
-                key_lower = key.lower()
-                if any(word in key_lower for word in ['event', 'host', 'joint', 'inspection']):
-                    event_stats[key] = value
-                elif any(word in key_lower for word in ['phase', 'tryout', 'course', 'training']):
-                    training_stats[key] = value
-                elif any(word in key_lower for word in ['activity', 'time', 'guard', 'attended']):
-                    activity_stats[key] = value
-                else:
-                    other_stats[key] = value
-            
-            # Add organized stat sections
-            if event_stats:
-                event_str = "\n".join(f"• **{k}:** {v}" for k, v in event_stats.items())
-                embed.add_field(name="🎉 Event Statistics", value=event_str, inline=False)
-            
-            if training_stats:
-                training_str = "\n".join(f"• **{k}:** {v}" for k, v in training_stats.items())
-                embed.add_field(name="📚 Training Statistics", value=training_str, inline=False)
-            
-            if activity_stats:
-                activity_str = "\n".join(f"• **{k}:** {v}" for k, v in activity_stats.items())
-                embed.add_field(name="⏰ Activity Statistics", value=activity_str, inline=False)
-            
-            if other_stats:
-                other_str = "\n".join(f"• **{k}:** {v}" for k, v in other_stats.items())
-                embed.add_field(name="📋 Other Statistics", value=other_str, inline=False)
-
-        else:
-            embed.add_field(
-                name="📊 Statistics", 
-                value="*No tracked statistics available*", 
-                inline=False
-            )
-
-        # --- Additional Information ---
-        if member:
-            join_date = member.joined_at.strftime("%Y-%m-%d") if member.joined_at else "Unknown"
-            embed.add_field(
-                name="📅 Join Date", 
-                value=f"```{join_date}```", 
-                inline=True
-            )
-            
-            # Show prominent roles (excluding @everyone)
-            prominent_roles = [role for role in member.roles if role.name != "@everyone"][:3]
-            if prominent_roles:
-                roles_str = ", ".join(role.mention for role in prominent_roles)
-                embed.add_field(
-                    name="🎖️ Prominent Roles", 
-                    value=roles_str, 
-                    inline=False
-                )
-
-        # --- Footer with refresh info ---
-        embed.set_footer(text=f"Profile generated • {datetime.now().strftime('%Y-%m-%d %H:%M')}")
-
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
-    except Exception as e:
-        logger.error(f"/profile command failed: {e}", exc_info=True)
-        await interaction.followup.send(
-            "❌ Failed to fetch profile data. Please try again later.", 
-            ephemeral=True
-        )
-
-
 # /addxp Command
 @bot.tree.command(name="add-xp", description="Add XP to a user")
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
@@ -2264,11 +2094,24 @@ async def test_command(interaction: discord.Interaction, user: Optional[discord.
     buffer = io.BytesIO()
     card.save(buffer, format="PNG", optimize=True)
     buffer.seek(0)
-    await interaction.followup.send(     
-        file=discord.File(buffer, "rank.png"),     
-        delete_after=10  
-    )
+    
+    # Send the message and schedule deletion after 10 seconds
+    message = await interaction.followup.send(file=discord.File(buffer, "rank.png"))
+    
+    # Delete the message after 10 seconds
+    async def delete_after_delay():
+        await asyncio.sleep(10)
+        try:
+            await message.delete()
+        except discord.NotFound:
+            pass  # Message already deleted
+        except discord.Forbidden:
+            logger.warning(f"Missing permissions to delete message {message.id}")
+        except Exception as e:
+            logger.error(f"Failed to delete message: {e}")
 
+    # Start the deletion task
+    asyncio.create_task(delete_after_delay())
 
 
 async def handle_command_error(interaction: discord.Interaction, error: Exception):
@@ -3387,6 +3230,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
