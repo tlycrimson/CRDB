@@ -1483,19 +1483,14 @@ async def on_disconnect():
 
 @bot.event
 async def on_resumed():
-    logger.info("Bot successfully resumed (session resumption). Recreating HTTP session only if necessary.")
+    logger.info("Bot successfully resumed (session resumption). Restoring state...")
+    
+    # Small delay to ensure full reconnection
+    await asyncio.sleep(1.0)
+
+    # Recreate HTTP session if needed
     if not getattr(bot, "shared_session", None) or bot.shared_session.closed:
-        # recreate session (same logic as on_ready)
         connector = aiohttp.TCPConnector(limit=15, limit_per_host=4, enable_cleanup_closed=True)
-        try:
-            resolver_ok = await check_dns_connectivity()
-        except Exception:
-            resolver_ok = False
-        if resolver_ok:
-            try:
-                connector.resolver = aiohttp.AsyncResolver()
-            except Exception:
-                pass
         bot.shared_session = aiohttp.ClientSession(
             headers={"User-Agent": USER_AGENT},
             timeout=aiohttp.ClientTimeout(total=12, connect=5, sock_connect=3, sock_read=6),
@@ -1503,6 +1498,17 @@ async def on_resumed():
             trust_env=True
         )
         logger.info("Recreated shared aiohttp.ClientSession after resume")
+
+    # 🔑 Restart trackers after reconnect
+    try:
+        await asyncio.sleep(0.5)  # Small delay for stability
+        await bot.reaction_logger.on_ready_setup()
+        await bot.message_tracker.on_ready_setup()
+        if not getattr(bot.reaction_logger, "_cleanup_task", None):
+            await bot.reaction_logger.start_cleanup_task()
+        logger.info("✅ Restored ReactionLogger and MessageTracker after resume.")
+    except Exception as e:
+        logger.error(f"❌ Failed to restore trackers after resume: {e}")
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -2792,6 +2798,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
