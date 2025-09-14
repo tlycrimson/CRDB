@@ -2264,7 +2264,10 @@ async def test_command(interaction: discord.Interaction, user: Optional[discord.
     buffer = io.BytesIO()
     card.save(buffer, format="PNG", optimize=True)
     buffer.seek(0)
-    await interaction.followup.send(file=discord.File(buffer, "rank.png"), ephemeral=True)
+    await interaction.followup.send(     
+        file=discord.File(buffer, "rank.png"),     
+        delete_after=10  
+    )
 
 
 
@@ -3384,6 +3387,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
