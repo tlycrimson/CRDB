@@ -52,7 +52,7 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-
+# --- SOME FUNCTIONS & STUFF ---
 # Username Cleaner
 def clean_nickname(nickname: str) -> str:
     """Remove tags like [INS] from nicknames and clean whitespace"""
@@ -60,6 +60,49 @@ def clean_nickname(nickname: str) -> str:
         return "Unknown"
     cleaned = re.sub(r'\[.*?\]', '', nickname).strip()
     return cleaned or nickname  # Fallback to original if empty after cleaning
+    
+# XP Tier list and function
+TIERS = [
+    ("🌟 Platinum", 800),
+    ("💎 Diamond", 400),
+    ("🥇 Gold", 200),
+    ("🥈 Silver", 135),
+    ("🥉 Bronze", 100),
+    ("⚪ Unranked", 0),
+]
+
+def get_tier_info(xp: int) -> tuple[str, int, Optional[int]]:
+    """Return (tier_name, current_threshold, next_threshold)"""
+    # Sort tiers by threshold descending for correct logic
+    sorted_tiers = sorted(TIERS, key=lambda x: x[1], reverse=True)
+    
+    for i, (name, threshold) in enumerate(sorted_tiers):
+        if xp >= threshold:
+            # Get next higher tier if exists
+            next_threshold = sorted_tiers[i-1][1] if i > 0 else None
+            return name, threshold, next_threshold
+    
+    return "⚪ Unranked", 0, 100
+
+def get_tier_name(xp: int) -> str:
+    """Return just the tier name for /profile command"""
+    tier_name, _, _ = get_tier_info(xp)
+    return tier_name
+
+
+# Progress bar
+def make_progress_bar(xp: int, current: int, next_threshold: Optional[int]) -> str:
+    if not next_threshold:  # Already at max tier
+        return "🟨🟨🟨🟨🟨🟨🟨🟨🟨🟨 (MAX)"
+
+    total_needed = next_threshold - current
+    gained = xp - current
+    filled = int((gained / total_needed) * 10)
+    filled = min(filled, 10)
+
+    bar = "🟩" * filled + "⬛" * (10 - filled)
+    return f"{bar} ({gained}/{total_needed} XP)"
+
 
 
 # Global rate limiter configuration
@@ -424,7 +467,6 @@ async def start_cleanup_task(self):
     self._cleanup_task = asyncio.create_task(cleanup_loop())
 
     
-
 # Logs XP changes in logging channel
 async def log_xp_to_discord(
     admin: discord.User,
@@ -458,6 +500,96 @@ async def log_xp_to_discord(
         logger.error(f"Failed to log XP to Discord: {str(e)}")
         return False
 
+
+# Roblox API helper functions
+# Roblox API helper functions - FIXED VERSION
+class RobloxAPI:
+    @staticmethod
+    async def get_user_id(username: str) -> Optional[int]:
+        """Get Roblox user ID from username using shared session"""
+        try:
+            async with bot.rate_limiter:  # Use global rate limiter
+                async with bot.shared_session.get(
+                    f"https://api.roblox.com/users/get-by-username?username={username}",
+                    timeout=aiohttp.ClientTimeout(total=5)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        if data.get("Id"):
+                            return data["Id"]
+                        else:
+                            logger.warning(f"Roblox username not found: {username}")
+                            return None
+                    elif response.status == 429:
+                        logger.warning("Roblox API rate limited - consider adding delay")
+                        return None
+                    else:
+                        logger.warning(f"Roblox API error: HTTP {response.status} for {username}")
+                        return None
+        except asyncio.TimeoutError:
+            logger.warning(f"Roblox API timeout for username: {username}")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get Roblox user ID for {username}: {e}")
+            return None
+
+    @staticmethod
+    async def get_group_rank(user_id: int, group_id: int = 4972920) -> Optional[str]:
+        """Get user's rank in specific group using shared session"""
+        try:
+            async with bot.rate_limiter:  # Use global rate limiter
+                async with bot.shared_session.get(
+                    f"https://groups.roblox.com/v1/users/{user_id}/groups/roles",
+                    timeout=aiohttp.ClientTimeout(total=5)
+                ) as response:
+                    if response.status == 200:
+                        data = await response.json()
+                        for group in data.get("data", []):
+                            if group["group"]["id"] == group_id:
+                                return group["role"]["name"]
+                        logger.warning(f"User {user_id} not in group {group_id}")
+                        return None
+                    elif response.status == 429:
+                        logger.warning("Roblox groups API rate limited")
+                        return None
+                    else:
+                        logger.warning(f"Groups API error: HTTP {response.status} for user {user_id}")
+                        return None
+        except asyncio.TimeoutError:
+            logger.warning(f"Groups API timeout for user: {user_id}")
+            return None
+        except Exception as e:
+            logger.error(f"Failed to get group rank for user {user_id}: {e}")
+            return None
+
+    @staticmethod
+    async def get_roblox_rank(discord_name: str, group_id: int = 4972920) -> str:
+        """Get Roblox rank from Discord display name with better error handling"""
+        try:
+            # Clean the nickname and extract potential Roblox username
+            cleaned_name = clean_nickname(discord_name)
+            
+            if not cleaned_name or cleaned_name.lower() == "unknown":
+                logger.warning(f"Invalid Discord name for Roblox lookup: {discord_name}")
+                return "Invalid Name"
+            
+            # Try to find Roblox user ID
+            user_id = await RobloxAPI.get_user_id(cleaned_name)
+            if not user_id:
+                logger.warning(f"Roblox user not found for Discord name: {cleaned_name}")
+                return "Not Found"
+            
+            # Get group rank with retry logic for rate limits
+            rank = await RobloxAPI.get_group_rank(user_id, group_id)
+            if not rank:
+                logger.info(f"User {cleaned_name} (ID: {user_id}) has no specific rank in group")
+                return "Member"  # Default to "Member" if no specific rank found
+            
+            return rank
+            
+        except Exception as e:
+            logger.error(f"Failed to get Roblox rank for {discord_name}: {e}")
+            return "Error"
 
 # Reaction Logger for LD
 class ReactionLogger:
@@ -1532,7 +1664,117 @@ async def on_message(message: discord.Message):
     asyncio.create_task(_background_message_track(message))
 
         
-# --- Commands --- 
+# --- COMMANDS --- 
+@bot.tree.command(name="profile", description="View a comprehensive profile of yourself or another user")
+@app_commands.describe(user="The user to look up (leave empty to view your own profile)")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
+@min_rank_required(Config.RMP_ROLE_ID) 
+async def profile_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
+    """Display XP, tier, leaderboard position, HR/LR data, and RMP group rank"""
+    try:
+        await interaction.response.defer()
+        target_user = user or interaction.user
+        cleaned_name = clean_nickname(target_user.display_name)
+
+        # --- XP + Tier ---
+        xp = await bot.db.get_user_xp(target_user.id)
+        tier = get_tier_name(xp)
+
+        # --- Leaderboard position ---
+        result = await asyncio.to_thread(
+            lambda: bot.db.supabase.table('users')
+            .select("user_id", "xp")
+            .order("xp", desc=True)
+            .execute()
+        )
+        position = next(
+            (idx for idx, entry in enumerate(result.data, 1)
+             if str(entry['user_id']) == str(target_user.id)),
+            None
+        )
+
+        # --- HR/LR Table ---
+        guild = interaction.guild
+        member = guild.get_member(target_user.id)
+        stats = None
+        table_type = None
+        
+        if member:
+            if guild.get_role(Config.HR_ROLE_ID) in member.roles:
+                table_type = "HR"
+                def _query():
+                    return bot.db.supabase.table("HRs").select("*").eq("user_id", str(member.id)).execute()
+            else:
+                table_type = "LR" 
+                def _query():
+                    return bot.db.supabase.table("LRs").select("*").eq("user_id", str(member.id)).execute()
+            
+            row = await bot.db.run_query(_query)
+            stats = row.data[0] if row.data else None
+
+        # --- Roblox Group Rank (ASYNC to avoid blocking) ---
+        roblox_rank = "Loading..."
+        roblox_task = asyncio.create_task(
+            RobloxAPI.get_roblox_rank(target_user.display_name)
+        )
+
+        # --- Build Initial Embed ---
+        embed = discord.Embed(
+            title=f"🪪 Profile: {cleaned_name}",
+            color=discord.Color.blue(),
+            description="*Fetching Roblox rank...*"
+        ).set_thumbnail(url=target_user.display_avatar.url)
+
+        embed.add_field(name="XP", value=f"```{xp}```", inline=True)
+        embed.add_field(name="Tier", value=f"```{tier}```", inline=True)
+        if position:
+            embed.add_field(name="Leaderboard Pos.", value=f"```#{position}```", inline=True)
+        embed.add_field(name="Member Type", value=f"```{table_type or 'Unknown'}```", inline=True)
+        embed.add_field(name="Roblox Rank", value=f"```{roblox_rank}```", inline=True)
+
+        # Send initial embed immediately
+        message = await interaction.followup.send(embed=embed)
+
+        # --- Wait for Roblox API response ---
+        try:
+            roblox_rank = await asyncio.wait_for(roblox_task, timeout=10.0)
+        except asyncio.TimeoutError:
+            roblox_rank = "Timeout"
+            logger.warning(f"Roblox API timeout for {cleaned_name}")
+        except Exception as e:
+            roblox_rank = "Error"
+            logger.error(f"Roblox API error for {cleaned_name}: {e}")
+
+        # --- Update Embed with Roblox Rank ---
+        embed = discord.Embed(
+            title=f"🪪 Profile: {cleaned_name}",
+            color=discord.Color.blue()
+        ).set_thumbnail(url=target_user.display_avatar.url)
+
+        embed.add_field(name="XP", value=f"```{xp}```", inline=True)
+        embed.add_field(name="Tier", value=f"```{tier}```", inline=True)
+        if position:
+            embed.add_field(name="Leaderboard Pos.", value=f"```#{position}```", inline=True)
+        embed.add_field(name="Member Type", value=f"```{table_type or 'Unknown'}```", inline=True)
+        embed.add_field(name="Roblox Rank", value=f"```{roblox_rank}```", inline=True)
+
+        # HR/LR Stats - only show meaningful stats
+        if stats:
+            interesting_stats = {}
+            for k, v in stats.items():
+                if k not in ("id", "user_id", "username") and v != 0:
+                    interesting_stats[k.replace('_', ' ').title()] = v
+            
+            if interesting_stats:
+                stats_str = "\n".join(f"• **{k}:** {v}" for k, v in interesting_stats.items())
+                embed.add_field(name=f"{table_type} Statistics", value=stats_str, inline=False)
+
+        # Update the message with complete embed
+        await message.edit(embed=embed)
+
+    except Exception as e:
+        logger.error(f"/profile command failed: {e}")
+        await interaction.followup.send("❌ Failed to fetch profile.", ephemeral=True)
 # /addxp Command
 @bot.tree.command(name="add-xp", description="Add XP to a user")
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
@@ -1627,60 +1869,53 @@ async def take_xp(interaction: discord.Interaction, user: discord.User, xp: int)
 
 
 # /xp Command
-@bot.tree.command(name="xp", description="Check yours or someone else's XP")
+@bot.tree.command(name="xp", description="Check your XP or someone else's XP")
+@app_commands.describe(user="The user to look up (leave empty to view your own XP)")
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-@min_rank_required(Config.RMP_ROLE_ID) 
+@min_rank_required(Config.RMP_ROLE_ID)
 async def xp_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
-    """Check a user's XP and leaderboard position"""
     try:
-        async with global_rate_limiter:
-            await interaction.response.defer()
-            
-            # Rate limiting
-            await bot.rate_limiter.wait_if_needed(bucket=f"xp_cmd_{interaction.user.id}")
-            
-            target_user = user or interaction.user
-            cleaned_name = clean_nickname(target_user.display_name)
-            
-            # Get XP and leaderboard data
-            xp = await bot.db.get_user_xp(target_user.id)
-            result = await asyncio.to_thread(
-                lambda: bot.db.supabase.table('users')
-                .select("user_id", "xp")
-                .order("xp", desc=True)
-                .execute()
-            )
-            
-            # Process leaderboard position
-            position = next(
-                (idx for idx, entry in enumerate(result.data, 1) 
-                 if str(entry['user_id']) == str(target_user.id)),
-                None
-            )
-            
-            # Build embed
-            embed = discord.Embed(
-                title=f"📊 XP Profile: {cleaned_name}",
-                color=discord.Color.green()
-            ).set_thumbnail(url=target_user.display_avatar.url)
-            
-            embed.add_field(name="Current XP", value=f"```{xp}```", inline=True)
-            
-            if position:
-                embed.add_field(name="Leaderboard Position", value=f"```#{position}```", inline=True)
-                if len(result.data) > 10:
-                    percentile = (position / len(result.data)) * 100
-                    embed.add_field(
-                        name="Percentile", 
-                        value=f"```Top {100 - percentile:.1f}%```", 
-                        inline=False
-                    )
-            
-            await interaction.followup.send(embed=embed)
-        
+        await interaction.response.defer()
+        target_user = user or interaction.user
+        cleaned_name = clean_nickname(target_user.display_name)
+
+        xp = await bot.db.get_user_xp(target_user.id)
+        tier, current_threshold, next_threshold = get_tier_info(xp)  # Use fixed function
+
+        result = await asyncio.to_thread(
+            lambda: bot.db.supabase.table('users')
+            .select("user_id", "xp")
+            .order("xp", desc=True)
+            .execute()
+        )
+
+        position = next(
+            (idx for idx, entry in enumerate(result.data, 1)
+             if str(entry['user_id']) == str(target_user.id)),
+            None
+        )
+
+        progress = make_progress_bar(xp, current_threshold, next_threshold)
+
+        embed = discord.Embed(
+            title=f"📊 XP Profile: {cleaned_name}",
+            color=discord.Color.green()
+        ).set_thumbnail(url=target_user.display_avatar.url)
+
+        embed.add_field(name="Current XP", value=f"```{xp}```", inline=True)
+        embed.add_field(name="Tier", value=f"```{tier}```", inline=True)
+
+        if position:
+            embed.add_field(name="Leaderboard Position", value=f"```#{position}```", inline=True)
+
+        embed.add_field(name="Progression", value=progress, inline=False)
+
+        await interaction.followup.send(embed=embed)
+
     except Exception as e:
         logger.error(f"XP command error: {str(e)}")
-        await handle_command_error(interaction, e)
+        await interaction.followup.send("❌ Failed to fetch XP data.", ephemeral=True)
+
 
 async def handle_command_error(interaction: discord.Interaction, error: Exception):
     """Centralized error handling for commands"""
@@ -2798,6 +3033,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
