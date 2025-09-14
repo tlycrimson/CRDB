@@ -60,6 +60,13 @@ def clean_nickname(nickname: str) -> str:
         return "Unknown"
     cleaned = re.sub(r'\[.*?\]', '', nickname).strip()
     return cleaned or nickname  # Fallback to original if empty after cleaning
+
+# Owner Permission Bypass
+def is_me():
+    def predicate(interaction: discord.Interaction) -> bool:
+        return interaction.user.id == 353167234798444802
+    return app_commands.check(predicate)
+
     
 # XP Tier list and function
 TIERS = [
@@ -1670,36 +1677,35 @@ async def on_message(message: discord.Message):
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @min_rank_required(Config.RMP_ROLE_ID) 
 async def profile_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
-    """Display XP, tier, leaderboard position, HR/LR data, and RMP group rank"""
+    """Display comprehensive profile with all available data"""
     try:
         await interaction.response.defer(ephemeral=True)
         target_user = user or interaction.user
         cleaned_name = clean_nickname(target_user.display_name)
 
-        # --- XP + Tier ---
-        xp = await bot.db.get_user_xp(target_user.id)
-        tier = get_tier_name(xp)
-
-        # --- Leaderboard position ---
-        result = await asyncio.to_thread(
-            lambda: bot.db.supabase.table('users')
-            .select("user_id", "xp")
-            .order("xp", desc=True)
-            .execute()
+        # --- Get all data concurrently for better performance ---
+        xp_task = asyncio.create_task(bot.db.get_user_xp(target_user.id))
+        leaderboard_task = asyncio.create_task(
+            asyncio.to_thread(
+                lambda: bot.db.supabase.table('users')
+                .select("user_id", "xp")
+                .order("xp", desc=True)
+                .execute()
+            )
         )
-        position = next(
-            (idx for idx, entry in enumerate(result.data, 1)
-             if str(entry['user_id']) == str(target_user.id)),
-            None
+        roblox_task = asyncio.create_task(
+            RobloxAPI.get_roblox_rank(target_user.display_name)
         )
 
-        # --- HR/LR Table ---
+        # --- HR/LR Table Data ---
         guild = interaction.guild
         member = guild.get_member(target_user.id)
-        stats = None
+        stats_data = None
         table_type = None
+        all_stats = {}  # Will store all extracted stats
         
         if member:
+            # Determine which table to query
             if guild.get_role(Config.HR_ROLE_ID) in member.roles:
                 table_type = "HR"
                 def _query():
@@ -1709,72 +1715,133 @@ async def profile_command(interaction: discord.Interaction, user: Optional[disco
                 def _query():
                     return bot.db.supabase.table("LRs").select("*").eq("user_id", str(member.id)).execute()
             
+            # Execute query and extract all data
             row = await bot.db.run_query(_query)
-            stats = row.data[0] if row.data else None
+            if row.data:
+                stats_data = row.data[0]
+                # Extract all meaningful data, converting keys to readable format
+                for key, value in stats_data.items():
+                    if key not in ("id", "user_id", "username") and value is not None:
+                        readable_key = key.replace('_', ' ').title()
+                        all_stats[readable_key] = value
 
-        # --- Roblox Group Rank (ASYNC to avoid blocking) ---
-        roblox_rank = "Loading..."
-        roblox_task = asyncio.create_task(
-            RobloxAPI.get_roblox_rank(target_user.display_name)
+        # --- Wait for async tasks ---
+        xp = await xp_task
+        leaderboard_result = await leaderboard_task
+        
+        try:
+            roblox_rank = await asyncio.wait_for(roblox_task, timeout=8.0)
+        except (asyncio.TimeoutError, Exception):
+            roblox_rank = "Not Found"
+
+        # --- Process results ---
+        tier = get_tier_name(xp)
+        
+        position = next(
+            (idx for idx, entry in enumerate(leaderboard_result.data, 1)
+             if str(entry['user_id']) == str(target_user.id)),
+            None
         )
 
-        # --- Build Initial Embed ---
+        # --- Build Comprehensive Embed ---
         embed = discord.Embed(
-            title=f"🪪 Profile: {cleaned_name}",
+            title=f"🪪 Comprehensive Profile: {cleaned_name}",
             color=discord.Color.blue(),
-            description="*Fetching Roblox rank...*"
+            timestamp=discord.utils.utcnow()
         ).set_thumbnail(url=target_user.display_avatar.url)
 
-        embed.add_field(name="XP", value=f"```{xp}```", inline=True)
-        embed.add_field(name="Tier", value=f"```{tier}```", inline=True)
+        # --- Basic Information Section ---
+        embed.add_field(name="👤 User", value=f"{target_user.mention}\n`{target_user.id}`", inline=False)
+        embed.add_field(name="📊 XP", value=f"```{xp}```", inline=True)
+        embed.add_field(name="🏆 Tier", value=f"```{tier}```", inline=True)
+        
         if position:
-            embed.add_field(name="Leaderboard Pos.", value=f"```#{position}```", inline=True)
-        embed.add_field(name="Member Type", value=f"```{table_type or 'Unknown'}```", inline=True)
-        embed.add_field(name="Roblox Rank", value=f"```{roblox_rank}```", inline=True)
+            total_users = len(leaderboard_result.data)
+            percentile = (position / total_users) * 100
+            embed.add_field(
+                name="📈 Leaderboard", 
+                value=f"```#{position}/{total_users}\nTop {percentile:.1f}%```", 
+                inline=True
+            )
 
-        # Send initial embed immediately
-        message = await interaction.followup.send(embed=embed, ephemeral=True)
+        embed.add_field(name="🎮 Roblox Rank", value=f"```{roblox_rank}```", inline=True)
+        embed.add_field(name="👥 Member Type", value=f"```{table_type or 'Not Tracked'}```", inline=True)
 
-        # --- Wait for Roblox API response ---
-        try:
-            roblox_rank = await asyncio.wait_for(roblox_task, timeout=10.0)
-        except asyncio.TimeoutError:
-            roblox_rank = "Timeout"
-            logger.warning(f"Roblox API timeout for {cleaned_name}")
-        except Exception as e:
-            roblox_rank = "Error"
-            logger.error(f"Roblox API error for {cleaned_name}: {e}")
-
-        # --- Update Embed with Roblox Rank ---
-        embed = discord.Embed(
-            title=f"🪪 Profile: {cleaned_name}",
-            color=discord.Color.blue()
-        ).set_thumbnail(url=target_user.display_avatar.url)
-
-        embed.add_field(name="XP", value=f"```{xp}```", inline=True)
-        embed.add_field(name="Tier", value=f"```{tier}```", inline=True)
-        if position:
-            embed.add_field(name="Leaderboard Pos.", value=f"```#{position}```", inline=True)
-        embed.add_field(name="Member Type", value=f"```{table_type or 'Unknown'}```", inline=True)
-        embed.add_field(name="Roblox Rank", value=f"```{roblox_rank}```", inline=True)
-
-        # HR/LR Stats - only show meaningful stats
-        if stats:
-            interesting_stats = {}
-            for k, v in stats.items():
-                if k not in ("id", "user_id", "username") and v != 0:
-                    interesting_stats[k.replace('_', ' ').title()] = v
+        # --- Detailed Statistics Section (if available) ---
+        if all_stats:
+            # Group stats into categories for better organization
+            event_stats = {}
+            training_stats = {}
+            activity_stats = {}
+            other_stats = {}
             
-            if interesting_stats:
-                stats_str = "\n".join(f"• **{k}:** {v}" for k, v in interesting_stats.items())
-                embed.add_field(name=f"{table_type} Statistics", value=stats_str, inline=False)
+            for key, value in all_stats.items():
+                key_lower = key.lower()
+                if any(word in key_lower for word in ['event', 'host', 'joint', 'inspection']):
+                    event_stats[key] = value
+                elif any(word in key_lower for word in ['phase', 'tryout', 'course', 'training']):
+                    training_stats[key] = value
+                elif any(word in key_lower for word in ['activity', 'time', 'guard', 'attended']):
+                    activity_stats[key] = value
+                else:
+                    other_stats[key] = value
+            
+            # Add organized stat sections
+            if event_stats:
+                event_str = "\n".join(f"• **{k}:** {v}" for k, v in event_stats.items())
+                embed.add_field(name="🎉 Event Statistics", value=event_str, inline=False)
+            
+            if training_stats:
+                training_str = "\n".join(f"• **{k}:** {v}" for k, v in training_stats.items())
+                embed.add_field(name="📚 Training Statistics", value=training_str, inline=False)
+            
+            if activity_stats:
+                activity_str = "\n".join(f"• **{k}:** {v}" for k, v in activity_stats.items())
+                embed.add_field(name="⏰ Activity Statistics", value=activity_str, inline=False)
+            
+            if other_stats:
+                other_str = "\n".join(f"• **{k}:** {v}" for k, v in other_stats.items())
+                embed.add_field(name="📋 Other Statistics", value=other_str, inline=False)
 
-        # Update the message with complete embed
-        await message.edit(embed=embed)
+        else:
+            embed.add_field(
+                name="📊 Statistics", 
+                value="*No tracked statistics available*", 
+                inline=False
+            )
+
+        # --- Additional Information ---
+        if member:
+            join_date = member.joined_at.strftime("%Y-%m-%d") if member.joined_at else "Unknown"
+            embed.add_field(
+                name="📅 Join Date", 
+                value=f"```{join_date}```", 
+                inline=True
+            )
+            
+            # Show prominent roles (excluding @everyone)
+            prominent_roles = [role for role in member.roles if role.name != "@everyone"][:3]
+            if prominent_roles:
+                roles_str = ", ".join(role.mention for role in prominent_roles)
+                embed.add_field(
+                    name="🎖️ Prominent Roles", 
+                    value=roles_str, 
+                    inline=False
+                )
+
+        # --- Footer with refresh info ---
+        embed.set_footer(text=f"Profile generated • {datetime.now().strftime('%Y-%m-%d %H:%M')}")
+
+        await interaction.followup.send(embed=embed, ephemeral=True)
 
     except Exception as e:
-        logger.error(f"/profile command failed: {e}")
-        await interaction.followup.send("❌ Failed to fetch profile.", ephemeral=True)
+        logger.error(f"/profile command failed: {e}", exc_info=True)
+        await interaction.followup.send(
+            "❌ Failed to fetch profile data. Please try again later.", 
+            ephemeral=True
+        )
+
+
 # /addxp Command
 @bot.tree.command(name="add-xp", description="Add XP to a user")
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
@@ -1916,6 +1983,164 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
         logger.error(f"XP command error: {str(e)}")
         await interaction.followup.send("❌ Failed to fetch XP data.", ephemeral=True)
 
+# /xp Command with MEE6-style rank card
+@bot.tree.command(name="xp", description="Check your XP or someone else's XP")
+@app_commands.describe(user="The user to look up (leave empty to view your own XP)")
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
+@is_me()
+async def xp_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
+    try:
+        await interaction.response.defer(ephemeral=True)
+        target_user = user or interaction.user
+        cleaned_name = clean_nickname(target_user.display_name)
+
+        xp = await bot.db.get_user_xp(target_user.id)
+        tier, current_threshold, next_threshold = get_tier_info(xp)
+        
+        # Calculate level based on XP (using MEE6's approximate formula)
+        level = 0
+        xp_for_level = 0
+        while xp_for_level <= xp:
+            level += 1
+            xp_for_level += 5 * (level ** 2) + 50 * level + 100
+        
+        # Adjust for calculation overshoot
+        level -= 1
+        xp_for_level = sum(5 * (l ** 2) + 50 * l + 100 for l in range(1, level))
+        xp_for_next_level = 5 * (level ** 2) + 50 * level + 100
+        
+        # Get rank position
+        result = await asyncio.to_thread(
+            lambda: bot.db.supabase.table('users')
+            .select("user_id", "xp")
+            .order("xp", desc=True)
+            .execute()
+        )
+
+        position = next(
+            (idx for idx, entry in enumerate(result.data, 1)
+             if str(entry['user_id']) == str(target_user.id)),
+            None
+        )
+        
+        # Calculate progress percentage
+        progress_percentage = min(100, max(0, ((xp - xp_for_level) / xp_for_next_level) * 100))
+        
+        # Generate the rank card image
+        image_buffer = await generate_rank_card(
+            user=target_user,
+            xp=xp,
+            level=level,
+            xp_current=xp - xp_for_level,
+            xp_required=xp_for_next_level,
+            rank=position,
+            progress_percentage=progress_percentage
+        )
+        
+        # Send the image
+        file = discord.File(fp=image_buffer, filename="rank_card.png")
+        embed = discord.Embed(color=discord.Color.green())
+        embed.set_image(url="attachment://rank_card.png")
+        embed.set_footer(text=f"{cleaned_name}'s Rank Card")
+        
+        await interaction.followup.send(embed=embed, file=file, ephemeral=True)
+
+    except Exception as e:
+        logger.error(f"XP command error: {str(e)}")
+        await interaction.followup.send("❌ Failed to fetch XP data.", ephemeral=True)
+
+
+async def generate_rank_card(user, xp, level, xp_current, xp_required, rank, progress_percentage):
+    """Generate a MEE6-style rank card image"""
+    # Create image with PIL
+    width, height = 934, 282
+    background_color = (54, 57, 63)  # Discord dark theme color
+    
+    # Create base image
+    img = Image.new('RGB', (width, height), color=background_color)
+    draw = ImageDraw.Draw(img)
+    
+    # Load fonts (you'll need to provide font files)
+    try:
+        title_font = ImageFont.truetype("arialbd.ttf", 30)
+        normal_font = ImageFont.truetype("arial.ttf", 24)
+        small_font = ImageFont.truetype("arial.ttf", 20)
+    except:
+        # Fallback to default font if custom fonts not available
+        title_font = ImageFont.load_default()
+        normal_font = ImageFont.load_default()
+        small_font = ImageFont.load_default()
+    
+    # Draw user avatar
+    avatar_size = 180
+    avatar_margin = 40
+    
+    # Download and process avatar
+    avatar_data = await user.display_avatar.read()
+    avatar_img = Image.open(io.BytesIO(avatar_data)).convert("RGBA")
+    avatar_img = avatar_img.resize((avatar_size, avatar_size), Image.LANCZOS)
+    
+    # Create circular mask for avatar
+    mask = Image.new('L', (avatar_size, avatar_size), 0)
+    draw_mask = ImageDraw.Draw(mask)
+    draw_mask.ellipse((0, 0, avatar_size, avatar_size), fill=255)
+    
+    # Apply mask to avatar
+    avatar_img.putalpha(mask)
+    
+    # Paste avatar onto background
+    img.paste(avatar_img, (avatar_margin, (height - avatar_size) // 2), avatar_img)
+    
+    # Draw user name
+    username_x = avatar_margin * 2 + avatar_size
+    username_y = 70
+    draw.text((username_x, username_y), user.display_name, fill=(255, 255, 255), font=title_font)
+    
+    # Draw rank text
+    rank_text = f"Rank #{rank}" if rank else "Unranked"
+    draw.text((username_x, username_y + 40), rank_text, fill=(200, 200, 200), font=normal_font)
+    
+    # Draw level text
+    level_text = f"Level {level}"
+    level_width = draw.textlength(level_text, font=normal_font)
+    draw.text((width - 40 - level_width, username_y), level_text, fill=(255, 255, 255), font=normal_font)
+    
+    # Draw XP text
+    xp_text = f"{xp_current:,} / {xp_required:,} XP"
+    xp_width = draw.textlength(xp_text, font=small_font)
+    draw.text((width - 40 - xp_width, username_y + 40), xp_text, fill=(200, 200, 200), font=small_font)
+    
+    # Draw progress bar background
+    progress_bar_width = width - username_x - 40
+    progress_bar_height = 30
+    progress_bar_y = username_y + 90
+    draw.rounded_rectangle(
+        [username_x, progress_bar_y, username_x + progress_bar_width, progress_bar_y + progress_bar_height],
+        radius=10,
+        fill=(50, 50, 50)
+    )
+    
+    # Draw progress bar fill
+    fill_width = int(progress_bar_width * (progress_percentage / 100))
+    if fill_width > 0:
+        draw.rounded_rectangle(
+            [username_x, progress_bar_y, username_x + fill_width, progress_bar_y + progress_bar_height],
+            radius=10,
+            fill=(88, 101, 242)  # Discord blurple color
+        )
+    
+    # Draw progress percentage
+    progress_text = f"{progress_percentage:.1f}%"
+    progress_text_width = draw.textlength(progress_text, font=small_font)
+    progress_text_x = username_x + (progress_bar_width - progress_text_width) // 2
+    draw.text((progress_text_x, progress_bar_y + 5), progress_text, fill=(255, 255, 255), font=small_font)
+    
+    # Save image to buffer
+    buffer = io.BytesIO()
+    img.save(buffer, format='PNG')
+    buffer.seek(0)
+    
+    return buffer
 
 async def handle_command_error(interaction: discord.Interaction, error: Exception):
     """Centralized error handling for commands"""
@@ -3033,6 +3258,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
