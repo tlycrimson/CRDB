@@ -221,27 +221,36 @@ def create_gradient_background(width, height):
             draw.line([(0, y), (width, y)], fill=(intensity, 0, 0))
         return base
 
-# Pre-generate at module level
-_ROUNDED_CORNER_MASK = None
+# Cache for rounded masks by size
+_MASK_CACHE = {}
 
-def get_rounded_corner_mask():
-    """Get or create the rounded corner mask"""
-    global _ROUNDED_CORNER_MASK
-    if _ROUNDED_CORNER_MASK is None:
-        mask = Image.new("L", (CARD_WIDTH, CARD_HEIGHT), 0)
-        mask_draw = ImageDraw.Draw(mask)
-        mask_draw.rounded_rectangle([0, 0, CARD_WIDTH, CARD_HEIGHT], 15, fill=255)
-        _ROUNDED_CORNER_MASK = mask
-    return _ROUNDED_CORNER_MASK
+def get_rounded_corner_mask(width: int, height: int, radius: int = 15) -> Image.Image:
+    """Return a cached rounded-corner mask for a given size"""
+    key = (width, height, radius)
+    if key not in _MASK_CACHE:
+        mask = Image.new("L", (width, height), 0)
+        draw = ImageDraw.Draw(mask)
+        draw.rounded_rectangle([0, 0, width, height], radius, fill=255)
+        _MASK_CACHE[key] = mask
+    return _MASK_CACHE[key]
 
-# Pre-generate the gradient at startup
-COMMON_BACKGROUND = create_gradient_background(CARD_WIDTH, CARD_HEIGHT)
+
+# Cache for gradient backgrounds by size
+_BACKGROUND_CACHE = {}
+
+def get_gradient_background(width: int, height: int) -> Image.Image:
+    """Return a cached gradient background for given size"""
+    key = (width, height)
+    if key not in _BACKGROUND_CACHE:
+        _BACKGROUND_CACHE[key] = create_gradient_background(width, height).convert("RGBA")
+    return _BACKGROUND_CACHE[key].copy()
+
 
 
 async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = None) -> io.BytesIO:
     """Generate a modern rank card with tier system and ranking"""
     # Create card with pre-generated background - ensure it's RGBA
-    card = COMMON_BACKGROUND.copy().convert("RGBA")
+    card = get_gradient_background(CARD_WIDTH, CARD_HEIGHT)
     draw = ImageDraw.Draw(card)
     
     # Get tier info
@@ -305,68 +314,40 @@ async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = 
     
     # XP text inside bar
     try:
-        # Modern PIL
         text_w = draw.textlength(xp_text, font=font_small)
     except AttributeError:
-        # Legacy PIL - use textbbox for more accurate measurement
         try:
             bbox = draw.textbbox((0, 0), xp_text, font=font_small)
             text_w = bbox[2] - bbox[0]
         except AttributeError:
-            # Ultimate fallback
-            text_w = len(xp_text) * 7  # Approximate width
+            text_w = len(xp_text) * 7  # Fallback
     
-    # Position text in center of bar
     text_x = bar_x + (bar_w - text_w) // 2
-    text_y = bar_y + (bar_h - 12) // 2  # Center vertically
+    text_y = bar_y + (bar_h - 12) // 2
     
-    # Add text shadow for better readability
-    draw.text((text_x+1, text_y+1), xp_text, font=font_small, fill=(0, 0, 0, 128))
+    draw.text((text_x+1, text_y+1), xp_text, font=font_small, fill=(0, 0, 0, 128))  # shadow
     draw.text((text_x, text_y), xp_text, font=font_small, fill=(255, 255, 255))
     
-    # Rank and tier info (top-right corner)
+    # Rank + tier (top-right corner)
     if rank:
-        rank_text = f"RANK #{rank}"
-        tier_text = f"{tier_name}"
-        
-        # Calculate positions
+        rank_tier_text = f"#{rank} {tier_name} Tier"
         try:
-            rank_width = draw.textlength(rank_text, font=font_medium)
-            tier_width = draw.textlength(tier_text, font=font_medium)
+            text_w = draw.textlength(rank_tier_text, font=font_medium)
         except AttributeError:
-            rank_width = len(rank_text) * 10
-            tier_width = len(tier_text) * 10
-        
-        max_width = max(rank_width, tier_width)
-        right_margin = 20
-        
-        # Draw rank
-        draw.text(
-            (CARD_WIDTH - max_width - right_margin, 20), 
-            rank_text, 
-            font=font_medium, 
-            fill=(255, 255, 255)
-        )
-        
-        # Draw tier
-        draw.text(
-            (CARD_WIDTH - max_width - right_margin, 45), 
-            tier_text, 
-            font=font_medium, 
-            fill=(255, 255, 255)
-        )
+            text_w = len(rank_tier_text) * 10
+        draw.text((CARD_WIDTH - text_w - 20, 20), rank_tier_text, font=font_medium, fill=(255, 255, 255))
     
-    # SIMPLIFIED ROUNDED CORNERS - Draw directly on the image
-    # Create a mask for rounded corners
-    mask = get_rounded_corner_mask()
+
+    # ✅ Apply rounded corners (cached by size)
+    mask = get_rounded_corner_mask(card.width, card.height, 15)
     card.putalpha(mask)
 
-    
     # Save to buffer
     buffer = io.BytesIO()
     card.save(buffer, format="PNG", optimize=True)
     buffer.seek(0)
     return buffer
+
 
 # Global rate limiter configuration
 GLOBAL_RATE_LIMIT = 15  # requests per minute
@@ -3259,6 +3240,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
