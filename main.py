@@ -213,17 +213,11 @@ COMMON_BACKGROUND = create_gradient_background(CARD_WIDTH, CARD_HEIGHT)
 async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = None) -> io.BytesIO:
     """Generate a modern rank card with tier system and ranking"""
     # Create card with pre-generated background
-    card = COMMON_BACKGROUND.copy().convert("RGBA")
+    card = COMMON_BACKGROUND.copy().convert("RGBA")  # Ensure it's in RGBA mode
     draw = ImageDraw.Draw(card)
     
     # Get tier info
     tier_name, current_threshold, next_threshold = get_tier_info(xp)
-    
-    # Rounded card edges
-    mask = Image.new("L", (CARD_WIDTH, CARD_HEIGHT), 0)
-    mask_draw = ImageDraw.Draw(mask)
-    mask_draw.rounded_rectangle([0, 0, CARD_WIDTH, CARD_HEIGHT], 15, fill=255)
-    card.putalpha(mask)
     
     # Load fonts
     font_large = get_cached_font(20)
@@ -327,12 +321,21 @@ async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = 
             fill=(255, 255, 255)
         )
     
+    # Create rounded corners using a mask (FIXED VERSION)
+    # Create a new image with alpha channel for the rounded corners
+    rounded_card = Image.new("RGBA", (CARD_WIDTH, CARD_HEIGHT), (0, 0, 0, 0))
+    mask = Image.new("L", (CARD_WIDTH, CARD_HEIGHT), 0)
+    mask_draw = ImageDraw.Draw(mask)
+    mask_draw.rounded_rectangle([0, 0, CARD_WIDTH, CARD_HEIGHT], 15, fill=255)
+    
+    # Apply the mask to create rounded corners
+    rounded_card.paste(card, (0, 0), mask)
+    
     # Save to buffer
     buffer = io.BytesIO()
-    card.save(buffer, format="PNG", optimize=True)
+    rounded_card.save(buffer, format="PNG", optimize=True)
     buffer.seek(0)
-    return buffer    
-
+    return buffer
 
 
 # Global rate limiter configuration
@@ -3226,6 +3229,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
