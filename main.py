@@ -126,6 +126,37 @@ def make_progress_bar(xp: int, current: int, next_threshold: Optional[int]) -> s
     bar = "🟩" * filled + "⬛" * (10 - filled)
     return f"{bar} ({gained}/{total_needed} XP)"
 
+def load_font(font_size: int, bold: bool = False):
+    """Load font with multiple fallbacks for Render hosting"""
+    font_paths = [
+        # Common Linux paths (Render uses Ubuntu)
+        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
+        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans.ttf",
+        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf" if bold else "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
+    ]
+    
+    # Try each font path
+    for font_path in font_paths:
+        try:
+            return ImageFont.truetype(font_path, font_size)
+        except (OSError, IOError):
+            continue
+    
+    # Ultimate fallback to default font
+    logger.warning("No suitable font found, using default font")
+    return ImageFont.load_default()
+
+# Load fonts on demand instead of at module level
+def get_font_large():
+    return load_font(28)
+
+def get_font_medium():
+    return load_font(22)
+
+def get_font_small():
+    return load_font(18)
+
+
 async def download_avatar(user: discord.User) -> Optional[bytes]:
     """Download user avatar asynchronously"""
     try:
@@ -211,6 +242,7 @@ FONT_MEDIUM = ImageFont.truetype("arial.ttf", 22) if hasattr(ImageFont, "FreeTyp
 FONT_SMALL = ImageFont.truetype("arial.ttf", 18) if hasattr(ImageFont, "FreeTypeFont") else ImageFont.load_default()
 
 # Card dimensions
+# Card dimensions
 CARD_WIDTH, CARD_HEIGHT = 700, 200
 
 async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = None):
@@ -227,28 +259,45 @@ async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = 
     avatar = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA")
     
     # Create circular avatar
-    size = min(avatar.size)
-    mask = Image.new("L", (size, size), 0)
+    size = 120
+    avatar = avatar.resize((size, size), Image.LANCZOS)
+    
+    # Create circular mask
+    mask = Image.new('L', (size, size), 0)
     draw_mask = ImageDraw.Draw(mask)
     draw_mask.ellipse((0, 0, size, size), fill=255)
-    avatar = avatar.resize((120, 120), Image.LANCZOS)
     avatar.putalpha(mask)
     
     # Paste avatar onto card
     card.paste(avatar, (30, 40), avatar)
     
+    # Load fonts
+    font_large = get_font_large()
+    font_medium = get_font_medium()
+    font_small = get_font_small()
+    
     # Display name (truncated if too long)
     display_name = user.display_name
     if len(display_name) > 15:
         display_name = display_name[:12] + "..."
-    draw.text((170, 40), display_name, font=FONT_LARGE, fill=(255, 255, 255))
+    
+    # Use textbbox for modern text size calculation
+    try:
+        bbox = draw.textbbox((0, 0), display_name, font=font_large)
+        text_height = bbox[3] - bbox[1]
+    except AttributeError:
+        # Fallback for older Pillow versions
+        text_height = 30
+    
+    draw.text((170, 40), display_name, font=font_large, fill=(255, 255, 255))
     
     # XP and tier info
-    draw.text((170, 75), f"{xp:,} XP | {tier_name}", font=FONT_MEDIUM, fill=(200, 200, 200))
+    draw.text((170, 40 + text_height + 5), f"{xp:,} XP | {tier_name}", font=font_medium, fill=(200, 200, 200))
     
     # Progress bar
     if next_threshold:
         progress = (xp - current_threshold) / (next_threshold - current_threshold)
+        progress = max(0, min(1, progress))  # Clamp between 0 and 1
         bar_width = 400
         filled_width = int(bar_width * progress)
         
@@ -257,20 +306,28 @@ async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = 
         
         # Draw filled portion
         bar_color = (220, 0, 0) if "Platinum" not in tier_name else (255, 215, 0)
-        draw.rectangle([170, 110, 170 + filled_width, 130], fill=bar_color)
+        if filled_width > 0:
+            draw.rectangle([170, 110, 170 + filled_width, 130], fill=bar_color)
         
         # XP to next tier
         xp_needed = next_threshold - xp
-        draw.text((170, 135), f"{xp_needed} XP to next tier", font=FONT_SMALL, fill=(180, 180, 180))
+        draw.text((170, 135), f"{xp_needed} XP to next tier", font=font_small, fill=(180, 180, 180))
     else:
-        draw.text((170, 110), "MAX TIER", font=FONT_MEDIUM, fill=(255, 215, 0))
+        draw.text((170, 110), "MAX TIER", font=font_medium, fill=(255, 215, 0))
     
     # Rank position in top right
     if rank:
         rank_text = f"#{rank}"
-        text_width = draw.textlength(rank_text, font=FONT_LARGE)
-        draw.text((CARD_WIDTH - text_width - 20, 20), rank_text, font=FONT_LARGE, fill=(255, 255, 255))
-        draw.text((CARD_WIDTH - text_width - 20, 50), tier_name.split()[0], font=FONT_SMALL, fill=(200, 200, 200))
+        try:
+            text_width = draw.textlength(rank_text, font=font_large)
+        except AttributeError:
+            text_width = 100  # Fallback width
+        
+        draw.text((CARD_WIDTH - text_width - 20, 20), rank_text, font=font_large, fill=(255, 255, 255))
+        
+        # Tier emoji only (without text)
+        tier_emoji = tier_name.split()[0]  # Get just the emoji part
+        draw.text((CARD_WIDTH - text_width - 20, 50), tier_emoji, font=font_small, fill=(200, 200, 200))
     
     # Save optimized image
     buffer = io.BytesIO()
@@ -3147,6 +3204,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
