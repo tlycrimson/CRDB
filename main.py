@@ -117,6 +117,14 @@ def make_progress_bar(xp: int, current: int, next_threshold: Optional[int]) -> s
 
     bar = "🟩" * filled + "⬛" * (10 - filled)
     return f"{bar} ({gained}/{total_needed} XP)"
+    
+# Card dimensions
+CARD_WIDTH, CARD_HEIGHT = 500, 150
+AVATAR_SIZE = 100
+AVATAR_POSITION = (20, (CARD_HEIGHT - AVATAR_SIZE) // 2)
+TEXT_START_X = AVATAR_POSITION[0] + AVATAR_SIZE + 20
+PROGRESS_BAR_POSITION = (TEXT_START_X, 90)
+PROGRESS_BAR_SIZE = (350, 20)
 
 def load_font(font_size: int, bold: bool = False):
     """Load font with multiple fallbacks for Render hosting"""
@@ -199,14 +207,6 @@ def create_gradient_background(width, height):
 # Pre-generate the gradient at startup
 COMMON_BACKGROUND = create_gradient_background(CARD_WIDTH, CARD_HEIGHT)
 
-
-# Card dimensions
-CARD_WIDTH, CARD_HEIGHT = 500, 150
-AVATAR_SIZE = 100
-AVATAR_POSITION = (20, (CARD_HEIGHT - AVATAR_SIZE) // 2)
-TEXT_START_X = AVATAR_POSITION[0] + AVATAR_SIZE + 20
-PROGRESS_BAR_POSITION = (TEXT_START_X, 90)
-PROGRESS_BAR_SIZE = (350, 20)
 
 
 async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = None) -> io.BytesIO:
@@ -3206,6 +3206,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
