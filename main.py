@@ -194,13 +194,13 @@ def load_font(font_size: int, bold: bool = False):
 
 # Load fonts on demand instead of at module level
 def get_font_large():
-    return load_font(28)
+    return load_font(24)
 
 def get_font_medium():
-    return load_font(22)
+    return load_font(18)
 
 def get_font_small():
-    return load_font(18)
+    return load_font(14)
     
 
 def create_gradient_background(width, height):
@@ -233,19 +233,20 @@ COMMON_BACKGROUND = None
 def initialize_gradients():
     """Pre-generate gradients at startup"""
     global COMMON_BACKGROUND
-    COMMON_BACKGROUND = create_gradient_background(934, 282)
+    COMMON_BACKGROUND = create_gradient_background(600, 200)
 
 
-# Card dimensions
-CARD_WIDTH, CARD_HEIGHT = 700, 200
+# Card dimensions - reduced size
+CARD_WIDTH, CARD_HEIGHT = 500, 150
+
 
 async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = None):
-    """Generate a minimalistic rank card with all requested features"""
+    """Generate an oval-shaped rank card with all requested features"""
     # Get tier information
     tier_name, current_threshold, next_threshold = get_tier_info(xp)
     
-    # Create base card
-    card = Image.new("RGB", (CARD_WIDTH, CARD_HEIGHT), (20, 20, 30))
+    # Create base card with transparent background
+    card = Image.new("RGBA", (CARD_WIDTH, CARD_HEIGHT), (0, 0, 0, 0))
     draw = ImageDraw.Draw(card)
 
     # Load fonts on demand
@@ -254,79 +255,88 @@ async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = 
     font_small = get_font_small()
     
     # Download and process avatar
-    avatar_bytes = await user.display_avatar.read()
-    avatar = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA")
+    avatar_bytes = await download_avatar(user)
+    if avatar_bytes:
+        avatar = create_avatar_image(avatar_bytes, 80)  # Smaller avatar
+    else:
+        # Fallback if avatar download fails
+        avatar = Image.new("RGBA", (80, 80), (100, 100, 100, 255))
+        draw_avatar = ImageDraw.Draw(avatar)
+        draw_avatar.ellipse((0, 0, 80, 80), fill=(150, 150, 150, 255))
+        draw_avatar.text((20, 25), "?", font=font_large, fill=(255, 255, 255, 255))
     
-    # Create circular avatar
-    size = 120
-    avatar = avatar.resize((size, size), Image.LANCZOS)
-    
-    # Create circular mask
-    mask = Image.new('L', (size, size), 0)
-    draw_mask = ImageDraw.Draw(mask)
-    draw_mask.ellipse((0, 0, size, size), fill=255)
-    avatar.putalpha(mask)
+    # Create oval-shaped card background
+    draw.ellipse((0, 0, CARD_WIDTH, CARD_HEIGHT), fill=(20, 20, 30, 255))
     
     # Paste avatar onto card
-    card.paste(avatar, (30, 40), avatar)
+    card.paste(avatar, (30, 35), avatar)
     
-    # Load fonts
-    font_large = get_font_large()
-    font_medium = get_font_medium()
-    font_small = get_font_small()
+    # Use clean_nickname function for display name
+    display_name = clean_nickname(user.display_name)
     
-    # Display name (truncated if too long)
-    display_name = user.display_name
-    if len(display_name) > 15:
-        display_name = display_name[:12] + "..."
-    
-    # Use textbbox for modern text size calculation
+    # Display name (full without truncation)
     try:
         bbox = draw.textbbox((0, 0), display_name, font=font_large)
         text_height = bbox[3] - bbox[1]
     except AttributeError:
         # Fallback for older Pillow versions
-        text_height = 30
+        text_height = 24
     
-    draw.text((170, 40), display_name, font=font_large, fill=(255, 255, 255))
+    draw.text((120, 35), display_name, font=font_large, fill=(255, 255, 255, 255))
     
     # XP and tier info
-    draw.text((170, 40 + text_height + 5), f"{xp:,} XP | {tier_name}", font=font_medium, fill=(200, 200, 200))
+    draw.text((120, 35 + text_height + 5), f"{xp:,} XP", font=font_medium, fill=(200, 200, 200, 255))
     
-    # Progress bar
+    # Progress bar with oval shape
     if next_threshold:
         progress = (xp - current_threshold) / (next_threshold - current_threshold)
         progress = max(0, min(1, progress))  # Clamp between 0 and 1
-        bar_width = 400
+        bar_width = 300
+        bar_height = 15
         filled_width = int(bar_width * progress)
         
-        # Draw background bar
-        draw.rectangle([170, 110, 170 + bar_width, 130], fill=(50, 50, 50))
+        # Draw oval background bar
+        draw.ellipse([120, 75, 120 + bar_width, 75 + bar_height], fill=(50, 50, 50, 255))
         
-        # Draw filled portion
-        bar_color = (220, 0, 0) if "Platinum" not in tier_name else (255, 215, 0)
+        # Draw filled portion with oval shape
+        bar_color = (220, 0, 0, 255) if "Platinum" not in tier_name else (255, 215, 0, 255)
         if filled_width > 0:
-            draw.rectangle([170, 110, 170 + filled_width, 130], fill=bar_color)
+            # For platinum users with max tier, make the bar full
+            if "Platinum" in tier_name:
+                filled_width = bar_width
+            draw.ellipse([120, 75, 120 + filled_width, 75 + bar_height], fill=bar_color)
         
-        # XP to next tier
-        xp_needed = next_threshold - xp
-        draw.text((170, 135), f"{xp_needed} XP to next tier", font=font_small, fill=(180, 180, 180))
+        # XP fraction at the end of the progress bar
+        xp_text = f"{xp - current_threshold}/{next_threshold - current_threshold}"
+        try:
+            xp_text_width = draw.textlength(xp_text, font=font_small)
+        except AttributeError:
+            xp_text_width = 60  # Fallback width
+        
+        draw.text((120 + bar_width - xp_text_width, 75 + bar_height + 5), 
+                 xp_text, font=font_small, fill=(180, 180, 180, 255))
     else:
-        draw.text((170, 110), "MAX TIER", font=font_medium, fill=(255, 215, 0))
+        # For max tier users (Platinum)
+        bar_width = 300
+        bar_height = 15
+        draw.ellipse([120, 75, 120 + bar_width, 75 + bar_height], fill=(255, 215, 0, 255))
+        draw.text((120, 75 + bar_height + 5), "MAX TIER", font=font_small, fill=(180, 180, 180, 255))
     
-    # Rank position in top right
+    # Tier name and rank position in top right corner
     if rank:
         rank_text = f"#{rank}"
+        tier_text = tier_name
+        
         try:
-            text_width = draw.textlength(rank_text, font=font_large)
+            rank_width = draw.textlength(rank_text, font=font_medium)
+            tier_width = draw.textlength(tier_text, font=font_small)
         except AttributeError:
-            text_width = 100  # Fallback width
+            rank_width = 40
+            tier_width = 80
         
-        draw.text((CARD_WIDTH - text_width - 20, 20), rank_text, font=font_large, fill=(255, 255, 255))
-        
-        # Tier emoji only (without text)
-        tier_emoji = tier_name.split()[0]  # Get just the emoji part
-        draw.text((CARD_WIDTH - text_width - 20, 50), tier_emoji, font=font_small, fill=(200, 200, 200))
+        # Position tier and rank in top right
+        draw.text((CARD_WIDTH - tier_width - 20, 20), tier_text, font=font_small, fill=(200, 200, 200, 255))
+        draw.text((CARD_WIDTH - rank_width - 20, 40), rank_text, font=font_medium, fill=(255, 255, 255, 255))
     
     # Save optimized image
     buffer = io.BytesIO()
@@ -334,7 +344,8 @@ async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = 
     buffer.seek(0)
     
     return buffer
-    
+
+
 # Global rate limiter configuration
 GLOBAL_RATE_LIMIT = 15  # requests per minute
 COMMAND_COOLDOWN = 10    # seconds between command uses per user
@@ -2083,6 +2094,7 @@ async def test_command(interaction: discord.Interaction, user: Optional[discord.
     # Start the deletion task
     asyncio.create_task(delete_after_delay())
 
+
 async def handle_command_error(interaction: discord.Interaction, error: Exception):
     """Centralized error handling for commands"""
     try:
@@ -3203,6 +3215,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
