@@ -146,15 +146,6 @@ def load_font(font_size: int, bold: bool = False):
     logger.warning("No suitable font found, using default font")
     return ImageFont.load_default()
 
-# Load fonts on demand instead of at module level
-def get_font_large():
-    return load_font(28)
-
-def get_font_medium():
-    return load_font(22)
-
-def get_font_small():
-    return load_font(18)
 
 
 async def download_avatar(user: discord.User) -> Optional[bytes]:
@@ -201,7 +192,16 @@ def load_font(font_size: int, bold: bool = False):
     # Ultimate fallback
     return ImageFont.load_default()
 
-import numpy as np
+# Load fonts on demand instead of at module level
+def get_font_large():
+    return load_font(28)
+
+def get_font_medium():
+    return load_font(22)
+
+def get_font_small():
+    return load_font(18)
+    
 
 def create_gradient_background(width, height):
     """Create a smooth black to red gradient background using numpy"""
@@ -236,12 +236,6 @@ def initialize_gradients():
     COMMON_BACKGROUND = create_gradient_background(934, 282)
 
 
-# Pre-loaded fonts for better performance
-FONT_LARGE = ImageFont.truetype("arial.ttf", 28) if hasattr(ImageFont, "FreeTypeFont") else ImageFont.load_default()
-FONT_MEDIUM = ImageFont.truetype("arial.ttf", 22) if hasattr(ImageFont, "FreeTypeFont") else ImageFont.load_default()
-FONT_SMALL = ImageFont.truetype("arial.ttf", 18) if hasattr(ImageFont, "FreeTypeFont") else ImageFont.load_default()
-
-# Card dimensions
 # Card dimensions
 CARD_WIDTH, CARD_HEIGHT = 700, 200
 
@@ -253,6 +247,11 @@ async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = 
     # Create base card
     card = Image.new("RGB", (CARD_WIDTH, CARD_HEIGHT), (20, 20, 30))
     draw = ImageDraw.Draw(card)
+
+    # Load fonts on demand
+    font_large = get_font_large()
+    font_medium = get_font_medium()
+    font_small = get_font_small()
     
     # Download and process avatar
     avatar_bytes = await user.display_avatar.read()
@@ -3204,6 +3203,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
