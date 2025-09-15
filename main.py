@@ -241,14 +241,27 @@ CARD_WIDTH, CARD_HEIGHT = 500, 150
 
 
 async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = None):
-    """Generate a rounded-rectangle (oval style) rank card with redesigned features"""
+    """Generate a modern rank card styled like the provided example."""
+    # Card dimensions
+    CARD_WIDTH, CARD_HEIGHT = 600, 220
+
     # Get tier info
     tier_name, current_threshold, next_threshold = get_tier_info(xp)
 
-    # Smaller oval card
-    CARD_WIDTH, CARD_HEIGHT = 450, 140
+    # Base image
     card = Image.new("RGBA", (CARD_WIDTH, CARD_HEIGHT), (0, 0, 0, 0))
     draw = ImageDraw.Draw(card)
+
+    # Background gradient
+    for y in range(CARD_HEIGHT):
+        shade = int(40 + (y / CARD_HEIGHT) * 70)
+        draw.line([(0, y), (CARD_WIDTH, y)], fill=(shade, shade, shade + 25))
+
+    # Rounded rectangle mask for smooth edges
+    mask = Image.new("L", (CARD_WIDTH, CARD_HEIGHT), 0)
+    mask_draw = ImageDraw.Draw(mask)
+    mask_draw.rounded_rectangle([0, 0, CARD_WIDTH, CARD_HEIGHT], 30, fill=255)
+    card.putalpha(mask)
 
     # Fonts
     font_large = get_font_large()
@@ -256,80 +269,65 @@ async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = 
     font_small = get_font_small()
 
     # Avatar
+    avatar_size = 120
+    avatar_x, avatar_y = 25, (CARD_HEIGHT - avatar_size) // 2
     avatar_bytes = await download_avatar(user)
     if avatar_bytes:
-        avatar = create_avatar_image(avatar_bytes, 70)
+        avatar = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA")
+        avatar = avatar.resize((avatar_size, avatar_size), Image.LANCZOS)
+
+        # Rounded rectangle mask for avatar
+        avatar_mask = Image.new("L", (avatar_size, avatar_size), 0)
+        avatar_draw = ImageDraw.Draw(avatar_mask)
+        avatar_draw.rounded_rectangle([0, 0, avatar_size, avatar_size], 25, fill=255)
+        avatar.putalpha(avatar_mask)
+        card.paste(avatar, (avatar_x, avatar_y), avatar)
     else:
-        avatar = Image.new("RGBA", (70, 70), (100, 100, 100, 255))
-        draw_avatar = ImageDraw.Draw(avatar)
-        draw_avatar.ellipse((0, 0, 70, 70), fill=(150, 150, 150, 255))
-        draw_avatar.text((20, 20), "?", font=font_medium, fill=(255, 255, 255, 255))
+        # Placeholder
+        draw.rounded_rectangle(
+            [avatar_x, avatar_y, avatar_x + avatar_size, avatar_y + avatar_size],
+            25,
+            fill=(80, 80, 80),
+        )
+        draw.text((avatar_x + 40, avatar_y + 40), "?", font=font_large, fill=(255, 255, 255))
 
-    # Rounded-rectangle background (oval card)
-    draw.rounded_rectangle((0, 0, CARD_WIDTH, CARD_HEIGHT),
-                           radius=70, fill=(25, 25, 35, 255))
-
-    # Paste avatar
-    card.paste(avatar, (25, 35), avatar)
-
-    # Clean username
+    # Username (full, cleaned)
     display_name = clean_nickname(user.display_name)
-    draw.text((110, 35), display_name, font=font_large, fill=(255, 255, 255, 255))
+    text_x = avatar_x + avatar_size + 20
+    draw.text((text_x, 40), display_name, font=font_large, fill=(255, 255, 255))
 
-    # Show XP
-    draw.text((110, 65), f"{xp:,} XP", font=font_medium, fill=(200, 200, 200, 255))
+    # Tier below username
+    draw.text((text_x, 70), tier_name, font=font_small, fill=(200, 200, 200))
+
+    # Rank in top right
+    if rank:
+        draw.text((CARD_WIDTH - 80, 30), f"#{rank}", font=font_large, fill=(255, 255, 255))
 
     # Progress bar
-    bar_x, bar_y = 110, 95
-    bar_width, bar_height = 280, 18
+    bar_x, bar_y = text_x, 120
+    bar_w, bar_h = 350, 28
+    draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], 14, fill=(70, 70, 70))
 
     if next_threshold:
         progress = (xp - current_threshold) / (next_threshold - current_threshold)
         progress = max(0, min(1, progress))
-        filled_width = int(bar_width * progress)
-
-        # Background bar
-        draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_width, bar_y + bar_height],
-                               radius=bar_height // 2, fill=(50, 50, 50, 255))
-
-        # Filled portion
-        bar_color = (220, 0, 0, 255)
-        if "Platinum" in tier_name:
-            bar_color = (255, 215, 0, 255)
-            filled_width = bar_width
-        draw.rounded_rectangle([bar_x, bar_y, bar_x + filled_width, bar_y + bar_height],
-                               radius=bar_height // 2, fill=bar_color)
-
-        # XP fraction
-        xp_text = f"{xp - current_threshold}/{next_threshold - current_threshold}"
-        try:
-            xp_text_width = draw.textlength(xp_text, font=font_small)
-        except AttributeError:
-            xp_text_width = 60
-        draw.text((bar_x + bar_width - xp_text_width, bar_y + bar_height + 3),
-                  xp_text, font=font_small, fill=(180, 180, 180, 255))
-
+        fill_w = int(bar_w * progress)
+        bar_color = (255, 215, 0) if "Platinum" in tier_name else (100, 200, 100)
+        draw.rounded_rectangle([bar_x, bar_y, bar_x + fill_w, bar_y + bar_h], 14, fill=bar_color)
+        xp_text = f"{xp:,} / {next_threshold:,}"
     else:
-        # Max tier
-        draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_width, bar_y + bar_height],
-                               radius=bar_height // 2, fill=(255, 215, 0, 255))
-        draw.text((bar_x, bar_y + bar_height + 3), "MAX TIER",
-                  font=font_small, fill=(180, 180, 180, 255))
+        # Max tier (Platinum)
+        draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], 14, fill=(255, 215, 0))
+        xp_text = f"{xp:,} (MAX)"
 
-    # Tier + rank in top-right
-    rank_text = f"#{rank}" if rank else "#N/A"
-    tier_text = tier_name
-
+    # XP fraction inside the bar
     try:
-        tier_width = draw.textlength(tier_text, font=font_small)
-        rank_width = draw.textlength(rank_text, font=font_medium)
+        text_w = draw.textlength(xp_text, font=font_small)
     except AttributeError:
-        tier_width, rank_width = 80, 40
+        text_w = len(xp_text) * 7
+    draw.text((bar_x + bar_w // 2 - text_w // 2, bar_y + 5), xp_text, font=font_small, fill=(0, 0, 0))
 
-    draw.text((CARD_WIDTH - tier_width - 15, 15), tier_text, font=font_small, fill=(200, 200, 200, 255))
-    draw.text((CARD_WIDTH - rank_width - 15, 35), rank_text, font=font_medium, fill=(255, 255, 255, 255))
-
-    # Save
+    # Save buffer
     buffer = io.BytesIO()
     card.save(buffer, format="PNG", optimize=True)
     buffer.seek(0)
@@ -3206,6 +3204,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
