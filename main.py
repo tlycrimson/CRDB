@@ -1850,13 +1850,10 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
 @bot.tree.command(name="rank", description="Check your rank or someone else's")
 @app_commands.describe(user="The user to look up (leave empty to view your own)")
 async def rank_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
-        """
-    Display a visually appealing rank card showing XP, tier, and leaderboard position.
-    Optimized for performance with caching and efficient image processing.
-    """
     if interaction.user.id != 353167234698444802:
         await interaction.response.send_message(":x: You don't have permission to use this command.", ephemeral=True)
         return    
+        
     await interaction.response.defer(ephemeral=True)
     
     try:
@@ -3039,6 +3036,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
