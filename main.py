@@ -1915,6 +1915,7 @@ async def rank_command(interaction: discord.Interaction, user: Optional[discord.
         logger.error(f"Rank command error for user {target.id if 'target' in locals() else 'unknown'}: {str(e)}")
         await interaction.followup.send(
             "❌ Failed to generate rank card. Please try again later.",
+        )
 
 async def handle_command_error(interaction: discord.Interaction, error: Exception):
     """Centralized error handling for commands"""
@@ -3036,6 +3037,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
