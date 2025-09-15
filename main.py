@@ -1845,78 +1845,6 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
         logger.error(f"XP command error: {str(e)}")
         await interaction.followup.send("❌ Failed to fetch XP data.", ephemeral=True)
 
-
-# /xp Command with rank card
-@bot.tree.command(name="rank", description="Check your rank or someone else's")
-@app_commands.describe(user="The user to look up (leave empty to view your own)")
-async def rank_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
-    if interaction.user.id != 353167234698444802:
-        await interaction.response.send_message(":x: You don't have permission to use this command.", ephemeral=True)
-        return    
-        
-    await interaction.response.defer(ephemeral=True)
-    
-    try:
-        # Determine target user
-        target = user or interaction.user
-        
-        # Parallel data fetching for better performance
-        xp_task = asyncio.create_task(bot.db.get_user_xp(target.id))
-        sorted_users_task = asyncio.create_task(bot.db.get_all_users_sorted_by_xp())
-        
-        # Wait for both database queries to complete
-        xp, sorted_users = await asyncio.gather(xp_task, sorted_users_task)
-        
-        # Get user rank
-        rank = await get_user_rank(target.id, sorted_users)
-        
-        # Generate the rank card with progress tracking
-        try:
-            with async_timeout(15):  # Add timeout for image generation
-                buffer = await generate_rank_card(target, xp, rank)
-        except asyncio.TimeoutError:
-            await interaction.followup.send(
-                "⏰ Rank card generation timed out. Please try again.",
-                ephemeral=True
-            )
-            return
-        
-        # Create embed with additional info
-        tier_name = get_tier_name(xp)
-        embed = discord.Embed(
-            title=f"📊 Rank Card for {clean_nickname(target.display_name)}",
-            color=discord.Color.blurple(),
-            timestamp=datetime.now(timezone.utc)
-        )
-        embed.add_field(name="Tier", value=tier_name, inline=True)
-        embed.add_field(name="XP", value=f"{xp:,}", inline=True)
-        if rank:
-            embed.add_field(name="Rank", value=f"#{rank}", inline=True)
-        embed.set_image(url="attachment://rank.png")
-        embed.set_footer(text=f"Requested by {interaction.user.display_name}")
-        
-        # Send the image with embed
-        file = discord.File(buffer, filename="rank.png")
-        message = await interaction.followup.send(embed=embed, file=file, ephemeral=True)
-        
-        # Delete the message after a delay if not in DM
-        if isinstance(interaction.channel, discord.TextChannel):
-            async def delete_after_delay():
-                await asyncio.sleep(10)  
-                try:
-                    await message.delete()
-                    logger.info(f"Deleted rank card for {target.id} after delay")
-                except (discord.NotFound, discord.Forbidden):
-                    pass  # Message already deleted or no permissions
-
-            asyncio.create_task(delete_after_delay())
-
-    except Exception as e:
-        logger.error(f"Rank command error for user {target.id if 'target' in locals() else 'unknown'}: {str(e)}")
-        await interaction.followup.send(
-            "❌ Failed to generate rank card. Please try again later.",
-        )
-
 async def handle_command_error(interaction: discord.Interaction, error: Exception):
     """Centralized error handling for commands"""
     try:
@@ -3037,6 +2965,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
