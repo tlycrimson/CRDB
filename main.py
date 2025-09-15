@@ -72,21 +72,20 @@ TIERS = [
     ("🥉 Bronze", 100),
     ("⚪ Unranked", 0),
 ]
+# Pre-sort tiers from highest to lowest threshold
+TIERS_SORTED = sorted(TIERS, key=lambda x: x[1], reverse=True)
 
 def get_tier_info(xp: int) -> Tuple[str, int, Optional[int]]:
     """Return (tier_name, current_threshold, next_threshold)"""
-    # Sort tiers from highest to lowest threshold
-    sorted_tiers = sorted(TIERS, key=lambda x: x[1], reverse=True)
-    
-    # Find the appropriate tier
-    for i, (name, threshold) in enumerate(sorted_tiers):
+    # Use pre-sorted tiers
+    for i, (name, threshold) in enumerate(TIERS_SORTED):
         if xp >= threshold:
             # Get next tier's threshold (if exists)
-            next_threshold = sorted_tiers[i-1][1] if i > 0 else None
+            next_threshold = TIERS_SORTED[i-1][1] if i > 0 else None
             return name, threshold, next_threshold
     
     # Fallback (should never reach here with 0 threshold)
-    return "⚪ Unranked", 0, TIERS[-2][1] if len(TIERS) > 1 else 100
+    return "⚪ Unranked", 0, TIERS_SORTED[-2][1] if len(TIERS_SORTED) > 1 else 100
     
 def get_tier_name(xp: int) -> str:
     """Return just the tier name"""
@@ -96,12 +95,12 @@ def get_tier_name(xp: int) -> str:
 async def get_user_rank(user_id: int, sorted_users: list) -> Optional[int]:
     """Get a user's rank position based on XP (lower number = higher rank)"""
     try:
-        # Find the user's position (index + 1 since ranks start at 1)
-        user_id_str = str(user_id)  # Convert to string since Supabase stores as string
-        for index, (user_id_in_db, _) in enumerate(sorted_users):
-            if user_id_in_db == user_id_str:
-                return index + 1
-        return None
+        # Create a lookup dictionary for this specific call
+        rank_lookup = {user_id_in_db: index + 1 
+                      for index, (user_id_in_db, _) in enumerate(sorted_users)}
+        
+        user_id_str = str(user_id)
+        return rank_lookup.get(user_id_str)
     except Exception:
         return None
 
@@ -127,8 +126,23 @@ TEXT_START_X = AVATAR_POSITION[0] + AVATAR_SIZE + 20
 PROGRESS_BAR_POSITION = (TEXT_START_X, 90)
 PROGRESS_BAR_SIZE = (350, 20)
 
+# At module level after font_paths definition
+_SUCCESSFUL_FONT_PATHS = {}
+
 def load_font(font_size: int, bold: bool = False):
-    """Load font with multiple fallbacks for Render hosting"""
+    """Load font with cached successful paths"""
+    font_key = "bold" if bold else "regular"
+    
+    # Use cached path if available
+    if font_key in _SUCCESSFUL_FONT_PATHS:
+        try:
+            font_path = _SUCCESSFUL_FONT_PATHS[font_key]
+            return ImageFont.truetype(font_path, font_size)
+        except (OSError, IOError):
+            # Path is no longer valid, remove from cache
+            logger.warning(f"Cached font path {font_path} no longer valid, removing from cache")
+            del _SUCCESSFUL_FONT_PATHS[font_key]
+    
     font_paths = [
         # Common Linux paths (Render uses Ubuntu)
         "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
@@ -139,7 +153,10 @@ def load_font(font_size: int, bold: bool = False):
     # Try each font path
     for font_path in font_paths:
         try:
-            return ImageFont.truetype(font_path, font_size)
+            font = ImageFont.truetype(font_path, font_size)
+            _SUCCESSFUL_FONT_PATHS[font_key] = font_path  # Cache successful path
+            logger.info(f"Successfully loaded font from {font_path}")
+            return font
         except (OSError, IOError):
             continue
     
@@ -195,25 +212,36 @@ def create_gradient_background(width, height):
         return Image.fromarray(gradient).convert('RGB')
     except Exception as e:
         logger.warning(f"Failed to create gradient with numpy: {e}")
-        # Fallback to simpler method
+        # More efficient fallback method
         base = Image.new('RGB', (width, height), color=(0, 0, 0))
+        # Create gradient by drawing horizontal lines (much faster than pixel-by-pixel)
         draw = ImageDraw.Draw(base)
-        for y in range(0, height, 2):  # Draw every other line for performance
+        for y in range(height):
             intensity = int(255 * (y / height) * 0.7)
             draw.line([(0, y), (width, y)], fill=(intensity, 0, 0))
-            if y + 1 < height:
-                draw.line([(0, y+1), (width, y+1)], fill=(intensity, 0, 0))
         return base
+
+# Pre-generate at module level
+_ROUNDED_CORNER_MASK = None
+
+def get_rounded_corner_mask():
+    """Get or create the rounded corner mask"""
+    global _ROUNDED_CORNER_MASK
+    if _ROUNDED_CORNER_MASK is None:
+        mask = Image.new("L", (CARD_WIDTH, CARD_HEIGHT), 0)
+        mask_draw = ImageDraw.Draw(mask)
+        mask_draw.rounded_rectangle([0, 0, CARD_WIDTH, CARD_HEIGHT], 15, fill=255)
+        _ROUNDED_CORNER_MASK = mask
+    return _ROUNDED_CORNER_MASK
 
 # Pre-generate the gradient at startup
 COMMON_BACKGROUND = create_gradient_background(CARD_WIDTH, CARD_HEIGHT)
 
 
-
 async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = None) -> io.BytesIO:
     """Generate a modern rank card with tier system and ranking"""
-    # Create card with pre-generated background
-    card = COMMON_BACKGROUND.copy().convert("RGBA")  # Ensure it's in RGBA mode
+    # Create card with pre-generated background - ensure it's RGBA
+    card = COMMON_BACKGROUND.copy().convert("RGBA")
     draw = ImageDraw.Draw(card)
     
     # Get tier info
@@ -277,9 +305,16 @@ async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = 
     
     # XP text inside bar
     try:
+        # Modern PIL
         text_w = draw.textlength(xp_text, font=font_small)
     except AttributeError:
-        text_w = len(xp_text) * 7  # Approximate width
+        # Legacy PIL - use textbbox for more accurate measurement
+        try:
+            bbox = draw.textbbox((0, 0), xp_text, font=font_small)
+            text_w = bbox[2] - bbox[0]
+        except AttributeError:
+            # Ultimate fallback
+            text_w = len(xp_text) * 7  # Approximate width
     
     # Position text in center of bar
     text_x = bar_x + (bar_w - text_w) // 2
@@ -321,22 +356,17 @@ async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = 
             fill=(255, 255, 255)
         )
     
-    # Create rounded corners using a mask (FIXED VERSION)
-    # Create a new image with alpha channel for the rounded corners
-    rounded_card = Image.new("RGBA", (CARD_WIDTH, CARD_HEIGHT), (0, 0, 0, 0))
-    mask = Image.new("L", (CARD_WIDTH, CARD_HEIGHT), 0)
-    mask_draw = ImageDraw.Draw(mask)
-    mask_draw.rounded_rectangle([0, 0, CARD_WIDTH, CARD_HEIGHT], 15, fill=255)
-    
-    # Apply the mask to create rounded corners
-    rounded_card.paste(card, (0, 0), mask)
+    # SIMPLIFIED ROUNDED CORNERS - Draw directly on the image
+    # Create a mask for rounded corners
+    mask = get_rounded_corner_mask()
+    card.putalpha(mask)
+
     
     # Save to buffer
     buffer = io.BytesIO()
-    rounded_card.save(buffer, format="PNG", optimize=True)
+    card.save(buffer, format="PNG", optimize=True)
     buffer.seek(0)
     return buffer
-
 
 # Global rate limiter configuration
 GLOBAL_RATE_LIMIT = 15  # requests per minute
@@ -2075,7 +2105,7 @@ async def rank_command(interaction: discord.Interaction, user: Optional[discord.
     if interaction.user.id != 353167234698444802:
         await interaction.response.send_message(":x: You don't have permission to use this command.", ephemeral=True)
         return    
-    await interaction.response.defer()
+    await interaction.response.defer(ephemeral=True)
     
     # Determine target user
     target = user or interaction.user
@@ -3229,6 +3259,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
