@@ -118,235 +118,6 @@ def make_progress_bar(xp: int, current: int, next_threshold: Optional[int]) -> s
     bar = "🟩" * filled + "⬛" * (10 - filled)
     return f"{bar} ({gained}/{total_needed} XP)"
     
-# Card dimensions
-CARD_WIDTH, CARD_HEIGHT = 500, 150
-AVATAR_SIZE = 100
-AVATAR_POSITION = (20, (CARD_HEIGHT - AVATAR_SIZE) // 2)
-TEXT_START_X = AVATAR_POSITION[0] + AVATAR_SIZE + 20
-PROGRESS_BAR_POSITION = (TEXT_START_X, 90)
-PROGRESS_BAR_SIZE = (350, 20)
-
-# At module level after font_paths definition
-_SUCCESSFUL_FONT_PATHS = {}
-
-def load_font(font_size: int, bold: bool = False):
-    """Load font with cached successful paths"""
-    font_key = "bold" if bold else "regular"
-    
-    # Use cached path if available
-    if font_key in _SUCCESSFUL_FONT_PATHS:
-        try:
-            font_path = _SUCCESSFUL_FONT_PATHS[font_key]
-            return ImageFont.truetype(font_path, font_size)
-        except (OSError, IOError):
-            # Path is no longer valid, remove from cache
-            logger.warning(f"Cached font path {font_path} no longer valid, removing from cache")
-            del _SUCCESSFUL_FONT_PATHS[font_key]
-    
-    font_paths = [
-        # Common Linux paths (Render uses Ubuntu)
-        "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-        "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans.ttf",
-        "/usr/share/fonts/truetype/freefont/FreeSansBold.ttf" if bold else "/usr/share/fonts/truetype/freefont/FreeSans.ttf",
-    ]
-    
-    # Try each font path
-    for font_path in font_paths:
-        try:
-            font = ImageFont.truetype(font_path, font_size)
-            _SUCCESSFUL_FONT_PATHS[font_key] = font_path  # Cache successful path
-            logger.info(f"Successfully loaded font from {font_path}")
-            return font
-        except (OSError, IOError):
-            continue
-    
-    # Ultimate fallback to default font
-    logger.warning("No suitable font found, using default font")
-    return ImageFont.load_default()
-
-# Font cache
-_font_cache = {}
-
-def get_cached_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
-    """Get a cached font instance to avoid repeated loading"""
-    key = f"{size}_{bold}"
-    if key not in _font_cache:
-        _font_cache[key] = load_font(size, bold)
-    return _font_cache[key]
-
-
-async def download_avatar(user: discord.User) -> Optional[bytes]:
-    """Download user avatar asynchronously"""
-    try:
-        return await user.display_avatar.read()
-    except Exception as e:
-        logger.warning(f"Failed to download avatar for {user}: {e}")
-        return None
-
-
-def create_avatar_image(avatar_data: bytes) -> Image.Image:
-    """Create circular avatar image from bytes"""
-    avatar_img = Image.open(io.BytesIO(avatar_data)).convert("RGBA")
-    avatar_img = avatar_img.resize((AVATAR_SIZE, AVATAR_SIZE), Image.LANCZOS)
-    
-    # Create circular mask
-    mask = Image.new('L', (AVATAR_SIZE, AVATAR_SIZE), 0)
-    draw_mask = ImageDraw.Draw(mask)
-    draw_mask.ellipse((0, 0, AVATAR_SIZE, AVATAR_SIZE), fill=255)
-    avatar_img.putalpha(mask)
-    
-    return avatar_img
-    
-
-def create_gradient_background(width, height):
-    """Create a smooth black to red gradient background using numpy"""
-    try:
-        # Create vertical gradient array
-        y_coords = np.arange(height)
-        red_values = np.uint8(255 * (y_coords / height) * 0.7)
-        
-        # Create RGB array
-        gradient = np.zeros((height, width, 3), dtype=np.uint8)
-        gradient[:, :, 0] = red_values[:, np.newaxis]  # Red channel
-        
-        return Image.fromarray(gradient).convert('RGB')
-    except Exception as e:
-        logger.warning(f"Failed to create gradient with numpy: {e}")
-        # More efficient fallback method
-        base = Image.new('RGB', (width, height), color=(0, 0, 0))
-        # Create gradient by drawing horizontal lines (much faster than pixel-by-pixel)
-        draw = ImageDraw.Draw(base)
-        for y in range(height):
-            intensity = int(255 * (y / height) * 0.7)
-            draw.line([(0, y), (width, y)], fill=(intensity, 0, 0))
-        return base
-
-# Cache for rounded masks by size
-_MASK_CACHE = {}
-
-def get_rounded_corner_mask(width: int, height: int, radius: int = 15) -> Image.Image:
-    """Return a cached rounded-corner mask for a given size"""
-    key = (width, height, radius)
-    if key not in _MASK_CACHE:
-        mask = Image.new("L", (width, height), 0)
-        draw = ImageDraw.Draw(mask)
-        draw.rounded_rectangle([0, 0, width, height], radius, fill=255)
-        _MASK_CACHE[key] = mask
-    return _MASK_CACHE[key]
-
-
-# Cache for gradient backgrounds by size
-_BACKGROUND_CACHE = {}
-
-def get_gradient_background(width: int, height: int) -> Image.Image:
-    """Return a cached gradient background for given size"""
-    key = (width, height)
-    if key not in _BACKGROUND_CACHE:
-        _BACKGROUND_CACHE[key] = create_gradient_background(width, height).convert("RGBA")
-    return _BACKGROUND_CACHE[key].copy()
-
-
-
-async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = None) -> io.BytesIO:
-    """Generate a modern rank card with tier system and ranking"""
-    # Create card with pre-generated background - ensure it's RGBA
-    card = get_gradient_background(CARD_WIDTH, CARD_HEIGHT)
-    draw = ImageDraw.Draw(card)
-    
-    # Get tier info
-    tier_name, current_threshold, next_threshold = get_tier_info(xp)
-    
-    # Load fonts
-    font_large = get_cached_font(20)
-    font_medium = get_cached_font(16)
-    font_small = get_cached_font(12)
-    
-    # Avatar
-    avatar_bytes = await download_avatar(user)
-    if avatar_bytes:
-        avatar = create_avatar_image(avatar_bytes)
-        card.paste(avatar, AVATAR_POSITION, avatar)
-    else:
-        # Fallback avatar
-        draw.rounded_rectangle(
-            [AVATAR_POSITION[0], AVATAR_POSITION[1], 
-             AVATAR_POSITION[0] + AVATAR_SIZE, AVATAR_POSITION[1] + AVATAR_SIZE],
-            15,
-            fill=(80, 80, 80),
-        )
-        draw.text((AVATAR_POSITION[0] + 35, AVATAR_POSITION[1] + 35), "?", font=font_large, fill=(255, 255, 255))
-    
-    # Username
-    display_name = clean_nickname(user.display_name)
-    draw.text((TEXT_START_X, 30), display_name, font=font_large, fill=(255, 255, 255))
-    
-    # Progress bar background
-    bar_x, bar_y = PROGRESS_BAR_POSITION
-    bar_w, bar_h = PROGRESS_BAR_SIZE
-    draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], 10, fill=(70, 70, 70))
-    
-    # Progress bar fill
-    if next_threshold:
-        progress = (xp - current_threshold) / (next_threshold - current_threshold)
-        progress = max(0, min(1, progress))
-        fill_w = int(bar_w * progress)
-        
-        # Different colors based on tier
-        if "Platinum" in tier_name:
-            bar_color = (255, 215, 0)  # Gold
-        elif "Diamond" in tier_name:
-            bar_color = (185, 242, 255)  # Light blue
-        elif "Gold" in tier_name:
-            bar_color = (255, 215, 0)  # Gold
-        elif "Silver" in tier_name:
-            bar_color = (192, 192, 192)  # Silver
-        elif "Bronze" in tier_name:
-            bar_color = (205, 127, 50)  # Bronze
-        else:
-            bar_color = (100, 200, 100)  # Green
-        
-        draw.rounded_rectangle([bar_x, bar_y, bar_x + fill_w, bar_y + bar_h], 10, fill=bar_color)
-        xp_text = f"{xp:,} / {next_threshold:,} XP"
-    else:
-        # Max level
-        draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], 10, fill=(255, 215, 0))
-        xp_text = f"{xp:,} XP (MAX)"
-    
-    # XP text inside bar
-    try:
-        text_w = draw.textlength(xp_text, font=font_small)
-    except AttributeError:
-        try:
-            bbox = draw.textbbox((0, 0), xp_text, font=font_small)
-            text_w = bbox[2] - bbox[0]
-        except AttributeError:
-            text_w = len(xp_text) * 7  # Fallback
-    
-    text_x = bar_x + (bar_w - text_w) // 2
-    text_y = bar_y + (bar_h - 12) // 2
-    
-    draw.text((text_x+1, text_y+1), xp_text, font=font_small, fill=(0, 0, 0, 128))  # shadow
-    draw.text((text_x, text_y), xp_text, font=font_small, fill=(255, 255, 255))
-    
-    # Rank + tier (top-right corner)
-    if rank:
-        rank_tier_text = f"#{rank} {tier_name} Tier"
-        try:
-            text_w = draw.textlength(rank_tier_text, font=font_medium)
-        except AttributeError:
-            text_w = len(rank_tier_text) * 10
-        draw.text((CARD_WIDTH - text_w - 20, 20), rank_tier_text, font=font_medium, fill=(255, 255, 255))
-    
-
-    # ✅ Apply rounded corners (cached by size)
-    mask = get_rounded_corner_mask(card.width, card.height, 15)
-    card.putalpha(mask)
-
-    # Save to buffer
-    buffer = io.BytesIO()
-    card.save(buffer, format="PNG", optimize=True)
-    buffer.seek(0)
-    return buffer
 
 
 # Global rate limiter configuration
@@ -2074,51 +1845,79 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
         logger.error(f"XP command error: {str(e)}")
         await interaction.followup.send("❌ Failed to fetch XP data.", ephemeral=True)
 
-CARD_WIDTH, CARD_HEIGHT = 800, 250
-FONT_PATH = "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"
-FONT_LARGE = ImageFont.truetype(FONT_PATH, 36)
-FONT_SMALL = ImageFont.truetype(FONT_PATH, 22)
 
 # /xp Command with rank card
 @bot.tree.command(name="rank", description="Check your rank or someone else's")
 @app_commands.describe(user="The user to look up (leave empty to view your own)")
 async def rank_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
+        """
+    Display a visually appealing rank card showing XP, tier, and leaderboard position.
+    Optimized for performance with caching and efficient image processing.
+    """
     if interaction.user.id != 353167234698444802:
         await interaction.response.send_message(":x: You don't have permission to use this command.", ephemeral=True)
         return    
     await interaction.response.defer(ephemeral=True)
     
-    # Determine target user
-    target = user or interaction.user
-    
-    # Get XP and sorted users list from database
-    xp = await bot.db.get_user_xp(target.id)
-    sorted_users = await bot.db.get_all_users_sorted_by_xp()
-    
-    # Get user rank
-    rank = await get_user_rank(target.id, sorted_users)
-    
-    # Generate the rank card
-    buffer = await generate_rank_card(target, xp, rank)
-    
-    # Send the image
-    message = await interaction.followup.send(file=discord.File(buffer, "rank.png"))
-    
-    # Delete the message after 10 seconds
-    async def delete_after_delay():
-        await asyncio.sleep(10)
+    try:
+        # Determine target user
+        target = user or interaction.user
+        
+        # Parallel data fetching for better performance
+        xp_task = asyncio.create_task(bot.db.get_user_xp(target.id))
+        sorted_users_task = asyncio.create_task(bot.db.get_all_users_sorted_by_xp())
+        
+        # Wait for both database queries to complete
+        xp, sorted_users = await asyncio.gather(xp_task, sorted_users_task)
+        
+        # Get user rank
+        rank = await get_user_rank(target.id, sorted_users)
+        
+        # Generate the rank card with progress tracking
         try:
-            await message.delete()
-        except discord.NotFound:
-            pass  # Message already deleted
-        except discord.Forbidden:
-            logger.warning(f"Missing permissions to delete message {message.id}")
-        except Exception as e:
-            logger.error(f"Failed to delete message: {e}")
+            with async_timeout(15):  # Add timeout for image generation
+                buffer = await generate_rank_card(target, xp, rank)
+        except asyncio.TimeoutError:
+            await interaction.followup.send(
+                "⏰ Rank card generation timed out. Please try again.",
+                ephemeral=True
+            )
+            return
+        
+        # Create embed with additional info
+        tier_name = get_tier_name(xp)
+        embed = discord.Embed(
+            title=f"📊 Rank Card for {clean_nickname(target.display_name)}",
+            color=discord.Color.blurple(),
+            timestamp=datetime.now(timezone.utc)
+        )
+        embed.add_field(name="Tier", value=tier_name, inline=True)
+        embed.add_field(name="XP", value=f"{xp:,}", inline=True)
+        if rank:
+            embed.add_field(name="Rank", value=f"#{rank}", inline=True)
+        embed.set_image(url="attachment://rank.png")
+        embed.set_footer(text=f"Requested by {interaction.user.display_name}")
+        
+        # Send the image with embed
+        file = discord.File(buffer, filename="rank.png")
+        message = await interaction.followup.send(embed=embed, file=file, ephemeral=True)
+        
+        # Delete the message after a delay if not in DM
+        if isinstance(interaction.channel, discord.TextChannel):
+            async def delete_after_delay():
+                await asyncio.sleep(10)  
+                try:
+                    await message.delete()
+                    logger.info(f"Deleted rank card for {target.id} after delay")
+                except (discord.NotFound, discord.Forbidden):
+                    pass  # Message already deleted or no permissions
 
-    # Start the deletion task
-    asyncio.create_task(delete_after_delay())
+            asyncio.create_task(delete_after_delay())
 
+    except Exception as e:
+        logger.error(f"Rank command error for user {target.id if 'target' in locals() else 'unknown'}: {str(e)}")
+        await interaction.followup.send(
+            "❌ Failed to generate rank card. Please try again later.",
 
 async def handle_command_error(interaction: discord.Interaction, error: Exception):
     """Centralized error handling for commands"""
@@ -3240,6 +3039,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
