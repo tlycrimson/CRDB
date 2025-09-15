@@ -191,7 +191,7 @@ def create_gradient_background(width, height):
         gradient = np.zeros((height, width, 3), dtype=np.uint8)
         gradient[:, :, 0] = red_values[:, np.newaxis]  # Red channel
         
-        return Image.fromarray(gradient, 'RGB')
+        return Image.fromarray(gradient).convert('RGB')
     except Exception as e:
         logger.warning(f"Failed to create gradient with numpy: {e}")
         # Fallback to simpler method
@@ -1772,9 +1772,6 @@ async def on_ready():
     if hasattr(bot, "shared_session") and bot.shared_session and not bot.shared_session.closed:
         await bot.shared_session.close()
         
-    # Initialize gradients
-    initialize_gradients()
-    logger.info("✅ Pre-generated rank card gradients")
 
     connector = aiohttp.TCPConnector(
         limit=15,
@@ -3206,6 +3203,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
