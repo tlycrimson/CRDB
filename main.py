@@ -97,8 +97,9 @@ async def get_user_rank(user_id: int, sorted_users: list) -> Optional[int]:
     """Get a user's rank position based on XP (lower number = higher rank)"""
     try:
         # Find the user's position (index + 1 since ranks start at 1)
+        user_id_str = str(user_id)  # Convert to string since Supabase stores as string
         for index, (user_id_in_db, _) in enumerate(sorted_users):
-            if user_id_in_db == user_id:
+            if user_id_in_db == user_id_str:
                 return index + 1
         return None
     except Exception:
@@ -668,6 +669,28 @@ class DatabaseHandler:
             
         except Exception as e:
             logger.error(f"❌ Failed to increment points in {table}: {e}")
+            
+    async def get_all_users_sorted_by_xp(self) -> list:
+        """Get all users sorted by XP in descending order"""
+        if not self.supabase:
+            logger.warning("Supabase not configured, returning empty list")
+            return []
+        
+        try:
+            def _work():
+                # Use Supabase query to get all users sorted by XP descending
+                res = self.supabase.table('users').select("user_id, xp").order("xp", desc=True).execute()
+                return res.data if hasattr(res, 'data') else []
+            
+            # Get the sorted user data
+            user_data = await self._run_sync(_work)
+            
+            # Convert to the expected format: list of (user_id, xp) tuples
+            return [(user['user_id'], user['xp']) for user in user_data]
+            
+        except Exception as e:
+            logger.error(f"Error getting sorted users from Supabase: {e}")
+            return []
 
 
 # Clean up old processed reactions and messages in db
@@ -3203,6 +3226,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
