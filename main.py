@@ -63,13 +63,6 @@ def clean_nickname(nickname: str) -> str:
     cleaned = re.sub(r'\[.*?\]', '', nickname).strip()
     return cleaned or nickname  # Fallback to original if empty after cleaning
 
-# Owner Permission Bypass
-def is_me():
-    def predicate(interaction: discord.Interaction) -> bool:
-        return interaction.user.id == 353167234798444802
-    return app_commands.check(predicate)
-
-    
 # XP Tier configuration
 TIERS = [
     ("🌟 Platinum", 800),
@@ -80,37 +73,36 @@ TIERS = [
     ("⚪ Unranked", 0),
 ]
 
-def get_tier_info(xp: int) -> tuple[str, int, Optional[int]]:
+def get_tier_info(xp: int) -> Tuple[str, int, Optional[int]]:
     """Return (tier_name, current_threshold, next_threshold)"""
+    # Sort tiers from highest to lowest threshold
     sorted_tiers = sorted(TIERS, key=lambda x: x[1], reverse=True)
     
+    # Find the appropriate tier
     for i, (name, threshold) in enumerate(sorted_tiers):
         if xp >= threshold:
+            # Get next tier's threshold (if exists)
             next_threshold = sorted_tiers[i-1][1] if i > 0 else None
             return name, threshold, next_threshold
     
-    return "⚪ Unranked", 0, 100
+    # Fallback (should never reach here with 0 threshold)
+    return "⚪ Unranked", 0, TIERS[-2][1] if len(TIERS) > 1 else 100
     
 def get_tier_name(xp: int) -> str:
-    """Return just the tier name for /profile command"""
+    """Return just the tier name"""
     tier_name, _, _ = get_tier_info(xp)
     return tier_name
 
-async def get_user_rank(user_id: int) -> Optional[int]:
+async def get_user_rank(user_id: int, sorted_users: list) -> Optional[int]:
     """Get a user's rank position based on XP (lower number = higher rank)"""
-    # This is a simplified example - you'll need to implement based on your data structure
     try:
-        # Example: Get all users sorted by XP descending
-        all_users = await bot.db.get_all_users_sorted_by_xp()
-        
         # Find the user's position (index + 1 since ranks start at 1)
-        for index, (user_id_in_db, xp) in enumerate(all_users):
+        for index, (user_id_in_db, _) in enumerate(sorted_users):
             if user_id_in_db == user_id:
                 return index + 1
-                
-        return None  # User not found in ranking
-    except:
-        return None  # Fallback if ranking system isn't available
+        return None
+    except Exception:
+        return None
 
 
 # Progress bar
@@ -146,6 +138,15 @@ def load_font(font_size: int, bold: bool = False):
     logger.warning("No suitable font found, using default font")
     return ImageFont.load_default()
 
+# Font cache
+_font_cache = {}
+
+def get_cached_font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont:
+    """Get a cached font instance to avoid repeated loading"""
+    key = f"{size}_{bold}"
+    if key not in _font_cache:
+        _font_cache[key] = load_font(size, bold)
+    return _font_cache[key]
 
 
 async def download_avatar(user: discord.User) -> Optional[bytes]:
@@ -157,50 +158,18 @@ async def download_avatar(user: discord.User) -> Optional[bytes]:
         return None
 
 
-def create_avatar_image(avatar_data: bytes, size: int) -> Image.Image:
+def create_avatar_image(avatar_data: bytes) -> Image.Image:
     """Create circular avatar image from bytes"""
     avatar_img = Image.open(io.BytesIO(avatar_data)).convert("RGBA")
-    avatar_img = avatar_img.resize((size, size), Image.LANCZOS)
+    avatar_img = avatar_img.resize((AVATAR_SIZE, AVATAR_SIZE), Image.LANCZOS)
     
     # Create circular mask
-    mask = Image.new('L', (size, size), 0)
+    mask = Image.new('L', (AVATAR_SIZE, AVATAR_SIZE), 0)
     draw_mask = ImageDraw.Draw(mask)
-    draw_mask.ellipse((0, 0, size, size), fill=255)
+    draw_mask.ellipse((0, 0, AVATAR_SIZE, AVATAR_SIZE), fill=255)
     avatar_img.putalpha(mask)
     
     return avatar_img
-
-
-def load_font(font_size: int, bold: bool = False):
-    """Load font with fallbacks"""
-    try:
-        font_paths = [
-            "/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
-            "/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf" if bold else "/usr/share/fonts/truetype/liberation/LiberationSans.ttf",
-            "arialbd.ttf" if bold else "arial.ttf",
-            "Arial Bold.ttf" if bold else "Arial.ttf"
-        ]
-        
-        for font_path in font_paths:
-            try:
-                return ImageFont.truetype(font_path, font_size)
-            except:
-                continue
-    except Exception as e:
-        logger.warning(f"Font loading failed: {e}")
-    
-    # Ultimate fallback
-    return ImageFont.load_default()
-
-# Load fonts on demand instead of at module level
-def get_font_large():
-    return load_font(24)
-
-def get_font_medium():
-    return load_font(18)
-
-def get_font_small():
-    return load_font(14)
     
 
 def create_gradient_background(width, height):
@@ -228,110 +197,140 @@ def create_gradient_background(width, height):
         return base
 
 # Pre-generate the gradient at startup
-COMMON_BACKGROUND = None
-
-def initialize_gradients():
-    """Pre-generate gradients at startup"""
-    global COMMON_BACKGROUND
-    COMMON_BACKGROUND = create_gradient_background(600, 200)
+COMMON_BACKGROUND = create_gradient_background(CARD_WIDTH, CARD_HEIGHT)
 
 
-# Card dimensions - reduced size
+# Card dimensions
 CARD_WIDTH, CARD_HEIGHT = 500, 150
+AVATAR_SIZE = 100
+AVATAR_POSITION = (20, (CARD_HEIGHT - AVATAR_SIZE) // 2)
+TEXT_START_X = AVATAR_POSITION[0] + AVATAR_SIZE + 20
+PROGRESS_BAR_POSITION = (TEXT_START_X, 90)
+PROGRESS_BAR_SIZE = (350, 20)
 
 
-async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = None):
-    """Generate a modern rank card with tier and position in top-right corner."""
-    CARD_WIDTH, CARD_HEIGHT = 600, 200
-
+async def generate_rank_card(user: discord.User, xp: int, rank: Optional[int] = None) -> io.BytesIO:
+    """Generate a modern rank card with tier system and ranking"""
+    # Create card with pre-generated background
+    card = COMMON_BACKGROUND.copy().convert("RGBA")
+    draw = ImageDraw.Draw(card)
+    
     # Get tier info
     tier_name, current_threshold, next_threshold = get_tier_info(xp)
-
-    # Create card
-    card = Image.new("RGBA", (CARD_WIDTH, CARD_HEIGHT), (0, 0, 0, 0))
-    draw = ImageDraw.Draw(card)
-
-    # Gradient background
-    for y in range(CARD_HEIGHT):
-        shade = int(40 + (y / CARD_HEIGHT) * 70)
-        draw.line([(0, y), (CARD_WIDTH, y)], fill=(shade, shade, shade + 25))
-
+    
     # Rounded card edges
     mask = Image.new("L", (CARD_WIDTH, CARD_HEIGHT), 0)
     mask_draw = ImageDraw.Draw(mask)
-    mask_draw.rounded_rectangle([0, 0, CARD_WIDTH, CARD_HEIGHT], 30, fill=255)
+    mask_draw.rounded_rectangle([0, 0, CARD_WIDTH, CARD_HEIGHT], 15, fill=255)
     card.putalpha(mask)
-
-    # Fonts
-    font_large = get_font_large()
-    font_medium = get_font_medium()
-    font_small = get_font_small()
-
+    
+    # Load fonts
+    font_large = get_cached_font(20)
+    font_medium = get_cached_font(16)
+    font_small = get_cached_font(12)
+    
     # Avatar
-    avatar_size = 100
-    avatar_x, avatar_y = 20, (CARD_HEIGHT - avatar_size) // 2
     avatar_bytes = await download_avatar(user)
     if avatar_bytes:
-        avatar = Image.open(io.BytesIO(avatar_bytes)).convert("RGBA")
-        avatar = avatar.resize((avatar_size, avatar_size), Image.LANCZOS)
-
-        # Rounded square avatar
-        avatar_mask = Image.new("L", (avatar_size, avatar_size), 0)
-        avatar_draw = ImageDraw.Draw(avatar_mask)
-        avatar_draw.rounded_rectangle([0, 0, avatar_size, avatar_size], 20, fill=255)
-        avatar.putalpha(avatar_mask)
-        card.paste(avatar, (avatar_x, avatar_y), avatar)
+        avatar = create_avatar_image(avatar_bytes)
+        card.paste(avatar, AVATAR_POSITION, avatar)
     else:
+        # Fallback avatar
         draw.rounded_rectangle(
-            [avatar_x, avatar_y, avatar_x + avatar_size, avatar_y + avatar_size],
-            20,
+            [AVATAR_POSITION[0], AVATAR_POSITION[1], 
+             AVATAR_POSITION[0] + AVATAR_SIZE, AVATAR_POSITION[1] + AVATAR_SIZE],
+            15,
             fill=(80, 80, 80),
         )
-        draw.text((avatar_x + 35, avatar_y + 35), "?", font=font_large, fill=(255, 255, 255))
-
+        draw.text((AVATAR_POSITION[0] + 35, AVATAR_POSITION[1] + 35), "?", font=font_large, fill=(255, 255, 255))
+    
     # Username
     display_name = clean_nickname(user.display_name)
-    text_x = avatar_x + avatar_size + 20
-    draw.text((text_x, 50), display_name, font=font_large, fill=(255, 255, 255))
-
-    # Progress bar
-    bar_x, bar_y = text_x, 100
-    bar_w, bar_h = 350, 25
-    draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], 12, fill=(70, 70, 70))
-
+    draw.text((TEXT_START_X, 30), display_name, font=font_large, fill=(255, 255, 255))
+    
+    # Progress bar background
+    bar_x, bar_y = PROGRESS_BAR_POSITION
+    bar_w, bar_h = PROGRESS_BAR_SIZE
+    draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], 10, fill=(70, 70, 70))
+    
+    # Progress bar fill
     if next_threshold:
         progress = (xp - current_threshold) / (next_threshold - current_threshold)
         progress = max(0, min(1, progress))
         fill_w = int(bar_w * progress)
-        bar_color = (255, 215, 0) if "Platinum" in tier_name else (100, 200, 100)
-        draw.rounded_rectangle([bar_x, bar_y, bar_x + fill_w, bar_y + bar_h], 12, fill=bar_color)
-        xp_text = f"{xp:,} / {next_threshold:,}"
+        
+        # Different colors based on tier
+        if "Platinum" in tier_name:
+            bar_color = (255, 215, 0)  # Gold
+        elif "Diamond" in tier_name:
+            bar_color = (185, 242, 255)  # Light blue
+        elif "Gold" in tier_name:
+            bar_color = (255, 215, 0)  # Gold
+        elif "Silver" in tier_name:
+            bar_color = (192, 192, 192)  # Silver
+        elif "Bronze" in tier_name:
+            bar_color = (205, 127, 50)  # Bronze
+        else:
+            bar_color = (100, 200, 100)  # Green
+        
+        draw.rounded_rectangle([bar_x, bar_y, bar_x + fill_w, bar_y + bar_h], 10, fill=bar_color)
+        xp_text = f"{xp:,} / {next_threshold:,} XP"
     else:
-        draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], 12, fill=(255, 215, 0))
-        xp_text = f"{xp:,} (MAX)"
-
-    # XP fraction inside bar
+        # Max level
+        draw.rounded_rectangle([bar_x, bar_y, bar_x + bar_w, bar_y + bar_h], 10, fill=(255, 215, 0))
+        xp_text = f"{xp:,} XP (MAX)"
+    
+    # XP text inside bar
     try:
         text_w = draw.textlength(xp_text, font=font_small)
     except AttributeError:
-        text_w = len(xp_text) * 7
-    draw.text((bar_x + bar_w // 2 - text_w // 2, bar_y + 4), xp_text, font=font_small, fill=(0, 0, 0))
-
-    # Rank + Tier top-right corner
+        text_w = len(xp_text) * 7  # Approximate width
+    
+    # Position text in center of bar
+    text_x = bar_x + (bar_w - text_w) // 2
+    text_y = bar_y + (bar_h - 12) // 2  # Center vertically
+    
+    # Add text shadow for better readability
+    draw.text((text_x+1, text_y+1), xp_text, font=font_small, fill=(0, 0, 0, 128))
+    draw.text((text_x, text_y), xp_text, font=font_small, fill=(255, 255, 255))
+    
+    # Rank and tier info (top-right corner)
     if rank:
-        rank_tier_text = f"#{rank} {tier_name} Tier"
+        rank_text = f"RANK #{rank}"
+        tier_text = f"{tier_name}"
+        
+        # Calculate positions
         try:
-            rt_w = draw.textlength(rank_tier_text, font=font_medium)
+            rank_width = draw.textlength(rank_text, font=font_medium)
+            tier_width = draw.textlength(tier_text, font=font_medium)
         except AttributeError:
-            rt_w = len(rank_tier_text) * 8
-        draw.text((CARD_WIDTH - rt_w - 20, 20), rank_tier_text, font=font_medium, fill=(255, 255, 255))
-
-    # Save buffer
+            rank_width = len(rank_text) * 10
+            tier_width = len(tier_text) * 10
+        
+        max_width = max(rank_width, tier_width)
+        right_margin = 20
+        
+        # Draw rank
+        draw.text(
+            (CARD_WIDTH - max_width - right_margin, 20), 
+            rank_text, 
+            font=font_medium, 
+            fill=(255, 255, 255)
+        )
+        
+        # Draw tier
+        draw.text(
+            (CARD_WIDTH - max_width - right_margin, 45), 
+            tier_text, 
+            font=font_medium, 
+            fill=(255, 255, 255)
+        )
+    
+    # Save to buffer
     buffer = io.BytesIO()
     card.save(buffer, format="PNG", optimize=True)
     buffer.seek(0)
-    return buffer
-
+    return buffer    
 
 
 
@@ -2047,25 +2046,28 @@ FONT_LARGE = ImageFont.truetype(FONT_PATH, 36)
 FONT_SMALL = ImageFont.truetype(FONT_PATH, 22)
 
 # /xp Command with rank card
-@bot.tree.command(name="test", description="Check your XP or someone else's XP")
-@app_commands.describe(user="The user to look up (leave empty to view your own XP)")
-async def test_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
+@bot.tree.command(name="rank", description="Check your rank or someone else's")
+@app_commands.describe(user="The user to look up (leave empty to view your own)")
+async def rank_command(interaction: discord.Interaction, user: Optional[discord.User] = None):
     if interaction.user.id != 353167234698444802:
         await interaction.response.send_message(":x: You don't have permission to use this command.", ephemeral=True)
-        return
+        return    
     await interaction.response.defer()
     
     # Determine target user
     target = user or interaction.user
     
-    # Get XP and rank data
+    # Get XP and sorted users list from database
     xp = await bot.db.get_user_xp(target.id)
-    rank = await get_user_rank(target.id)  # Use the rank function
+    sorted_users = await bot.db.get_all_users_sorted_by_xp()
+    
+    # Get user rank
+    rank = await get_user_rank(target.id, sorted_users)
     
     # Generate the rank card
     buffer = await generate_rank_card(target, xp, rank)
     
-    # Send the image and get the message object
+    # Send the image
     message = await interaction.followup.send(file=discord.File(buffer, "rank.png"))
     
     # Delete the message after 10 seconds
@@ -3204,6 +3206,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
