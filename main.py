@@ -394,7 +394,7 @@ class DatabaseHandler:
             self.supabase.table('users').upsert({
                 "user_id": str(user_id),
                 "xp": new_total,
-                "username": username
+                "username": clean_nickname(username)
             }).execute()
             return True, new_total
         try:
@@ -475,6 +475,24 @@ class DatabaseHandler:
         except Exception as e:
             logger.error(f"Error getting sorted users from Supabase: {e}")
             return []
+
+
+    async def discharge_user(self, user_id: str, username: str) -> None:
+        """Delete a user from all relevant tables, logging errors but not raising."""
+        tables = ["users", "HRs", "LRs", "LD", "ED"]
+
+        def _work():
+            for table in tables:
+                try:
+                    self.supabase.table(table).delete().eq("user_id", str(user_id)).execute()
+                    logger.info(f"Deleted {username} ({user_id}) from {table}")
+                except Exception as e:
+                    logger.error(f"Failed to delete {username} ({user_id}) from {table}: {e}")
+
+        try:
+            await self._run_sync(_work)
+        except Exception as e:
+            logger.error(f"Discharge operation failed for {username} ({user_id}): {e}")
 
 
 # Clean up old processed reactions and messages in db
@@ -2200,6 +2218,11 @@ async def discharge(
         failed_members = []
 
         for member in discharged_members:
+            cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
+            try:
+                await bot.db_handler.discharge_user(member.id, cleaned_nickname)
+            except Exception as e:
+                logger.error(f"Error removing {cleaned_nickname} ({member.id}) from DB: {e}")
             try:
                 try:
                     await member.send(embed=embed)
@@ -2591,7 +2614,6 @@ async def on_member_update(before: discord.Member, after: discord.Member):
             if rmp_role not in before.roles and rmp_role in after.roles:
                 await send_rmp_welcome(after)
 
-#Deserter Monitor
 @bot.event
 async def on_member_remove(member: discord.Member):
     async with global_rate_limiter:
@@ -2604,7 +2626,17 @@ async def on_member_remove(member: discord.Member):
             
         if not (alert_channel := guild.get_channel(Config.DESERTER_ALERT_CHANNEL_ID)):
             return
-            
+
+        # Clean nickname for logs + DB
+        cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
+
+        # 🔑 Remove deserter from all DB tables
+        try:
+            await bot.db_handler.discharge_user(member.id, cleaned_nickname)
+        except Exception as e:
+            logger.error(f"Error removing deserter {cleaned_nickname} ({member.id}) from DB: {e}")
+
+        # 🚨 Alert embed
         embed = discord.Embed(
             title="🚨 Deserter Alert",
             description=f"{member.mention} just deserted! Please log this in BA.",
@@ -2616,103 +2648,50 @@ async def on_member_remove(member: discord.Member):
             content=f"<@&{Config.HIGH_COMMAND_ROLE_ID}>",
             embed=embed
         )
-    
-        # For the deserter checker discharge log
+
+        # Discharge log embed
         dishonourable_embed = discord.Embed(
             title="Discharge Log",
             color=discord.Color.red(),
             timestamp=datetime.now(timezone.utc)
         )
-        
-        dishonourable_embed.add_field(
-            name="Type",
-            value="🚨 Dishonourable Discharge",
-            inline=False
-        )
-        dishonourable_embed.add_field(
-            name="Reason", 
-            value="```Desertion.```",
-            inline=False
-        )
-        
-        # Add member information (assuming you have a member object)
-        cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
-        dishonourable_embed.add_field(
-            name="Discharged Members",
-            value=f"{member.mention} | {cleaned_nickname}",
-            inline=False
-        )
-        
-        dishonourable_embed.add_field(
-            name="Discharged By", 
-            value=f"None - Unauthorised",
-            inline=True
-        )
-        
-        
-        # Set footer
+        dishonourable_embed.add_field(name="Type", value="🚨 Dishonourable Discharge", inline=False)
+        dishonourable_embed.add_field(name="Reason", value="```Desertion.```", inline=False)
+        dishonourable_embed.add_field(name="Discharged Members", value=f"{member.mention} | {cleaned_nickname}", inline=False)
+        dishonourable_embed.add_field(name="Discharged By", value="None - Unauthorised", inline=True)
         dishonourable_embed.set_footer(text="Desertion Monitor System")
-    
-        # DESERTER | BLacklist logs
+
+        # Blacklist log embed
         current_date = datetime.now(timezone.utc)
-        ending_date = current_date + timedelta(days=30)  # Adding approximately one month
-        
+        ending_date = current_date + timedelta(days=30)
         blacklist_embed = discord.Embed(
             title="⛔ Blacklist",
             color=discord.Color.red(),
             timestamp=current_date
         )
-        
-        blacklist_embed.add_field(
-            name="Issuer:",
-            value="MP Assistant",
-            inline=False
-        )
-        blacklist_embed.add_field(
-            name="Name:", 
-            value=f"{cleaned_nickname}",
-            inline=False
-        )
-        
-        blacklist_embed.add_field(
-            name="Starting date", 
-            value=f"<t:{int(current_date.timestamp())}:D>",
-            inline=False
-        )
-        
-        blacklist_embed.add_field(
-            name="Ending date", 
-            value=f"<t:{int(ending_date.timestamp())}:D>",
-            inline=False
-        )
-    
-        blacklist_embed.add_field(
-            name="Reason:", 
-            value="Desertion.",
-            inline=False
-        )
-        
-        
-        # Set footer
+        blacklist_embed.add_field(name="Issuer:", value="MP Assistant", inline=False)
+        blacklist_embed.add_field(name="Name:", value=cleaned_nickname, inline=False)
+        blacklist_embed.add_field(name="Starting date", value=f"<t:{int(current_date.timestamp())}:D>", inline=False)
+        blacklist_embed.add_field(name="Ending date", value=f"<t:{int(ending_date.timestamp())}:D>", inline=False)
+        blacklist_embed.add_field(name="Reason:", value="Desertion.", inline=False)
         blacklist_embed.set_footer(text="Desertion Monitor System")
-    
+
         try:
             d_log = bot.get_channel(Config.D_LOG_CHANNEL_ID)
             b_log = bot.get_channel(Config.B_LOG_CHANNEL_ID)
             
-            if d_log:
+            if d_log and b_log:
                 await d_log.send(embed=dishonourable_embed)
                 await b_log.send(embed=blacklist_embed)
                 logger.info(f"Logged deserted member, {cleaned_nickname}.")
             else:
-                # If main channel fails, send simple message to alternative channel
                 alt_channel = bot.get_channel(1165368316970405917)
                 if alt_channel:
-                    await alt_channel.send(f"⚠️ Failed to log deserter discharge for {cleaned_nickname} in main channel")
+                    await alt_channel.send(f"⚠️ Failed to log deserter discharge for {cleaned_nickname}")
                     logger.error(f"Failed to log deserted member {cleaned_nickname} - main channel not found")
         except Exception as e:
             logger.error(f"Error logging deserter discharge: {str(e)}")
-    
+
 
 
 @bot.event
@@ -2830,6 +2809,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
