@@ -828,7 +828,6 @@ class ReactionLogger:
             await log_channel.send(embed=embed)
     
             logger.info(f"Attempting to update points for: {member.display_name}")
-            await self.bot.sheets.update_points(member)
             await self.bot.db.increment_points("LD", member, 1)
     
         except discord.NotFound:
@@ -1194,82 +1193,6 @@ class ConfirmView(discord.ui.View):
         self.stop()
 
 
-class SheetDBLogger:
-    def __init__(self):
-        self.script_url = os.getenv("GOOGLE_SCRIPT_URL")
-        if not self.script_url:
-            logger.error("❌ Google Script URL not configured in environment variables")
-            self.ready = False
-        else:
-            self.ready = True
-            logger.info(f"✅ SheetDB Logger configured with Google Apps Script at {self.script_url}")
-
-        # Defined API keys for both trackers
-        self.tracker_keys = {
-            "LD": "LD_KEY",  # For reaction tracking
-            "ED": "ED_KEY"  # For message tracking
-        }
-
-    async def update_points(self, member: discord.Member, is_message_tracker: bool = False):
-        """Update points for a member, specifying tracker type"""
-        if not self.ready:
-            logger.error("🛑 SheetDB Logger not properly initialized")
-            return False
-
-        username = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
-        tracker_type = "ED" if is_message_tracker else "LD"
-        api_key = self.tracker_keys[tracker_type]
-        
-        logger.info(f"🔄 Attempting to update {username}'s points in {tracker_type} tracker")
-        logger.debug(f"🔍 Member: {member.id}, Display Name: {member.display_name}, Cleaned Username: {username}")
-
-        payload = {
-            "username": username,
-            "key": api_key,
-            "tracker": tracker_type
-        }
-
-        logger.info(f"📤 Sending payload to Google Script: {payload}")
-
-        try:
-            async with aiohttp.ClientSession() as session:
-                async with session.post(
-                    self.script_url,  
-                    json=payload,
-                    timeout=aiohttp.ClientTimeout(total=15)
-                ) as response:
-                    response_text = (await response.text()).strip()
-                    
-                    # Log raw response for debugging
-                    logger.debug(f"📥 Raw response from Google Script: {response_text}")
-                    logger.debug(f"🔢 Response status: {response.status}")
-
-                    # Success conditions
-                    success = (
-                        response.status == 200 and 
-                        "Error" not in response_text and
-                        "Unauthorized" not in response_text and
-                        ("Success" in response_text or 
-                         "Updated" in response_text or 
-                         "Added" in response_text)
-                    )
-
-                    if success:
-                        logger.info(f"✅ Updated {username}'s points in {tracker_type} tracker")
-                        logger.debug(f"Response: {response_text}")
-                        return True
-                    else:
-                        logger.error(f"❌ Failed to update {tracker_type} points - Status: {response.status}, Response: {response_text}")
-                        return False
-
-        except asyncio.TimeoutError:
-            logger.error("⏰ Timeout while connecting to Google Script")
-            return False
-        except Exception as e:
-            logger.error(f"⚠️ Unexpected error: {type(e).__name__}: {str(e)}", exc_info=True)
-            return False
-            
-
 
 class MessageTracker:
     def __init__(self, bot: commands.Bot):
@@ -1495,10 +1418,7 @@ class MessageTracker:
             
             # Update points
             logger.info(f"🔢 Updating points for: {member.display_name}")
-            try:
-                update_success = await self.bot.sheets.update_points(member, is_message_tracker=True)
-                logger.info(f"📊 Message tracker update {'✅ succeeded' if update_success else '❌ failed'}")
-                
+            try:           
                 # Update database
                 points_awarded = 1
                 await self.bot.db.increment_points("ED", member, points_awarded)
@@ -1627,12 +1547,6 @@ async def on_ready():
         await asyncio.wait_for(bot.tree.sync(), timeout=15.0)
     except asyncio.TimeoutError:
         logger.warning("command sync timed out (continuing)")
-    
-    bot.sheets = SheetDBLogger()
-    if not bot.sheets.ready:
-        logger.warning("SheetDB Logger not initialized properly - check GOOGLE_SCRIPT_URL etc.")
-    else:
-        logger.info("SheetDB Logger initialized")
 
     if hasattr(bot, "reaction_logger"):
         if not getattr(bot.reaction_logger, "_cleanup_task", None):
@@ -2404,30 +2318,6 @@ async def message_tracker_list(interaction: discord.Interaction):
     await bot.message_tracker.list_channels(interaction)
 
 
-@bot.tree.command(name="force-update", description="Manually test sheet updates")
-@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)  
-async def force_update(interaction: discord.Interaction, username: str):
-    await interaction.response.defer(ephemeral=True)
-    
-    class FakeMember:
-        def __init__(self, name):
-            self.display_name = name
-            self.name = name
-    
-    logger.info(f"Manual update test for username: {username}")
-    success = await bot.sheets.update_points(FakeMember(username))
-    
-    if success:
-        await interaction.followup.send(
-            f"✅ Successfully updated points for {username}",
-            ephemeral=True
-        )
-    else:
-        await interaction.followup.send(
-            f"❌ Failed to update points for {username} - check logs",
-            ephemeral=True
-        )
 
 @bot.tree.command(name="commands", description="List all available commands")
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
@@ -2454,10 +2344,8 @@ async def command_list(interaction: discord.Interaction):
         "🛠️ Utility": [
             "/ping - Check bot responsiveness",
             "/commands - Show this help message",
-            "/sheetdb-test - Test SheetDB connection",
             "/sc - Security Check Roblox user",
             "/discharge - Sends discharge notification to user and logs in discharge logs",
-            "/force-update - Manually test sheets update",
             "/edit-db - Edit a specific user's record in the HR or LR table"
         ],
          "⭐ XP": [
@@ -2527,28 +2415,6 @@ async def reaction_remove(
 async def reaction_list(interaction: discord.Interaction):
     await bot.reaction_logger.list_channels(interaction)
 
-@bot.tree.command(name="sheetdb-test", description="Test SheetDB connection")
-@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-async def sheetdb_test(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    
-    if not hasattr(bot, 'sheets') or not bot.sheets.ready:
-        await interaction.followup.send("❌ SheetDB Logger not initialized", ephemeral=True)
-        return
-    
-    test_member = interaction.user
-    success = await bot.sheets.update_points(test_member)
-    
-    if success:
-        await interaction.followup.send(
-            "✅ SheetDB update test successful",
-            ephemeral=True
-        )
-    else:
-        await interaction.followup.send(
-            "❌ SheetDB update test failed - check logs",
-            ephemeral=True
-        )
 
 # --- Event Handlers ---
     
@@ -2965,6 +2831,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
