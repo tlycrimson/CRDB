@@ -771,6 +771,8 @@ class ReactionLogger:
 
     async def log_reaction(self, payload: discord.RawReactionActionEvent):
         """Main reaction handler"""
+        logger.info(f"🔍 Reaction detected: {payload.emoji} in channel {payload.channel_id} by user {payload.user_id}")
+        
         # Database check
         if await self.is_reaction_processed(payload.message_id, payload.user_id):
             logger.info(f"DB: Duplicate reaction from {payload.user_id}")
@@ -1536,10 +1538,20 @@ async def on_ready():
     bot.connection_monitor = ConnectionMonitor(bot)
     await bot.connection_monitor.start()
 
-    # Register reaction event listeners
-    bot.add_listener(bot.reaction_logger.on_raw_reaction_add, 'on_raw_reaction_add')
-    bot.add_listener(bot.reaction_logger.on_raw_reaction_remove, 'on_raw_reaction_remove')
-    logger.info("✅ Reaction event listeners registered")
+    # Register reaction event listeners  
+    try:
+        # Test that event listeners are properly registered
+        reaction_listeners = [l for l in bot.extra_events.get('on_raw_reaction_add', []) 
+                            if hasattr(l, '__self__') and isinstance(l.__self__, ReactionLogger)]
+        
+        if not reaction_listeners:
+            logger.warning("ReactionLogger event listeners not properly registered - re-registering")
+            bot.add_listener(bot.reaction_logger.on_raw_reaction_add, 'on_raw_reaction_add')
+            bot.add_listener(bot.reaction_logger.on_raw_reaction_remove, 'on_raw_reaction_remove')
+        
+        logger.info(f"✅ ReactionLogger setup complete - {len(reaction_listeners)} listeners active")
+    except Exception as e:
+        logger.error(f"❌ ReactionLogger validation failed: {e}")
 
     try:
         await bot.reaction_logger.setup()  
@@ -2220,7 +2232,7 @@ async def discharge(
         for member in discharged_members:
             cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
             try:
-                await bot.db_handler.discharge_user(member.id, cleaned_nickname)
+                await bot.db.discharge_user(member.id, cleaned_nickname)
             except Exception as e:
                 logger.error(f"Error removing {cleaned_nickname} ({member.id}) from DB: {e}")
             try:
@@ -2632,7 +2644,7 @@ async def on_member_remove(member: discord.Member):
 
         # 🔑 Remove deserter from all DB tables
         try:
-            await bot.db_handler.discharge_user(member.id, cleaned_nickname)
+            await bot.db.discharge_user(member.id, cleaned_nickname)
         except Exception as e:
             logger.error(f"Error removing deserter {cleaned_nickname} ({member.id}) from DB: {e}")
 
@@ -2809,6 +2821,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
