@@ -1540,16 +1540,18 @@ async def on_ready():
 
     # Register reaction event listeners  
     try:
-        # Test that event listeners are properly registered
-        reaction_listeners = [l for l in bot.extra_events.get('on_raw_reaction_add', []) 
-                            if hasattr(l, '__self__') and isinstance(l.__self__, ReactionLogger)]
-        
-        if not reaction_listeners:
-            logger.warning("ReactionLogger event listeners not properly registered - re-registering")
-            bot.add_listener(bot.reaction_logger.on_raw_reaction_add, 'on_raw_reaction_add')
-            bot.add_listener(bot.reaction_logger.on_raw_reaction_remove, 'on_raw_reaction_remove')
-        
-        logger.info(f"✅ ReactionLogger setup complete - {len(reaction_listeners)} listeners active")
+        if not any(
+            getattr(l, "__self__", None) is bot.reaction_logger 
+            for l in bot.extra_events.get("on_raw_reaction_add", [])
+        ):
+            logger.warning("ReactionLogger event listeners not properly registered - registering now")
+            bot.add_listener(bot.reaction_logger.on_raw_reaction_add, "on_raw_reaction_add")
+            bot.add_listener(bot.reaction_logger.on_raw_reaction_remove, "on_raw_reaction_remove")
+    
+        # Count actual listeners registered now
+        listeners_count = len(bot.extra_events.get("on_raw_reaction_add", []))
+        logger.info(f"✅ ReactionLogger setup complete - {listeners_count} listeners active")
+    
     except Exception as e:
         logger.error(f"❌ ReactionLogger validation failed: {e}")
 
@@ -2821,6 +2823,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
