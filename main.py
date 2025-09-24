@@ -770,26 +770,53 @@ class ReactionLogger:
             logger.error(f"Error marking reaction processed: {e}")
 
     async def log_reaction(self, payload: discord.RawReactionActionEvent):
-        """Main reaction handler"""
+        """Main reaction handler that routes to specific loggers with DB + memory duplicate checks."""
         logger.info(f"🔍 Reaction detected: {payload.emoji} in channel {payload.channel_id} by user {payload.user_id}")
-        
-        # Database check
-        if await self.is_reaction_processed(payload.message_id, payload.user_id):
-            logger.info(f"DB: Duplicate reaction from {payload.user_id}")
+
+        guild = self.bot.get_guild(payload.guild_id)
+        if not guild:
             return
-            
-        # Memory check
+
+        member = guild.get_member(payload.user_id)
+        if not member:
+            try:
+                member = await guild.fetch_member(payload.user_id)
+            except discord.NotFound:
+                logger.warning(f"Member {payload.user_id} not found in guild")
+                return
+
+        # === Duplicate reaction prevention ===
+        if await self.is_reaction_processed(payload.message_id, payload.user_id):
+            logger.debug(f"DB duplicate reaction from {payload.user_id}")
+            return
+
         processed_key = self._get_processed_key(payload.message_id, payload.user_id)
         if processed_key in self.processed_keys:
             return
-            
-        # Mark as processed
+
+        # Mark processed in memory + DB
         self.processed_messages.append(processed_key)
         self.processed_keys.add(processed_key)
         await self.mark_reaction_processed(payload.message_id, payload.user_id)
-        
-        # Process the reaction (remove duplicate checks from _log_reaction_impl)
-        await self._log_reaction_impl(payload)
+
+        # === Route to handlers ===
+        try:
+            await self.rate_limiter.wait_if_needed(bucket="reaction_log")
+            await self._log_reaction_impl(payload)
+            await self._log_event_reaction_impl(payload, member)
+            await self._log_training_reaction_impl(payload, member)
+            await self._log_activity_reaction_impl(payload, member)
+        except Exception as e:
+            logger.error(f"Failed to log reaction: {type(e).__name__}: {e}")
+            log_channel = guild.get_channel(self.log_channel_id)
+            if log_channel:
+                error_embed = discord.Embed(
+                    title="❌ Reaction Logging Error",
+                    description="An error occured while logging this reaction.",
+                    color=discord.Color.red(),
+                )
+                await log_channel.send(content=member.mention, embed=error_embed)
+
 
 
             
@@ -1599,9 +1626,8 @@ async def on_disconnect():
 @bot.event
 async def on_resumed():
     logger.info("Bot successfully resumed (session resumption). Restoring state...")
-    
-    # Small delay to ensure full reconnection
-    await asyncio.sleep(1.0)
+
+    await asyncio.sleep(1.0)  # give Discord some breathing room
 
     # Recreate HTTP session if needed
     if not getattr(bot, "shared_session", None) or bot.shared_session.closed:
@@ -1610,21 +1636,32 @@ async def on_resumed():
             headers={"User-Agent": USER_AGENT},
             timeout=aiohttp.ClientTimeout(total=12, connect=5, sock_connect=3, sock_read=6),
             connector=connector,
-            trust_env=True
+            trust_env=True,
         )
         logger.info("Recreated shared aiohttp.ClientSession after resume")
 
-    # 🔑 Restart trackers after reconnect
+    # === Rebind ReactionLogger listeners ===
+    for evt, handler in [
+        ("on_raw_reaction_add", bot.reaction_logger.on_raw_reaction_add),
+        ("on_raw_reaction_remove", bot.reaction_logger.on_raw_reaction_remove),
+    ]:
+        if handler not in bot.extra_events.get(evt, []):
+            bot.add_listener(handler, evt)
+            logger.info(f"🔄 Re-attached {evt} listener")
+
+    # Restart channel + cleanup setups
     try:
-        await asyncio.sleep(0.5)  # Small delay for stability
+        await asyncio.sleep(0.5)
         await bot.reaction_logger.on_ready_setup()
         await bot.message_tracker.on_ready_setup()
-        
+
         if not getattr(bot.reaction_logger, "_cleanup_task", None):
             await bot.reaction_logger.start_cleanup_task()
+
         logger.info("✅ Restored ReactionLogger and MessageTracker after resume.")
     except Exception as e:
         logger.error(f"❌ Failed to restore trackers after resume: {e}")
+
 
 @bot.event
 async def on_message(message: discord.Message):
@@ -2823,6 +2860,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
