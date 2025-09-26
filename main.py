@@ -2191,231 +2191,112 @@ async def reset_db(interaction: discord.Interaction):
 
 
 # Manual Fallback Log Command (covers all ReactionLogger cases)
-@bot.tree.command(
-    name="force-log",
-    description="Force log an event/training/activity manually (fallback if reactions fail)"
-)
-@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-@has_allowed_role()
+@bot.tree.command(name="force-log", description="Force log a message by link")
+@min_rank_required(Config.HR_ROLE_ID)
 async def force_log(interaction: discord.Interaction, message_link: str):
-    async with global_rate_limiter:
-        await interaction.response.defer(ephemeral=True)
+    """Force log the exact message from a link."""
+    await interaction.response.defer(ephemeral=True)
 
-        # Parse the message link
-        try:
-            parts = message_link.split("/")
-            guild_id, channel_id, message_id = int(parts[4]), int(parts[5]), int(parts[6])
-        except Exception:
-            await interaction.followup.send("❌ Invalid message link format", ephemeral=True)
+    try:
+        # Parse the link
+        match = re.match(r"https://discord\.com/channels/(\d+)/(\d+)/(\d+)", message_link)
+        if not match:
+            await interaction.followup.send("❌ Invalid message link.", ephemeral=True)
             return
 
-        if guild_id != interaction.guild.id:
-            await interaction.followup.send("❌ Message must be from this server", ephemeral=True)
+        guild_id, channel_id, message_id = map(int, match.groups())
+        guild = bot.get_guild(guild_id)
+        if not guild:
+            await interaction.followup.send("❌ Guild not found.", ephemeral=True)
             return
 
-        channel = interaction.guild.get_channel(channel_id)
+        channel = guild.get_channel(channel_id)
         if not channel:
-            await interaction.followup.send("❌ Channel not found", ephemeral=True)
+            await interaction.followup.send("❌ Channel not found.", ephemeral=True)
             return
 
-        try:
-            message = await channel.fetch_message(message_id)
-        except discord.NotFound:
-            await interaction.followup.send("❌ Message not found", ephemeral=True)
+        # ✅ Always fetch the specific message
+        message = await channel.fetch_message(message_id)
+        if not message:
+            await interaction.followup.send("❌ Message not found.", ephemeral=True)
             return
 
-        member = interaction.user
-        processed_count = 0
-        results = []
+        member = message.author
+        log_channel = guild.get_channel(bot.message_tracker.log_channel_id)
 
-        try:
-            logger.info(f"🔄 Force-log attempt by {member.display_name} for message in #{channel.name}")
-            
-            # 1. Check if this is an event log message
-            if (channel_id in bot.reaction_logger.event_channel_ids and 
-                "host:" in message.content.lower() and 
-                ("attendees:" in message.content.lower() or "passed:" in message.content.lower())):
-                
-                try:
-                    # Extract host
-                    host_mention = re.search(r'host:\s*<@!?(\d+)>', message.content, re.IGNORECASE)
-                    host_id = int(host_mention.group(1)) if host_mention else message.author.id
-                    host_member = interaction.guild.get_member(host_id) or await interaction.guild.fetch_member(host_id)
-
-                    # Determine event type
-                    hr_update_field = "events"
-                    if channel_id == Config.W_EVENT_LOG_CHANNEL_ID:
-                        if re.search(r'\bjoint\b', message.content, re.IGNORECASE):
-                            hr_update_field = "joint_events"
-                        elif re.search(r'\b(inspection|pi)\b', message.content, re.IGNORECASE):
-                            hr_update_field = "inspections"
-
-                    # Update HR table for host
-                    await bot.reaction_logger._update_hr_record(host_member, {hr_update_field: 1})
-                    
-                    # Process attendees
-                    attendees_section = re.search(r'(?:Attendees:|Passed:)\s*((?:<@!?\d+>\s*)+)', message.content, re.IGNORECASE)
-                    success_count = 0
-                    if attendees_section:
-                        attendee_mentions = re.findall(r'<@!?(\d+)>', attendees_section.group(1))
-                        hr_role = interaction.guild.get_role(Config.HR_ROLE_ID)
-                        
-                        for attendee_id in attendee_mentions:
-                            attendee_member = interaction.guild.get_member(int(attendee_id))
-                            if not attendee_member:
-                                continue
-                            if hr_role and hr_role in attendee_member.roles:
-                                continue
-                            await bot.reaction_logger._update_lr_record(attendee_member, {"events_attended": 1})
-                            success_count += 1
-                    
-                    # AWARD LD POINTS TO THE PERSON USING THE COMMAND (the logger)
-                    await bot.db.increment_points("LD", member, 1)
-                    
-                    processed_count += 1
-                    results.append(f"✅ Event logged (host + {success_count} attendees + 1 LD point)")
-                    logger.info(f"Event logging successful: host + {success_count} attendees + 1 LD point")
-                    
-                except Exception as e:
-                    results.append(f"❌ Event: {str(e)[:50]}...")
-                    logger.error(f"Event logging failed: {e}")
-
-            # 2. Check if this is a training log (phases, tryouts, courses)
-            training_mapping = {
-                Config.PHASE_LOG_CHANNEL_ID: "phases",
-                Config.TRYOUT_LOG_CHANNEL_ID: "tryouts", 
-                Config.COURSE_LOG_CHANNEL_ID: "courses",
-            }
-            
-            column_to_update = training_mapping.get(channel_id)
-            if column_to_update and "host:" in message.content.lower():
-                try:
-                    user_mention = re.search(r'host:\s*<@!?(\d+)>', message.content, re.IGNORECASE)
-                    user_id = int(user_mention.group(1)) if user_mention else message.author.id
-                    user_member = interaction.guild.get_member(user_id) or await interaction.guild.fetch_member(user_id)
-
-                    await bot.reaction_logger._update_hr_record(user_member, {column_to_update: 1})
-                    
-                    # AWARD LD POINTS TO THE PERSON USING THE COMMAND (the logger)
-                    await bot.db.increment_points("LD", member, 1)
-                    
-                    processed_count += 1
-                    results.append(f"✅ {column_to_update.title()} logged + 1 LD point")
-                    logger.info(f"{column_to_update} logging successful + 1 LD point")
-                    
-                except Exception as e:
-                    results.append(f"❌ Training: {str(e)[:50]}...")
-                    logger.error(f"Training logging failed: {e}")
-
-            # 3. Check if this is an activity log
-            if channel_id == Config.ACTIVITY_LOG_CHANNEL_ID:
-                try:
-                    user_mention = re.search(r'<@!?(\d+)>', message.content)
-                    user_id = int(user_mention.group(1)) if user_mention else message.author.id
-                    user_member = interaction.guild.get_member(user_id) or await interaction.guild.fetch_member(user_id)
-
-                    updates = {}
-                    time_match = re.search(r'Time:\s*(\d+)', message.content)
-                    if time_match:
-                        if "Guarded:" in message.content:
-                            updates["time_guarded"] = int(time_match.group(1))
-                        else:
-                            updates["activity"] = int(time_match.group(1))
-
-                    if updates:
-                        await bot.reaction_logger._update_lr_record(user_member, updates)
-                        
-                        # AWARD LD POINTS TO THE PERSON USING THE COMMAND (the logger)
-                        await bot.db.increment_points("LD", member, 1)
-                        
-                        processed_count += 1
-                        field_name = "time_guarded" if "time_guarded" in updates else "activity"
-                        results.append(f"✅ Activity logged ({updates[field_name]} mins + 1 LD point)")
-                        logger.info(f"Activity logging successful: {updates[field_name]} mins + 1 LD point")
-                    
-                except Exception as e:
-                    results.append(f"❌ Activity: {str(e)[:50]}...")
-                    logger.error(f"Activity logging failed: {e}")
-
-            # 4. Check if this is a regular LD reaction log (monitored channels)
-            if (channel_id in bot.reaction_logger.monitor_channel_ids and
-                any(emoji in message.content for emoji in Config.TRACKED_REACTIONS)):
-                
-                try:
-                    # For regular LD monitoring channels, award LD points to the command user
-                    # This simulates the reaction being processed by an LD member
-                    await bot.db.increment_points("LD", member, 1)
-                    
-                    processed_count += 1
-                    results.append("✅ LD activity logged + 1 LD point")
-                    logger.info("LD activity logged via force-log + 1 LD point")
-                    
-                except Exception as e:
-                    results.append(f"❌ LD: {str(e)[:50]}...")
-                    logger.error(f"LD logging failed: {e}")
-
-            # 5. If no specific type matched but it's in an LD-monitored channel, still award LD points
-            if (processed_count == 0 and 
-                channel_id in bot.reaction_logger.monitor_channel_ids and
-                member.guild.get_role(Config.LD_ROLE_ID) in member.roles):
-                
-                try:
-                    # Award LD points for general LD activity in monitored channels
-                    await bot.db.increment_points("LD", member, 1)
-                    processed_count += 1
-                    results.append("✅ General LD activity logged + 1 LD point")
-                    logger.info("General LD activity logged via force-log + 1 LD point")
-                    
-                except Exception as e:
-                    results.append(f"❌ General LD: {str(e)[:50]}...")
-                    logger.error(f"General LD logging failed: {e}")
-
-            # Prepare result message
-            if processed_count > 0:
-                result_message = [
-                    f"✅ **Force-log completed**",
-                    f"**Message:** [Jump to message]({message.jump_url})",
-                    f"**Channel:** #{channel.name}",
-                    f"**LD Points Awarded:** 1 point to {member.display_name}",
-                    "",
-                    "**Results:**",
-                    "\n".join(results)
-                ]
-                
-                await interaction.followup.send("\n".join(result_message), ephemeral=True)
-                
-                # Log to the main log channel
-                log_channel = interaction.guild.get_channel(bot.reaction_logger.log_channel_id)
-                if log_channel:
-                    embed = discord.Embed(
-                        title="🔄 Manual Log Entry",
-                        color=discord.Color.orange(),
-                        timestamp=datetime.now(timezone.utc)
-                    )
-                    embed.add_field(name="Logged by", value=member.mention, inline=True)
-                    embed.add_field(name="Channel", value=channel.mention, inline=True)
-                    embed.add_field(name="LD Points Awarded", value="1", inline=True)
-                    embed.add_field(name="Message Type", value=message.channel.name, inline=True)
-                    embed.add_field(name="Results", value="\n".join(results), inline=False)
-                    embed.add_field(name="Message", value=f"[Jump to message]({message.jump_url})", inline=False)
-                    
-                    await log_channel.send(embed=embed)
-                    
-            else:
-                await interaction.followup.send(
-                    f"❌ No applicable log types found for this message.\n"
-                    f"**Channel:** #{channel.name}\n"
-                    f"**Message content preview:** {message.content[:100]}...\n"
-                    f"**Supported channels:** Events, Training, Activity logs, or LD-monitored channels",
-                    ephemeral=True
-                )
-
-        except Exception as e:
-            logger.error(f"Force-log command failed: {e}", exc_info=True)
-            await interaction.followup.send(
-                f"❌ Command failed: {str(e)[:100]}",
-                ephemeral=True
+        # Decide what kind of log this is, based on the channel
+        if channel_id in bot.reaction_logger.event_channel_ids:
+            # Event log
+            await bot.reaction_logger._log_event_reaction_impl(
+                discord.RawReactionActionEvent(
+                    user_id=interaction.user.id,
+                    message_id=message.id,
+                    channel_id=channel.id,
+                    guild_id=guild.id,
+                    emoji=discord.PartialEmoji(name="✅")
+                ),
+                interaction.user
             )
+            await interaction.followup.send("✅ Event force-logged.", ephemeral=True)
+
+        elif channel_id in [
+            bot.reaction_logger.phase_log_channel_id,
+            bot.reaction_logger.tryout_log_channel_id,
+            bot.reaction_logger.course_log_channel_id,
+        ]:
+            # Training log
+            await bot.reaction_logger._log_training_reaction_impl(
+                discord.RawReactionActionEvent(
+                    user_id=interaction.user.id,
+                    message_id=message.id,
+                    channel_id=channel.id,
+                    guild_id=guild.id,
+                    emoji=discord.PartialEmoji(name="✅")
+                ),
+                interaction.user
+            )
+            await interaction.followup.send("✅ Training force-logged.", ephemeral=True)
+
+        elif channel_id == bot.reaction_logger.activity_log_channel_id:
+            # Activity log
+            await bot.reaction_logger._log_activity_reaction_impl(
+                discord.RawReactionActionEvent(
+                    user_id=interaction.user.id,
+                    message_id=message.id,
+                    channel_id=channel.id,
+                    guild_id=guild.id,
+                    emoji=discord.PartialEmoji(name="✅")
+                ),
+                interaction.user
+            )
+            await interaction.followup.send("✅ Activity force-logged.", ephemeral=True)
+
+        elif channel_id in bot.reaction_logger.monitor_channel_ids:
+            # LD/general logging
+            await bot.reaction_logger._log_reaction_impl(
+                discord.RawReactionActionEvent(
+                    user_id=interaction.user.id,
+                    message_id=message.id,
+                    channel_id=channel.id,
+                    guild_id=guild.id,
+                    emoji=discord.PartialEmoji(name="✅")
+                )
+            )
+            await interaction.followup.send("✅ LD activity force-logged.", ephemeral=True)
+
+        elif channel_id in bot.message_tracker.monitor_channel_ids:
+            # ED/message tracker logging
+            await bot.message_tracker._log_message_impl(message)
+            await interaction.followup.send("✅ Message force-logged.", ephemeral=True)
+
+        else:
+            await interaction.followup.send("❌ Channel not configured for logging.", ephemeral=True)
+
+    except Exception as e:
+        logger.error(f"force-log failed: {e}", exc_info=True)
+        await interaction.followup.send("❌ Failed to force-log message.", ephemeral=True)
+
+
 
 
 
@@ -3094,6 +2975,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
