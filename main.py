@@ -2221,22 +2221,27 @@ async def force_log(interaction: discord.Interaction, message_link: str):
             await interaction.followup.send("❌ Message not found.", ephemeral=True)
             return
 
-        member = message.author
-        log_channel = guild.get_channel(bot.message_tracker.log_channel_id)
+        # Create a mock payload object with the required attributes
+        class MockPayload:
+            def __init__(self, user_id, message_id, channel_id, guild_id, emoji_name):
+                self.user_id = user_id
+                self.message_id = message_id
+                self.channel_id = channel_id
+                self.guild_id = guild_id
+                self.emoji = discord.PartialEmoji(name=emoji_name)
+        
+        mock_payload = MockPayload(
+            user_id=interaction.user.id,
+            message_id=message.id,
+            channel_id=channel.id,
+            guild_id=guild.id,
+            emoji_name="✅"
+        )
 
         # Decide what kind of log this is, based on the channel
         if channel_id in bot.reaction_logger.event_channel_ids:
             # Event log
-            await bot.reaction_logger._log_event_reaction_impl(
-                discord.RawReactionActionEvent(
-                    user_id=interaction.user.id,
-                    message_id=message.id,
-                    channel_id=channel.id,
-                    guild_id=guild.id,
-                    emoji=discord.PartialEmoji(name="✅")
-                ),
-                interaction.user
-            )
+            await bot.reaction_logger._log_event_reaction_impl(mock_payload, interaction.user)
             await interaction.followup.send("✅ Event force-logged.", ephemeral=True)
 
         elif channel_id in [
@@ -2245,43 +2250,17 @@ async def force_log(interaction: discord.Interaction, message_link: str):
             bot.reaction_logger.course_log_channel_id,
         ]:
             # Training log
-            await bot.reaction_logger._log_training_reaction_impl(
-                discord.RawReactionActionEvent(
-                    user_id=interaction.user.id,
-                    message_id=message.id,
-                    channel_id=channel.id,
-                    guild_id=guild.id,
-                    emoji=discord.PartialEmoji(name="✅")
-                ),
-                interaction.user
-            )
+            await bot.reaction_logger._log_training_reaction_impl(mock_payload, interaction.user)
             await interaction.followup.send("✅ Training force-logged.", ephemeral=True)
 
         elif channel_id == bot.reaction_logger.activity_log_channel_id:
             # Activity log
-            await bot.reaction_logger._log_activity_reaction_impl(
-                discord.RawReactionActionEvent(
-                    user_id=interaction.user.id,
-                    message_id=message.id,
-                    channel_id=channel.id,
-                    guild_id=guild.id,
-                    emoji=discord.PartialEmoji(name="✅")
-                ),
-                interaction.user
-            )
+            await bot.reaction_logger._log_activity_reaction_impl(mock_payload, interaction.user)
             await interaction.followup.send("✅ Activity force-logged.", ephemeral=True)
 
         elif channel_id in bot.reaction_logger.monitor_channel_ids:
             # LD/general logging
-            await bot.reaction_logger._log_reaction_impl(
-                discord.RawReactionActionEvent(
-                    user_id=interaction.user.id,
-                    message_id=message.id,
-                    channel_id=channel.id,
-                    guild_id=guild.id,
-                    emoji=discord.PartialEmoji(name="✅")
-                )
-            )
+            await bot.reaction_logger._log_reaction_impl(mock_payload)
             await interaction.followup.send("✅ LD activity force-logged.", ephemeral=True)
 
         elif channel_id in bot.message_tracker.monitor_channel_ids:
@@ -2295,7 +2274,6 @@ async def force_log(interaction: discord.Interaction, message_link: str):
     except Exception as e:
         logger.error(f"force-log failed: {e}", exc_info=True)
         await interaction.followup.send("❌ Failed to force-log message.", ephemeral=True)
-
 
 
 
@@ -2975,6 +2953,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
