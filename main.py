@@ -817,9 +817,7 @@ class ReactionLogger:
                 )
                 await log_channel.send(content=member.mention, embed=error_embed)
 
-
-
-            
+     
     async def _log_reaction_impl(self, payload: discord.RawReactionActionEvent):
         guild = self.bot.get_guild(payload.guild_id)
         if not guild:
@@ -1146,41 +1144,6 @@ class ReactionLogger:
         except Exception as e:
             logger.error(f"ReactionLogger.on_raw_reaction_remove failed: {e}", exc_info=True)
 
-    async def add_channels(self, interaction: discord.Interaction, channels: str):
-
-        """Add channels to monitor"""
-        await interaction.response.defer(ephemeral=True)
-        try:
-            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
-            self.monitor_channel_ids.update(channel_ids)
-            await interaction.followup.send(f"✅ Added {len(channel_ids)} channels to monitoring", ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(f"❌ Failed to add channels: {str(e)}", ephemeral=True)
-
-    async def remove_channels(self, interaction: discord.Interaction, channels: str):
-        """Remove channels from monitoring"""
-        await interaction.response.defer(ephemeral=True)
-        try:
-            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
-            self.monitor_channel_ids.difference_update(channel_ids)
-            await interaction.followup.send(f"✅ Removed {len(channel_ids)} channels from monitoring", ephemeral=True)
-        except Exception as e:
-            await interaction.followup.send(f"❌ Failed to remove channels: {str(e)}", ephemeral=True)
-
-    async def list_channels(self, interaction: discord.Interaction):
-        """List monitored channels"""
-        await interaction.response.defer(ephemeral=True)
-        if not self.monitor_channel_ids:
-            await interaction.followup.send("❌ No channels being monitored", ephemeral=True)
-            return
-
-        channel_list = "\n".join(f"• <#{cid}>" for cid in self.monitor_channel_ids)
-        embed = discord.Embed(
-            title="Monitored Message Channels",
-            description=channel_list,
-            color=discord.Color.blue()
-        )
-        await interaction.followup.send(embed=embed, ephemeral=True)
           
 
 
@@ -2569,12 +2532,6 @@ async def command_list(interaction: discord.Interaction):
     )
     
     categories = {
-        "🔍 Reaction Monitoring": [
-            "/reaction-setup - Setup reaction logger",
-            "/reaction-add - Add channels to monitor",
-            "/reaction-remove - Remove monitored channels",
-            "/reaction-list - List monitored channels"
-        ],
         "💬 Message Tracking": [
             "/message-tracker-setup - Setup message tracking",
             "/message-tracker-add - Add channels to monitor",
@@ -2614,80 +2571,6 @@ async def ping(interaction: discord.Interaction):
         f"🏓 Pong! Latency: {latency}ms",
         ephemeral=True
     )
-
-@bot.tree.command(name="reaction-setup", description="Setup reaction monitoring")
-@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
-async def reaction_setup(
-    interaction: discord.Interaction,
-    log_channel: discord.TextChannel,
-    monitor_channels: str
-):
-    """Setup reaction tracking"""
-    await interaction.response.defer(ephemeral=True)
-    try:
-        channel_ids = [int(cid.strip()) for cid in monitor_channels.split(',')]
-        bot.reaction_logger.monitor_channel_ids = set(channel_ids)
-        bot.reaction_logger.log_channel_id = log_channel.id
-        await interaction.followup.send("✅ Reaction tracking setup complete", ephemeral=True)
-    except Exception as e:
-        await interaction.followup.send(f"❌ Setup failed: {str(e)}", ephemeral=True)
-
-@bot.tree.command(name="reaction-add", description="Add channels to monitor")
-@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
-async def reaction_add(
-    interaction: discord.Interaction,
-    channels: str
-):
-    await bot.reaction_logger.add_channels(interaction, channels)
-
-@bot.tree.command(name="reaction-remove", description="Remove channels from monitoring")
-@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
-async def reaction_remove(
-    interaction: discord.Interaction,
-    channels: str
-):
-    await bot.reaction_logger.remove_channels(interaction, channels)
-
-@bot.tree.command(name="reaction-list", description="List monitored channels")
-@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
-async def reaction_list(interaction: discord.Interaction):
-    await bot.reaction_logger.list_channels(interaction)
-
-
-# --- Event Handlers ---
-    
-@bot.event
-async def on_app_command_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
-    if isinstance(error, app_commands.CommandInvokeError):
-        if isinstance(error.original, discord.errors.HTTPException):
-            if error.original.status == 429:
-                retry_after = float(error.original.response.headers.get('Retry-After', 5))
-                logger.warning(f"Rate limited - waiting {retry_after} seconds")
-                
-                # Edit original response if possible
-                try:
-                    await interaction.edit_original_response(
-                        content=f"⚠️ Too many requests. Waiting {retry_after:.1f} seconds..."
-                    )
-                except:
-                    pass
-                    
-                await asyncio.sleep(retry_after)
-                
-                # Retry the command
-                try:
-                    await interaction.followup.send(
-                        "Retrying command after rate limit...",
-                        ephemeral=True
-                    )
-                    await bot.tree.call(interaction)
-                except Exception as retry_error:
-                    logger.error(f"Retry failed: {retry_error}")
-                return
 
 
 # HR Welcome Message
@@ -3029,6 +2912,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
