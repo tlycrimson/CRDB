@@ -2196,7 +2196,7 @@ async def reset_db(interaction: discord.Interaction):
     description="Force log an event/training/activity manually (fallback if reactions fail)"
 )
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-@min_rank_required(Config.LD_ROLE_ID)
+@has_allowed_role()
 async def force_log(interaction: discord.Interaction, message_link: str):
     async with global_rate_limiter:
         await interaction.response.defer(ephemeral=True)
@@ -3092,6 +3092,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
