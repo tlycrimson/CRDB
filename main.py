@@ -2189,6 +2189,155 @@ async def reset_db(interaction: discord.Interaction):
         await interaction.followup.send(f"❌ Error resetting database: {e}", ephemeral=True)
 
 
+
+# Manual Fallback Log Command (covers all ReactionLogger cases)
+@bot.tree.command(
+    name="force-log",
+    description="Force log an event/training/activity manually (fallback if reactions fail)"
+)
+@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
+@min_rank_required(Config.LD_ROLE_ID)
+async def force_log(interaction: discord.Interaction, message_link: str):
+    async with global_rate_limiter:
+        await interaction.response.defer(ephemeral=True)
+
+        # Parse the message link
+        try:
+            parts = message_link.split("/")
+            guild_id, channel_id, message_id = int(parts[4]), int(parts[5]), int(parts[6])
+        except Exception:
+            await interaction.followup.send("❌ Invalid message link format", ephemeral=True)
+            return
+
+        if guild_id != interaction.guild.id:
+            await interaction.followup.send("❌ Message must be from this server", ephemeral=True)
+            return
+
+        channel = interaction.guild.get_channel(channel_id)
+        if not channel:
+            await interaction.followup.send("❌ Channel not found", ephemeral=True)
+            return
+
+        try:
+            message = await channel.fetch_message(message_id)
+        except discord.NotFound:
+            await interaction.followup.send("❌ Message not found", ephemeral=True)
+            return
+
+        # Create a proper fake payload that matches discord.RawReactionActionEvent structure
+        class FakePayload:
+            def __init__(self, guild_id, channel_id, message_id, user_id, emoji="✅"):
+                self.guild_id = guild_id
+                self.channel_id = channel_id
+                self.message_id = message_id
+                self.user_id = user_id
+                self.emoji = str(emoji)  # Ensure it's a string
+                
+            def __str__(self):
+                return f"FakePayload(guild={self.guild_id}, channel={self.channel_id}, message={self.message_id}, user={self.user_id})"
+
+        payload = FakePayload(
+            guild_id=guild_id,
+            channel_id=channel_id,
+            message_id=message_id,
+            user_id=interaction.user.id,
+            emoji="✅"
+        )
+
+        member = interaction.user
+        processed_count = 0
+        results = []
+
+        try:
+            # Try each logger and track results
+            logger.info(f"🔄 Force-log attempt by {member.display_name} for message {message_id}")
+            
+            # 1. Try event logging
+            try:
+                await bot.reaction_logger._log_event_reaction_impl(payload, member)
+                processed_count += 1
+                results.append("✅ Event logged")
+                logger.info("Event logging successful via force-log")
+            except Exception as e:
+                results.append(f"❌ Event: {str(e)[:50]}...")
+                logger.debug(f"Event logging failed (may be expected): {e}")
+
+            # 2. Try training logging (phases, tryouts, courses)
+            try:
+                await bot.reaction_logger._log_training_reaction_impl(payload, member)
+                processed_count += 1
+                results.append("✅ Training logged")
+                logger.info("Training logging successful via force-log")
+            except Exception as e:
+                results.append(f"❌ Training: {str(e)[:50]}...")
+                logger.debug(f"Training logging failed (may be expected): {e}")
+
+            # 3. Try activity logging
+            try:
+                await bot.reaction_logger._log_activity_reaction_impl(payload, member)
+                processed_count += 1
+                results.append("✅ Activity logged")
+                logger.info("Activity logging successful via force-log")
+            except Exception as e:
+                results.append(f"❌ Activity: {str(e)[:50]}...")
+                logger.debug(f"Activity logging failed (may be expected): {e}")
+
+            # 4. Try regular reaction logging (LD points)
+            try:
+                await bot.reaction_logger._log_reaction_impl(payload)
+                processed_count += 1
+                results.append("✅ LD reaction logged")
+                logger.info("LD reaction logging successful via force-log")
+            except Exception as e:
+                results.append(f"❌ LD Reaction: {str(e)[:50]}...")
+                logger.debug(f"LD reaction logging failed (may be expected): {e}")
+
+            # Prepare result message
+            if processed_count > 0:
+                result_message = [
+                    f"✅ **Force-log completed**",
+                    f"**Processed:** {processed_count}/4 log types",
+                    f"**Message:** [Jump to message]({message.jump_url})",
+                    "",
+                    "**Results:**",
+                    "\n".join(results)
+                ]
+                
+                await interaction.followup.send("\n".join(result_message), ephemeral=True)
+                
+                # Also log to the main log channel
+                log_channel = interaction.guild.get_channel(bot.reaction_logger.log_channel_id)
+                if log_channel:
+                    embed = discord.Embed(
+                        title="🔄 Manual Event Log",
+                        color=discord.Color.orange(),
+                        timestamp=datetime.now(timezone.utc)
+                    )
+                    embed.add_field(name="Logged by", value=member.mention, inline=True)
+                    embed.add_field(name="Channel", value=channel.mention, inline=True)
+                    embed.add_field(name="Successfully processed", value=f"{processed_count}/4 types", inline=True)
+                    embed.add_field(name="Message", value=f"[Jump to message]({message.jump_url})", inline=False)
+                    embed.add_field(name="Results", value="\n".join(results), inline=False)
+                    
+                    await log_channel.send(embed=embed)
+                    
+            else:
+                await interaction.followup.send(
+                    "❌ No log types were processed. This message may not be in a monitored channel or may not match any log patterns.",
+                    ephemeral=True
+                )
+
+        except Exception as e:
+            logger.error(f"Force-log command completely failed: {e}", exc_info=True)
+            await interaction.followup.send(
+                f"❌ Command failed completely: {str(e)[:100]}",
+                ephemeral=True
+            )
+
+
+
+
+
 # Discharge Command
 @bot.tree.command(name="discharge", description="Notify members of honourable/dishonourable discharge and log it")
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
@@ -2860,6 +3009,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
