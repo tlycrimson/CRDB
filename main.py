@@ -2651,7 +2651,9 @@ async def command_list(interaction: discord.Interaction):
             "/commands - Show this help message",
             "/sc - Security Check Roblox user",
             "/discharge - Sends discharge notification to user and logs in discharge logs",
-            "/edit-db - Edit a specific user's record in the HR or LR table"
+            "/edit-db - Edit a specific user's record in the HR or LR table",
+            "/force-log - Force log an event/training/activity manually (fallback if reactions fail)"
+            
         ],
          "⭐ XP": [
             "/add-xp - Gives xp to user",
@@ -3092,6 +3094,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
