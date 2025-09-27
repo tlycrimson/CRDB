@@ -2733,7 +2733,7 @@ async def send_rmp_welcome(member: discord.Member):
     # Special Role Embed
     special_embed = discord.Embed(
         title="Special Roles",
-        description=" > Get your role pings here <#1196085670360404018> and don't forget the Game Night role RMP always hoosts fun events, don't miss out!"
+        description=" > Get your role pings here <#1196085670360404018> and don't forget the Game Night role RMP always hoosts fun events, don't miss out!",
         color=discord.Color.from_str("#220000")
     )
     
@@ -3026,6 +3026,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
