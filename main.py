@@ -2730,6 +2730,13 @@ async def send_rmp_welcome(member: discord.Member):
         color=discord.Color.from_str("#330000") 
     )
 
+    # Special Role Embed
+    special_embed = discord.Embed(
+        title="Special Roles",
+        description=" > Get your role pings here <#1196085670360404018> and don't forget the Game Night role RMP always hoosts fun events, don't miss out!"
+        color=discord.Color.from_str("#220000")
+    )
+    
     # Second embed (detailed rules)
     embed2 = discord.Embed(
         title="Trainee Constable Brochure",
@@ -2806,7 +2813,7 @@ async def send_rmp_welcome(member: discord.Member):
         await member.send(embeds=[embed1, embed2])
     except discord.Forbidden:
         if welcome_channel := member.guild.get_channel(722002957738180620):
-            await welcome_channel.send(f"{member.mention}", embeds=[embed1, embed2])
+            await welcome_channel.send(f"{member.mention}", embeds=[embed1, special_embed, embed2])
             logger.info(f"Sending welcome message to {member.display_name} ({member.id})")
     except discord.HTTPException as e:
         logger.error(f"Failed to send welcome message: {e}")
@@ -3019,6 +3026,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
