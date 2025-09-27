@@ -2593,7 +2593,8 @@ async def command_list(interaction: discord.Interaction):
             "/sc - Security Check Roblox user",
             "/discharge - Sends discharge notification to user and logs in discharge logs",
             "/edit-db - Edit a specific user's record in the HR or LR table",
-            "/force-log - Force log an event/training/activity manually (fallback if reactions fail)"
+            "/force-log - Force log an event/training/activity manually (fallback if reactions fail)",
+            "/report-bug - Report a bug to Crimson"
             
         ],
          "⭐ XP": [
@@ -2610,7 +2611,7 @@ async def command_list(interaction: discord.Interaction):
     
     await interaction.response.send_message(embed=embed)
     
-
+# Ping Command
 @bot.tree.command(name="ping", description="Check bot latency")
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @has_allowed_role()
@@ -2621,6 +2622,63 @@ async def ping(interaction: discord.Interaction):
         ephemeral=True
     )
 
+# Report Bug Command
+@bot.tree.command(name="report-bug", description="Report a bug to Crimson")
+@min_rank_required(Config.RMP_ROLE_ID)  
+async def report_bug(interaction: discord.Interaction, description: str):
+    """
+    Report a bug to the bot developer.
+    """
+    await interaction.response.defer(ephemeral=True)
+    
+    DEVELOPER_ID = 353167234698444802
+    
+    try:
+        developer = await bot.fetch_user(DEVELOPER_ID)
+        
+        embed = discord.Embed(
+            title="🐛 New Bug Report",
+            color=discord.Color.orange(),
+            timestamp=discord.utils.utcnow()
+        )
+        
+        embed.add_field(
+            name="Reporter",
+            value=f"{interaction.user.mention} ({interaction.user.id})",
+            inline=False
+        )
+        
+        if interaction.guild:
+            embed.add_field(
+                name="Server",
+                value=f"{interaction.guild.name} ({interaction.guild.id})",
+                inline=False
+            )
+        
+        embed.add_field(
+            name="Description",
+            value=description,
+            inline=False
+        )
+        
+        try:
+            await developer.send(embed=embed)
+            await interaction.followup.send(
+                "✅ Thank you for reporting the bug! Crimson has been notified.",
+                ephemeral=True
+            )
+        except discord.Forbidden:
+            await interaction.followup.send(
+                "❌ I couldn't send the bug report. Try contacting Crimson (353167234698444802) directly.",
+                ephemeral=True
+            )
+            
+    except Exception as e:
+        logger.exception("Failed to send bug report: %s", e)
+        await interaction.followup.send(
+            "❌ An error occurred. Please try again later.",
+            ephemeral=True
+        )
 
 # HR Welcome Message
 async def send_hr_welcome(member: discord.Member):
@@ -2961,6 +3019,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
