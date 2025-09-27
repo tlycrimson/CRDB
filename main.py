@@ -1752,7 +1752,7 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
 
         embed.add_field(name="Progression", value=progress, inline=False)
 
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await interaction.followup.send(embed=embed)
 
     except Exception as e:
         logger.error(f"XP command error: {str(e)}")
@@ -3019,6 +3019,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
