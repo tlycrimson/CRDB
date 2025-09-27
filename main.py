@@ -2024,6 +2024,7 @@ async def give_event_xp(
 
 # Edit database command
 @bot.tree.command(name="edit-db", description="Edit a specific user's record in the HR or LR table.")
+@has_allowed_role()
 async def edit_db(interaction: discord.Interaction, user: discord.User, column: str, value: str):
     await interaction.response.defer(ephemeral=True)
     guild = interaction.guild
@@ -2039,14 +2040,23 @@ async def edit_db(interaction: discord.Interaction, user: discord.User, column: 
             await interaction.followup.send(f"❌ {user.mention} not found in this server.")
             return
             
-    ld_role = guild.get_role(Config.LD_ROLE_ID)
-    if not (ld_role and ld_role in interaction.user.roles):
-        await interaction.followup.send("❌ You don’t have permission to use this command.", ephemeral=True)
-        return
-
     hr_role = guild.get_role(Config.HR_ROLE_ID)
-    table = "HRs" if hr_role and hr_role in member.roles else "LRs"
+    is_hr = hr_role and hr_role in member.roles
+    table = "HRs" if is_hr else "LRs"
     user_id = str(user.id)
+
+    # Define available columns based on role
+    hr_columns = ["tryouts", "events", "phases", "courses", "inspections", "joint_events"]
+    lr_columns = ["activity", "time_guarded", "events_attended"]
+    
+    # Validate column based on role
+    available_columns = hr_columns if is_hr else lr_columns
+    if column not in available_columns:
+        await interaction.followup.send(
+            f"❌ Invalid column `{column}` for {table} table. "
+            f"Available columns for {'HRs' if is_hr else 'LRs'}: {', '.join(available_columns)}"
+        )
+        return
 
     def _work():
         sup = bot.db.supabase
@@ -2081,6 +2091,45 @@ async def edit_db(interaction: discord.Interaction, user: discord.User, column: 
     except Exception as e:
         logger.exception("edit_db failed: %s", e)
         await interaction.followup.send(f"❌ Failed to update data: `{e}`")
+
+
+# Add autocomplete for the column parameter
+@edit_db.autocomplete('column')
+async def edit_db_column_autocomplete(interaction: discord.Interaction, current: str):
+    # Get the user parameter from the current interaction
+    user_option = next((opt for opt in interaction.data.get('options', []) if opt['name'] == 'user'), None)
+    
+    if not user_option:
+        return []
+    
+    user_id = int(user_option['value'])
+    guild = interaction.guild
+    
+    if not guild:
+        return []
+    
+    # Get the member to check their role
+    member = guild.get_member(user_id)
+    if not member:
+        try:
+            member = await guild.fetch_member(user_id)
+        except discord.NotFound:
+            return []
+    
+    hr_role = guild.get_role(Config.HR_ROLE_ID)
+    is_hr = hr_role and hr_role in member.roles
+    
+    # Define columns based on role
+    hr_columns = ["tryouts", "events", "phases", "courses", "inspections", "joint_events"]
+    lr_columns = ["activity", "time_guarded", "events_attended"]
+    
+    available_columns = hr_columns if is_hr else lr_columns
+    
+    # Filter based on current input
+    choices = [column for column in available_columns if current.lower() in column.lower()]
+    
+    return [discord.app_commands.Choice(name=column, value=column) for column in choices[:25]]
+
 
 # Reset Database Command
 @bot.tree.command(name="reset-db", description="Reset the LR and HR tables.")
@@ -2912,6 +2961,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
