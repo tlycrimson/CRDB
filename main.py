@@ -1588,6 +1588,9 @@ async def on_resumed():
 
         if not getattr(bot.reaction_logger, "_cleanup_task", None):
             await bot.reaction_logger.start_cleanup_task()
+            
+        # Reinitialize reaction logger's rate limiter
+        bot.reaction_logger.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
 
         logger.info("✅ Restored ReactionLogger and MessageTracker after resume.")
     except Exception as e:
@@ -3026,6 +3029,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
