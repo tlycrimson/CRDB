@@ -1041,7 +1041,25 @@ class ReactionLogger:
                     updates["activity"] = int(time_match.group(1))
 
             if updates:
+                #Update LR record first
                 await self._update_lr_record(user_member, updates)
+                
+                # 🟩 XP logic: 1 XP per 30 mins (activity or guarded)
+                total_minutes = 0
+                if "activity" in updates:
+                    total_minutes += updates["activity"]
+                if "time_guarded" in updates:
+                    total_minutes += updates["time_guarded"]
+            
+                xp_to_award = total_minutes // 30
+                if xp_to_award > 0:
+                    success, new_xp = await self.bot.db.add_xp(
+                        str(user_member.id),
+                        user_member.display_name,
+                        xp_to_award
+                    )
+                    if success:
+                        logger.info(f"⭐ Gave {xp_to_award} XP to {user_member.display_name} ({user_member.id}) for {total_minutes} mins activity")
 
                 log_channel = guild.get_channel(self.log_channel_id)
                 if log_channel:
@@ -1051,6 +1069,8 @@ class ReactionLogger:
                         embed.add_field(name="Activity Time", value=f"{updates['activity']} mins")
                     if "time_guarded" in updates:
                         embed.add_field(name="Guarded Time", value=f"{updates['time_guarded']} mins")
+                    if xp_to_award > 0:
+                        embed.add_field(name="XP Awarded", value=f"+{xp_to_award} XP")
                     embed.add_field(name="Logged By", value=member.mention)
                     embed.add_field(name="Message", value=f"[Jump to Log]({message.jump_url})")
                     await log_channel.send(content=member.mention, embed=embed)
@@ -2285,34 +2305,54 @@ async def force_log(interaction: discord.Interaction, message_link: str):
                 logger.error(f"Training logging failed: {e}")
                 results.append(f"❌ Training: {str(e)[:50]}")
 
+    
         # 3. ACTIVITY LOGS
         elif channel_id == Config.ACTIVITY_LOG_CHANNEL_ID:
             try:
                 user_mention = re.search(r'<@!?(\d+)>', message.content)
                 user_id = int(user_mention.group(1)) if user_mention else message.author.id
                 user_member = interaction.guild.get_member(user_id) or await interaction.guild.fetch_member(user_id)
-
+        
                 updates = {}
                 time_match = re.search(r'Time:\s*(\d+)', message.content)
                 if time_match:
+                    minutes = int(time_match.group(1))
                     if "Guarded:" in message.content:
-                        updates["time_guarded"] = int(time_match.group(1))
+                        updates["time_guarded"] = minutes
                     else:
-                        updates["activity"] = int(time_match.group(1))
-
+                        updates["activity"] = minutes
+        
                 if updates:
+                    # Update LR record
                     await bot.reaction_logger._update_lr_record(user_member, updates)
+        
+                    # 🟩 NEW: Award XP (1 XP per 30 mins total)
+                    total_minutes = updates.get("activity", 0) + updates.get("time_guarded", 0)
+                    xp_to_award = total_minutes // 30
+                    xp_text = ""
+                    if xp_to_award > 0:
+                        success, new_xp = await bot.db.add_xp(
+                            str(user_member.id),
+                            user_member.display_name,
+                            xp_to_award
+                        )
+                        if success:
+                            xp_text = f" (+{xp_to_award} XP)"
+                            logger.info(f"⭐ Gave {xp_to_award} XP to {user_member.display_name} ({user_member.id}) for {total_minutes} mins (force-log)")
+        
                     # Award LD point to the logger
                     await bot.db.increment_points("LD", interaction.user, 1)
-                    
+        
+                    # Finish up and include XP info in results
                     field_name = "time_guarded" if "time_guarded" in updates else "activity"
-                    results.append(f"✅ Activity: {updates[field_name]} mins logged")
+                    results.append(f"✅ Activity: {updates[field_name]} mins logged{xp_text}")
                     processed = True
-                    logger.info(f"✅ Activity force-logged: {updates[field_name]} mins")
-                    
+                    logger.info(f"✅ Activity force-logged: {updates[field_name]} mins{xp_text}")
+        
             except Exception as e:
                 logger.error(f"Activity logging failed: {e}")
                 results.append(f"❌ Activity: {str(e)[:50]}")
+
 
         # 4. LD MONITORING CHANNELS (general LD activity)
         elif channel_id in bot.reaction_logger.monitor_channel_ids:
@@ -3029,6 +3069,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
