@@ -116,6 +116,17 @@ def make_progress_bar(xp: int, current: int, next_threshold: Optional[int]) -> s
 
     bar = "🟩" * filled + "⬛" * (10 - filled)
     return f"{bar} ({gained}/{total_needed} XP)"
+
+async def send_hr_welcome(member: discord.Member):
+    """Send a test HR welcome message fetched from Supabase."""
+    template = test_messages.get("hr_welcome", "Welcome to HR, {user_mention}!")
+    message = template.format(user_mention=member.mention)
+    try:
+        await member.send(message)
+        logger.info(f"✅ Sent HR welcome message to {member.display_name}")
+    except Exception as e:
+        logger.error(f"❌ Failed to send HR welcome message: {e}")
+
     
 
 
@@ -1468,7 +1479,24 @@ bot.reaction_logger = ReactionLogger(bot)
 bot.message_tracker = MessageTracker(bot)
 bot.api = DiscordAPI()
 bot.db = DatabaseHandler()
-    
+
+# --- Custom Message Test Loader ---
+test_messages = {}
+
+async def load_test_messages():
+    """Fetches test messages (like HR welcome) from Supabase for configurable templates."""
+    global test_messages
+    if not bot.db.supabase:
+        logger.warning("Supabase not configured; skipping message load.")
+        return
+
+    try:
+        result = bot.db.supabase.table("Messages_Test").select("*").execute()
+        test_messages = {item["key"]: item["content"] for item in result.data}
+        logger.info(f"✅ Loaded {len(test_messages)} test messages from Supabase.")
+    except Exception as e:
+        logger.error(f"❌ Failed to load test messages: {e}")
+
 
 # --- Command Error Handler ---
 @bot.event
@@ -1515,6 +1543,12 @@ async def on_ready():
     # Attach/start connection monitor and component setup
     bot.connection_monitor = ConnectionMonitor(bot)
     await bot.connection_monitor.start()
+
+    try:
+        await load_test_messages()
+        logger.info("✅ Test messages loaded successfully from Supabase.")
+    except Exception as e:
+        logger.error(f"❌ Failed to load test messages: {e}")
 
     # Register reaction event listeners  
     try:
@@ -2723,6 +2757,14 @@ async def report_bug(interaction: discord.Interaction, description: str):
             ephemeral=True
         )
 
+
+@bot.tree.command(name="test-welcome", description="Send a test HR welcome message to a user.")
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
+async def test_welcome(interaction: discord.Interaction, member: discord.Member):
+    await interaction.response.defer(ephemeral=True)
+    await send_hr_welcome(member)
+    await interaction.followup.send(f"✅ Sent HR welcome test message to {member.display_name}", ephemeral=True)
+
 # HR Welcome Message
 async def send_hr_welcome(member: discord.Member):
     if not (welcome_channel := member.guild.get_channel(Config.DESERTER_ALERT_CHANNEL_ID)):
@@ -3069,6 +3111,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
