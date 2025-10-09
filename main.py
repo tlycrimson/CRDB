@@ -117,7 +117,7 @@ def make_progress_bar(xp: int, current: int, next_threshold: Optional[int]) -> s
     bar = "🟩" * filled + "⬛" * (10 - filled)
     return f"{bar} ({gained}/{total_needed} XP)"
 
-async def send_hr_welcome(member: discord.Member):
+async def send_hr_welcome_test(member: discord.Member):
     """Send a test HR welcome message fetched from Supabase."""
     logger.info(f"📬 Preparing to send HR welcome message to {member.display_name} ({member.id})")
 
@@ -2781,7 +2781,7 @@ async def test_welcome(interaction: discord.Interaction, member: discord.Member)
         pass  # ignore defer timing issues
 
     try:
-        await send_hr_welcome(member)
+        await send_hr_welcome_test(member)
         logger.info(f"🧾 Current test_messages dict: {test_messages}")
         await interaction.followup.send(f"✅ Sent HR welcome test message to {member.display_name}", ephemeral=True)
     except Exception as e:
@@ -3136,6 +3136,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
