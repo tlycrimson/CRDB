@@ -2759,7 +2759,7 @@ async def report_bug(interaction: discord.Interaction, description: str):
 
 
 @bot.tree.command(name="test-welcome", description="Send a test HR welcome message to a user.")
-@min_rank_required(Config.HICOM_ROLE_ID)
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def test_welcome(interaction: discord.Interaction, member: discord.Member):
     """Tests the HR welcome message using Supabase-loaded templates."""
     try:
@@ -3124,6 +3124,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
