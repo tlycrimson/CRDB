@@ -119,13 +119,24 @@ def make_progress_bar(xp: int, current: int, next_threshold: Optional[int]) -> s
 
 async def send_hr_welcome(member: discord.Member):
     """Send a test HR welcome message fetched from Supabase."""
-    template = test_messages.get("hr_welcome", "Welcome to HR, {user_mention}!")
+    logger.info(f"📬 Preparing to send HR welcome message to {member.display_name} ({member.id})")
+
+    template = test_messages.get("hr_welcome")
+    if not template:
+        logger.warning("⚠️ No 'hr_welcome' message found in test_messages dict.")
+        template = "Welcome to HR, {user_mention}! (default fallback)"
+
     message = template.format(user_mention=member.mention)
+
     try:
         await member.send(message)
-        logger.info(f"✅ Sent HR welcome message to {member.display_name}")
+        logger.info(f"✅ Successfully sent HR welcome message to {member.display_name}")
+    except discord.Forbidden:
+        logger.error(f"🚫 Cannot send DM to {member.display_name} — they likely have DMs disabled.")
+    except discord.HTTPException as e:
+        logger.error(f"❌ Discord HTTP error while sending HR welcome: {e}")
     except Exception as e:
-        logger.error(f"❌ Failed to send HR welcome message: {e}")
+        logger.error(f"❌ Unexpected error sending HR welcome: {e}")
 
     
 
@@ -2771,6 +2782,7 @@ async def test_welcome(interaction: discord.Interaction, member: discord.Member)
 
     try:
         await send_hr_welcome(member)
+        logger.info(f"🧾 Current test_messages dict: {test_messages}")
         await interaction.followup.send(f"✅ Sent HR welcome test message to {member.display_name}", ephemeral=True)
     except Exception as e:
         logger.error(f"❌ test-welcome command failed: {e}")
@@ -3124,6 +3136,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
