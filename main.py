@@ -2769,25 +2769,7 @@ async def report_bug(interaction: discord.Interaction, description: str):
         )
 
 
-@bot.tree.command(name="test-welcome", description="Send a test HR welcome message to a user.")
-@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
-async def test_welcome(interaction: discord.Interaction, member: discord.Member):
-    """Tests the HR welcome message using Supabase-loaded templates."""
-    try:
-        # Try to defer safely (avoid 404 if already expired)
-        if not interaction.response.is_done():
-            await interaction.response.defer(ephemeral=True)
-    except Exception:
-        pass  # ignore defer timing issues
 
-    try:
-        await send_hr_welcome_test(member)
-        logger.info(f"🧾 Current test_messages dict: {test_messages}")
-        await interaction.followup.send(f"✅ Sent HR welcome test message to {member.display_name}", ephemeral=True)
-    except Exception as e:
-        logger.error(f"❌ test-welcome command failed: {e}")
-        if not interaction.response.is_done():
-            await interaction.followup.send("❌ Failed to send test message.", ephemeral=True)
 
 
 # HR Welcome Message
@@ -3136,6 +3118,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
