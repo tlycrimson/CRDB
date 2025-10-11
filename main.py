@@ -2425,7 +2425,7 @@ async def force_log(interaction: discord.Interaction, message_link: str):
             )
             
             # Also log to the main log channel
-            log_channel = interaction.guild.get_channel(bot.reaction_logger.log_channel_id)
+            log_channel = interaction.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
             if log_channel:
                 embed = discord.Embed(
                     title="🔄 Manual Log Entry (Force-log)",
@@ -3118,6 +3118,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
