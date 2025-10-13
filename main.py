@@ -2208,10 +2208,15 @@ async def reset_db(interaction: discord.Interaction):
         await interaction.followup.send("❌ This command can only be used in a server.")
         return
 
-    ld_head_role = guild.get_role(Config.LD_HEAD_ROLE_ID)
-    if not (ld_head_role and ld_head_role in interaction.user.roles):
+    ld_hicom_roles = [
+        guild.get_role(Config.LD_HEAD_ROLE_ID),
+        guild.get_role(Config.LD_DEP_HEAD_ROLE_ID)
+    ]
+    
+    if not any(role in interaction.user.roles for role in ld_hicom_roles if role):
         await interaction.followup.send("❌ You don’t have permission to use this command.", ephemeral=True)
         return
+
 
 
     def _reset_work():
@@ -3118,6 +3123,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
