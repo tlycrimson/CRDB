@@ -792,39 +792,39 @@ class ReactionLogger:
             logger.error(f"Error marking reaction processed: {e}")
 
     async def health_check(self):
-    """Check the health of the reaction logger"""
-    try:
-        # Check if listeners are registered
-        add_listeners = [
-            l for l in self.bot.extra_events.get('on_raw_reaction_add', [])
-            if getattr(l, '__self__', None) is self
-        ]
-        remove_listeners = [
-            l for l in self.bot.extra_events.get('on_raw_reaction_remove', []) 
-            if getattr(l, '__self__', None) is self
-        ]
-        
-        status = {
-            'add_listeners': len(add_listeners),
-            'remove_listeners': len(remove_listeners),
-            'monitor_channels': len(self.monitor_channel_ids),
-            'processed_keys': len(self.processed_keys),
-            'cleanup_task_running': self._cleanup_task and not self._cleanup_task.done() if self._cleanup_task else False
-        }
-        
-        logger.info(f"🔧 ReactionLogger Health Check: {status}")
-        return status
-        
-    except Exception as e:
-        logger.error(f"Health check failed: {e}")
-        return {'error': str(e)}
-    async def log_reaction(self, payload: discord.RawReactionActionEvent):
-        """Main reaction handler that routes to specific loggers with DB + memory duplicate checks."""
-        logger.info(f"🔍 Reaction detected: {payload.emoji} in channel {payload.channel_id} by user {payload.user_id}")
-
-        guild = self.bot.get_guild(payload.guild_id)
-        if not guild:
-            return
+        """Check the health of the reaction logger"""
+        try:
+            # Check if listeners are registered
+            add_listeners = [
+                l for l in self.bot.extra_events.get('on_raw_reaction_add', [])
+                if getattr(l, '__self__', None) is self
+            ]
+            remove_listeners = [
+                l for l in self.bot.extra_events.get('on_raw_reaction_remove', []) 
+                if getattr(l, '__self__', None) is self
+            ]
+            
+            status = {
+                'add_listeners': len(add_listeners),
+                'remove_listeners': len(remove_listeners),
+                'monitor_channels': len(self.monitor_channel_ids),
+                'processed_keys': len(self.processed_keys),
+                'cleanup_task_running': self._cleanup_task and not self._cleanup_task.done() if self._cleanup_task else False
+            }
+            
+            logger.info(f"🔧 ReactionLogger Health Check: {status}")
+            return status
+            
+        except Exception as e:
+            logger.error(f"Health check failed: {e}")
+            return {'error': str(e)}
+        async def log_reaction(self, payload: discord.RawReactionActionEvent):
+            """Main reaction handler that routes to specific loggers with DB + memory duplicate checks."""
+            logger.info(f"🔍 Reaction detected: {payload.emoji} in channel {payload.channel_id} by user {payload.user_id}")
+    
+            guild = self.bot.get_guild(payload.guild_id)
+            if not guild:
+                return
 
         member = guild.get_member(payload.user_id)
         if not member:
@@ -3166,6 +3166,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
