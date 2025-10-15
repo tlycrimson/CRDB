@@ -791,6 +791,33 @@ class ReactionLogger:
         except Exception as e:
             logger.error(f"Error marking reaction processed: {e}")
 
+    async def health_check(self):
+    """Check the health of the reaction logger"""
+    try:
+        # Check if listeners are registered
+        add_listeners = [
+            l for l in self.bot.extra_events.get('on_raw_reaction_add', [])
+            if getattr(l, '__self__', None) is self
+        ]
+        remove_listeners = [
+            l for l in self.bot.extra_events.get('on_raw_reaction_remove', []) 
+            if getattr(l, '__self__', None) is self
+        ]
+        
+        status = {
+            'add_listeners': len(add_listeners),
+            'remove_listeners': len(remove_listeners),
+            'monitor_channels': len(self.monitor_channel_ids),
+            'processed_keys': len(self.processed_keys),
+            'cleanup_task_running': self._cleanup_task and not self._cleanup_task.done() if self._cleanup_task else False
+        }
+        
+        logger.info(f"🔧 ReactionLogger Health Check: {status}")
+        return status
+        
+    except Exception as e:
+        logger.error(f"Health check failed: {e}")
+        return {'error': str(e)}
     async def log_reaction(self, payload: discord.RawReactionActionEvent):
         """Main reaction handler that routes to specific loggers with DB + memory duplicate checks."""
         logger.info(f"🔍 Reaction detected: {payload.emoji} in channel {payload.channel_id} by user {payload.user_id}")
@@ -1528,6 +1555,7 @@ async def on_command_error(ctx, error):
 create_sc_command(bot)
 
 @bot.event
+@bot.event
 async def on_ready():
     logger.info("Logged in as %s (ID: %s)", bot.user, getattr(bot.user, "id", "unknown"))
     logger.info("Connected to %d guild(s)", len(bot.guilds))
@@ -1536,7 +1564,6 @@ async def on_ready():
     if hasattr(bot, "shared_session") and bot.shared_session and not bot.shared_session.closed:
         await bot.shared_session.close()
         
-
     connector = aiohttp.TCPConnector(
         limit=15,
         limit_per_host=4,
@@ -1561,28 +1588,37 @@ async def on_ready():
     except Exception as e:
         logger.error(f"❌ Failed to load test messages: {e}")
 
-    # Register reaction event listeners  
+    # === ROBUST ReactionLogger listener registration ===
     try:
-        if not any(
-            getattr(l, "__self__", None) is bot.reaction_logger 
-            for l in bot.extra_events.get("on_raw_reaction_add", [])
-        ):
-            logger.warning("ReactionLogger event listeners not properly registered - registering now")
-            bot.add_listener(bot.reaction_logger.on_raw_reaction_add, "on_raw_reaction_add")
-            bot.add_listener(bot.reaction_logger.on_raw_reaction_remove, "on_raw_reaction_remove")
-    
-        # Count actual listeners registered now
-        listeners_count = len(bot.extra_events.get("on_raw_reaction_add", []))
-        logger.info(f"✅ ReactionLogger setup complete - {listeners_count} listeners active")
-    
+        # Remove any existing listeners first to prevent duplicates
+        for event_name in ['on_raw_reaction_add', 'on_raw_reaction_remove']:
+            if event_name in bot.extra_events:
+                bot.extra_events[event_name] = [
+                    listener for listener in bot.extra_events[event_name]
+                    if getattr(listener, '__self__', None) != bot.reaction_logger
+                ]
+        
+        # Register fresh listeners
+        bot.add_listener(bot.reaction_logger.on_raw_reaction_add, "on_raw_reaction_add")
+        bot.add_listener(bot.reaction_logger.on_raw_reaction_remove, "on_raw_reaction_remove")
+        
+        # Verify registration
+        reaction_listeners = len([
+            l for l in bot.extra_events.get('on_raw_reaction_add', [])
+            if getattr(l, '__self__', None) is bot.reaction_logger
+        ])
+        
+        logger.info(f"✅ ReactionLogger setup complete - {reaction_listeners} listeners active")
+        
     except Exception as e:
-        logger.error(f"❌ ReactionLogger validation failed: {e}")
+        logger.error(f"❌ ReactionLogger listener registration failed: {e}")
 
     try:
         await bot.reaction_logger.setup()  
-        logger.info("✅ ReactionLogger setup complete")
+        logger.info("✅ ReactionLogger database setup complete")
     except Exception as e:
         logger.error(f"❌ ReactionLogger setup failed: {e}")
+        
     # Setup reaction logger channels
     try:
         await bot.reaction_logger.on_ready_setup()
@@ -1603,7 +1639,7 @@ async def on_ready():
         logger.warning("command sync timed out (continuing)")
 
     if hasattr(bot, "reaction_logger"):
-        if not getattr(bot.reaction_logger, "_cleanup_task", None):
+        if not getattr(bot.reaction_logger, "_cleanup_task", None) or bot.reaction_logger._cleanup_task.done():
             await bot.reaction_logger.start_cleanup_task()
             logger.info("ReactionLogger cleanup task started.")
 
@@ -1622,7 +1658,7 @@ async def on_disconnect():
 @bot.event
 async def on_resumed():
     logger.info("Bot successfully resumed (session resumption). Restoring state...")
-
+    
     await asyncio.sleep(1.0)  # give Discord some breathing room
 
     # Recreate HTTP session if needed
@@ -1636,14 +1672,21 @@ async def on_resumed():
         )
         logger.info("Recreated shared aiohttp.ClientSession after resume")
 
-    # === Rebind ReactionLogger listeners ===
-    for evt, handler in [
-        ("on_raw_reaction_add", bot.reaction_logger.on_raw_reaction_add),
-        ("on_raw_reaction_remove", bot.reaction_logger.on_raw_reaction_remove),
-    ]:
-        if handler not in bot.extra_events.get(evt, []):
-            bot.add_listener(handler, evt)
-            logger.info(f"🔄 Re-attached {evt} listener")
+    # === COMPLETELY REBIND ReactionLogger listeners ===
+    try:
+        # Remove any existing listeners to prevent duplicates
+        bot.extra_events['on_raw_reaction_add'] = [l for l in bot.extra_events.get('on_raw_reaction_add', []) 
+                                                  if getattr(l, '__self__', None) != bot.reaction_logger]
+        bot.extra_events['on_raw_reaction_remove'] = [l for l in bot.extra_events.get('on_raw_reaction_remove', []) 
+                                                     if getattr(l, '__self__', None) != bot.reaction_logger]
+        
+        # Add fresh listeners
+        bot.add_listener(bot.reaction_logger.on_raw_reaction_add, "on_raw_reaction_add")
+        bot.add_listener(bot.reaction_logger.on_raw_reaction_remove, "on_raw_reaction_remove")
+        
+        logger.info("🔄 Re-attached ReactionLogger event listeners after resume")
+    except Exception as e:
+        logger.error(f"❌ Failed to reattach ReactionLogger listeners: {e}")
 
     # Restart channel + cleanup setups
     try:
@@ -1651,7 +1694,7 @@ async def on_resumed():
         await bot.reaction_logger.on_ready_setup()
         await bot.message_tracker.on_ready_setup()
 
-        if not getattr(bot.reaction_logger, "_cleanup_task", None):
+        if not getattr(bot.reaction_logger, "_cleanup_task", None) or bot.reaction_logger._cleanup_task.done():
             await bot.reaction_logger.start_cleanup_task()
             
         # Reinitialize reaction logger's rate limiter
@@ -3123,6 +3166,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
