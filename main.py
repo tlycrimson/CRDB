@@ -818,13 +818,15 @@ class ReactionLogger:
         except Exception as e:
             logger.error(f"Health check failed: {e}")
             return {'error': str(e)}
-        async def log_reaction(self, payload: discord.RawReactionActionEvent):
-            """Main reaction handler that routes to specific loggers with DB + memory duplicate checks."""
-            logger.info(f"🔍 Reaction detected: {payload.emoji} in channel {payload.channel_id} by user {payload.user_id}")
+
     
-            guild = self.bot.get_guild(payload.guild_id)
-            if not guild:
-                return
+    async def log_reaction(self, payload: discord.RawReactionActionEvent):
+        """Main reaction handler that routes to specific loggers with DB + memory duplicate checks."""
+        logger.info(f"🔍 Reaction detected: {payload.emoji} in channel {payload.channel_id} by user {payload.user_id}")
+
+        guild = self.bot.get_guild(payload.guild_id)
+        if not guild:
+            return
 
         member = guild.get_member(payload.user_id)
         if not member:
@@ -833,21 +835,21 @@ class ReactionLogger:
             except discord.NotFound:
                 logger.warning(f"Member {payload.user_id} not found in guild")
                 return
-
+        
         # === Duplicate reaction prevention ===
         if await self.is_reaction_processed(payload.message_id, payload.user_id):
             logger.debug(f"DB duplicate reaction from {payload.user_id}")
             return
-
+        
         processed_key = self._get_processed_key(payload.message_id, payload.user_id)
         if processed_key in self.processed_keys:
             return
-
+        
         # Mark processed in memory + DB
         self.processed_messages.append(processed_key)
         self.processed_keys.add(processed_key)
         await self.mark_reaction_processed(payload.message_id, payload.user_id)
-
+        
         # === Route to handlers ===
         try:
             await self.rate_limiter.wait_if_needed(bucket="reaction_log")
@@ -3166,6 +3168,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
