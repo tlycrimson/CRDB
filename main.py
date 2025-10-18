@@ -761,9 +761,12 @@ class ReactionLogger:
         log_channel = guild.get_channel(self.log_channel_id)
         if not log_channel:
             logger.warning(f"⚠️ Default log channel {self.log_channel_id} not found! Trying other.")
-            log_channeL = guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
+            log_channel = guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
         else:
             logger.info("Default Log channel configured.")
+        
+        if not log_channel:
+            logger.error("❌ No valid log channel found for ReactionLogger!")
             
     async def is_reaction_processed(self, message_id: int, user_id: int) -> bool:
         """Check if reaction was already processed"""
@@ -3170,6 +3173,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
