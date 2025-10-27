@@ -933,7 +933,7 @@ class ReactionLogger:
     
             if channel.id == Config.SC_LOG_CHANNEL_ID:
                 await self._update_hr_record(member, {"courses": 0.5})
-                logger.info(f"✅ Added 1 course point to {member.display_name} for SC channel reaction.")
+                logger.info(f"✅ Added 0.5 course point to {member.display_name} for SC channel reaction.")
 
         except discord.NotFound:
             return
@@ -3177,6 +3177,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
