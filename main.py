@@ -924,6 +924,10 @@ class ReactionLogger:
             embed.add_field(name="Channel", value=channel.mention)
             embed.add_field(name="Author", value=message.author.mention)
             embed.add_field(name="Message", value=content, inline=False)
+            if channel.id == Config.SC_LOG_CHANNEL_ID:
+                embed.add_field(name="Points added: 0.5", value=content, inline=False)
+            else:
+                embed.add_field(name="Points added: 1", value=content, inline=False)
             embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
     
             await log_channel.send(embed=embed)
@@ -3177,6 +3181,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
