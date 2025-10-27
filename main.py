@@ -1155,7 +1155,7 @@ class ReactionLogger:
                 # Increment numerical fields
                 incremented = {}
                 for key, value in updates.items():
-                    if isinstance(value, int):
+                    if isinstance(value, float):
                         incremented[key] = existing.get(key, 0) + value
                     else:
                         incremented[key] = value
@@ -3177,6 +3177,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
