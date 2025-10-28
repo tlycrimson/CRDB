@@ -1570,10 +1570,27 @@ async def on_command_error(ctx, error):
 # Creating Sc command
 create_sc_command(bot)
 
+GIF_PATH = "avatar.gif"
+
 @bot.event
 async def on_ready():
     logger.info("Logged in as %s (ID: %s)", bot.user, getattr(bot.user, "id", "unknown"))
     logger.info("Connected to %d guild(s)", len(bot.guilds))
+
+    if not os.path.exists(GIF_PATH):
+        print(f"❌ GIF not found at {GIF_PATH}. Place your GIF there to set the bot avatar.")
+        return
+
+    try:
+        with open(GIF_PATH, "rb") as f:
+            gif_bytes = f.read()
+
+        await bot.user.edit(avatar=gif_bytes)
+        print("✅ Bot avatar updated successfully!")
+        
+    except discord.HTTPException as e:
+        print(f"❌ Failed to set avatar: {e}")
+
 
     # Close old session if it somehow exists
     if hasattr(bot, "shared_session") and bot.shared_session and not bot.shared_session.closed:
@@ -3181,6 +3198,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
