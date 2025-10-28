@@ -1578,8 +1578,8 @@ async def on_ready():
     logger.info("Logged in as %s (ID: %s)", bot.user, getattr(bot.user, "id", "unknown"))
     logger.info("Connected to %d guild(s)", len(bot.guilds))
 
-    if not os.path.exists(GIF_PATH):
-        logger.info("❌ GIF not found at {GIF_PATH}")
+    if not os.path.exists(AVATAR_PATH):
+        logger.info("❌ GIF not found at {AVATAR_PATH}")
         return
 
     if os.path.exists(BANNER_PATH):
@@ -3211,6 +3211,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
