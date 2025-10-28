@@ -1570,7 +1570,8 @@ async def on_command_error(ctx, error):
 # Creating Sc command
 create_sc_command(bot)
 
-GIF_PATH = "avatar.gif"
+AVATAR_PATH = "avatar.gif"
+BANNER_PATH = "banner.gif"
 
 @bot.event
 async def on_ready():
@@ -1578,11 +1579,23 @@ async def on_ready():
     logger.info("Connected to %d guild(s)", len(bot.guilds))
 
     if not os.path.exists(GIF_PATH):
-        logger.info("❌ GIF not found at {GIF_PATH}. Place your GIF there to set the bot avatar.")
+        logger.info("❌ GIF not found at {GIF_PATH}")
         return
 
+    if os.path.exists(BANNER_PATH):
+        try:
+            with open(BANNER_PATH, "rb") as f:
+                banner_bytes = f.read()
+            await bot.user.edit(banner=banner_bytes)
+            logger.info("✅ Bot Banner updated successfully!")
+        except discord.HTTPException as e:
+            logger.info("❌ Failed to set banner: {e}")
+    else:
+        logger.info("❌ Banner not found at {BANNER_PATH}")
+            
+            
     try:
-        with open(GIF_PATH, "rb") as f:
+        with open(AVATAR_PATH, "rb") as f:
             gif_bytes = f.read()
 
         await bot.user.edit(avatar=gif_bytes)
@@ -3198,6 +3211,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
