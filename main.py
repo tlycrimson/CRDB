@@ -1179,27 +1179,37 @@ class ReactionLogger:
         def _work():
             sup = self.bot.db.supabase
             row = sup.table('HRs').select('*').eq('user_id', u_str).execute()
-    
+            
+            FLOAT_COLUMNS = {"courses"} 
+
             if getattr(row, "data", None):
                 existing = row.data[0]
-                # Increment numerical fields
                 incremented = {}
+            
                 for key, value in updates.items():
-                    if isinstance(value, float):
-                        incremented[key] = existing.get(key, 0) + value
+                    if isinstance(value, (int, float)):
+                        current = existing.get(key, 0) or 0
+            
+                        # If this column is meant to store floats
+                        if key in FLOAT_COLUMNS:
+                            incremented[key] = float(current) + float(value)
+                        else:
+                            incremented[key] = int(current) + int(value)
                     else:
                         incremented[key] = value
-                return sup.table('HRs').update({
+            
+                return sup.table("HRs").update({
                     **incremented,
                     "username": clean_nickname(member.display_name)
-                }).eq('user_id', u_str).execute()
+                }).eq("user_id", u_str).execute()
+            
             else:
                 payload = {
-                    'user_id': u_str,
+                    "user_id": u_str,
                     "username": clean_nickname(member.display_name),
                     **updates
                 }
-                return sup.table('HRs').insert(payload).execute()
+                return sup.table("HRs").insert(payload).execute()
     
         try:
             await self.bot.db.run_query(_work)
@@ -3237,6 +3247,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
