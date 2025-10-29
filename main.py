@@ -499,23 +499,49 @@ class DatabaseHandler:
             return []
 
 
-    async def discharge_user(self, user_id: str, username: str) -> None:
-        """Delete a user from all relevant tables, logging errors but not raising."""
+    async def discharge_user(self, user_id: str, username: str, guild: discord.Guild) -> None:
+        """Delete a user from all relevant tables, and log the result to the default channel."""
         tables = ["users", "HRs", "LRs", "LD", "ED"]
-
+        success = True
+    
         def _work():
+            nonlocal success
             for table in tables:
                 try:
                     self.supabase.table(table).delete().eq("user_id", str(user_id)).execute()
                     logger.info(f"Deleted {username} ({user_id}) from {table}")
                 except Exception as e:
                     logger.error(f"Failed to delete {username} ({user_id}) from {table}: {e}")
-
+                    success = False
+    
         try:
             await self._run_sync(_work)
         except Exception as e:
             logger.error(f"Discharge operation failed for {username} ({user_id}): {e}")
-
+            success = False
+    
+        # Prepare simple success/failure embed
+        if success:
+            color = discord.Color.green()
+            title = "✅ Removed from Database"
+            description = f"**{username}** (`{user_id}`) has been successfully removed from all tables."
+        else:
+            color = discord.Color.red()
+            title = "❌ Database Removal Failed"
+            description = f"An error occurred while removing **{username}** (`{user_id}`). Check logs for details."
+    
+        embed = discord.Embed(title=title, description=description, color=color)
+        embed.set_footer(text="Automated database removal log")
+    
+        # Send to logging channel
+        try:
+            log_channel = guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
+            if log_channel:
+                await log_channel.send(embed=embed)
+            else:
+                logger.warning("Default log channel not found.")
+        except Exception as e:
+            logger.error(f"Failed to send database removal embed: {e}")
 
 # Clean up old processed reactions and messages in db
 async def start_cleanup_task(self):
@@ -3211,6 +3237,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
