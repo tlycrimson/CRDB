@@ -1533,7 +1533,10 @@ class MessageTracker:
                 logger.info(f"✅ Updated ED points for {member.display_name}")
                 
                 #Logs points to Courses/Departments column
-                if (message.channel.id in Config.COURSE_TRACKER_CHANNELS and message.channel.id != 1165368316500656241):
+                if (message.channel.id in Config.MESSAGE_TRACKER_CHANNELS and message.channel.id != 1165368316500656241):
+                    if message.channel.id == 1165368316123152392 and not re.search(r'\(approved|denied)\b', message.content, re.IGNORECASE):
+                        return
+                    
                     await self.bot.reaction_logger.update_hr(member, {"courses": 0.5})
                     logger.info(f"✅ Added 0.5 course points to HR for {member.display_name}")
 
@@ -3262,6 +3265,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
