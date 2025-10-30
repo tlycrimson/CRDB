@@ -1521,6 +1521,11 @@ class MessageTracker:
                 points_awarded = 1
                 await self.bot.db.increment_points("ED", member, points_awarded)
                 logger.info(f"✅ Updated ED points for {member.display_name}")
+                
+                #Logs points to Courses/Departments column
+                if (message.channel.id in Config.COURSE_TRACKER_CHANNELS and message.channel.id != 1165368316500656241):
+                    await self.bot.reaction_logger.update_hr(member, {"courses": 0.5})
+                    logger.info(f"✅ Added 0.5 course points to HR for {member.display_name}")
 
                 # MARK AS PROCESSED IN DATABASE AT THE END
                 message_key = f"{message.channel.id}-{message.id}"
@@ -3247,6 +3252,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
