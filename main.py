@@ -961,7 +961,7 @@ class ReactionLogger:
             logger.info(f"Attempting to update points for: {member.display_name}")
             await self.bot.db.increment_points("LD", member, 1)
     
-            if channel.id == Config.SC_LOG_CHANNEL_ID:
+            if channel.id == Config.SC_LOG_CHANNEL_ID or channel.id == 1165368315791806549 or channel.id == 1165368316123152385:
                 await self._update_hr_record(member, {"courses": 0.5})
                 logger.info(f"✅ Added 0.5 course point to {member.display_name} for SC channel reaction.")
 
@@ -1249,6 +1249,16 @@ class ReactionLogger:
             await self.bot.db.run_query(_work)
         except Exception:
             logger.exception("ReactionLogger._update_lr_record failed")
+            
+    async def update_hr(self, member: discord.Member, updates: dict):
+        """Public method to update HR record from other classes"""
+        try:
+            await self._update_hr_record(member, updates)
+            logger.info(f"HR record updated for {member.display_name}: {updates}")
+        except Exception as e:
+            logger.error(f"Failed to update HR record for {member.display_name}: {e}")
+
+        
                         
       # --- Event listeners ---
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
@@ -3252,6 +3262,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
