@@ -20,14 +20,13 @@ def has_allowed_role():
             )
             return False
             
-        # ✅ My Own Permission Bypass
         if member.id == 353167234698444802:
             return True
 
         if member.guild_permissions.administrator:
             return True
 
-        allowed_role = interaction.guild.get_role(Config.LD_ROLE_ID)
+        allowed_role = interaction.guild.get_role(Config.DB_LOGGER_ROLE_ID)
         if allowed_role and allowed_role in member.roles:
             return True
 
@@ -56,7 +55,6 @@ def min_rank_required(required_role_id: int):
             )
             return False
 
-        # ✅ Personal Permission Bypass
         if member.id == 353167234698444802:
             return True
 
@@ -81,4 +79,5 @@ def min_rank_required(required_role_id: int):
         )
         return False
     return app_commands.check(predicate)
+
 
