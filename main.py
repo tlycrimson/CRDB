@@ -604,7 +604,6 @@ async def log_xp_to_discord(
 
 
 # Roblox API helper functions
-# Roblox API helper functions - FIXED VERSION
 class RobloxAPI:
     @staticmethod
     async def get_user_id(username: str) -> Optional[int]:
@@ -2909,6 +2908,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
