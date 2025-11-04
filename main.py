@@ -2376,7 +2376,8 @@ async def discharge(
         for member in discharged_members:
             cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
             try:
-                await bot.db.discharge_user(member.id, cleaned_nickname)
+                await bot.db.discharge_user(member.id, cleaned_nickname, interaction.guild)
+
             except Exception as e:
                 logger.error(f"Error removing {cleaned_nickname} ({member.id}) from DB: {e}")
             try:
@@ -2725,7 +2726,8 @@ async def on_member_remove(member: discord.Member):
 
         # 🔑 Remove deserter from all DB tables
         try:
-            await bot.db.discharge_user(member.id, cleaned_nickname)
+            await bot.db.discharge_user(member.id, cleaned_nickname, interaction.guild)
+
         except Exception as e:
             logger.error(f"Error removing deserter {cleaned_nickname} ({member.id}) from DB: {e}")
 
@@ -2902,6 +2904,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
