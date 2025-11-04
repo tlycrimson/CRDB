@@ -1334,15 +1334,15 @@ async def on_command_error(ctx, error):
 # Creating Sc command
 create_sc_command(bot)
 
-AVATAR_PATH = "avatar.gif"
-BANNER_PATH = "banner.gif"
+"""AVATAR_PATH = "avatar.gif"
+BANNER_PATH = "banner.gif"""
 
 @bot.event
 async def on_ready():
     logger.info("Logged in as %s (ID: %s)", bot.user, getattr(bot.user, "id", "unknown"))
     logger.info("Connected to %d guild(s)", len(bot.guilds))
 
-    if not os.path.exists(AVATAR_PATH):
+  """  if not os.path.exists(AVATAR_PATH):
         logger.info("❌ GIF not found at {AVATAR_PATH}")
         return
 
@@ -1366,7 +1366,7 @@ async def on_ready():
         logger.info("✅ Bot avatar updated successfully!")
         
     except discord.HTTPException as e:
-        logger.info("❌ Failed to set avatar: {e}")
+        logger.info("❌ Failed to set avatar: {e}")"""
 
 
     # Close old session if it somehow exists
@@ -2884,6 +2884,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
