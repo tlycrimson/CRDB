@@ -28,7 +28,6 @@ from supabase import create_client, Client
 from time import monotonic as now
 from collections import deque
 from aiohttp.resolver import AsyncResolver
-from PIL import Image, ImageDraw, ImageFont, ImageFilter
 from functools import lru_cache
 
 # --- Configuration ---
@@ -2908,6 +2907,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
