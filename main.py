@@ -1297,7 +1297,6 @@ logger.info("Bot initialized with intents: members=%s, message_content=%s, react
 global_rate_limiter = GlobalRateLimiter()
 bot.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
 bot.reaction_logger = ReactionLogger(bot)
-bot.message_tracker = MessageTracker(bot)
 bot.api = DiscordAPI()
 bot.db = DatabaseHandler()
 
@@ -2566,7 +2565,7 @@ async def report_bug(interaction: discord.Interaction, description: str):
 
 # HR Welcome Message
 async def send_hr_welcome(member: discord.Member):
-    if not (welcome_channel := member.guild.get_channel(Config.DESERTER_ALERT_CHANNEL_ID)):
+    if not (welcome_channel := member.guild.get_channel(Config.HR_CHAT_CHANNEL_ID)):
         logger.warning("HR welcome channel not found!")
         return
 
@@ -2719,13 +2718,13 @@ async def on_member_update(before: discord.Member, after: discord.Member):
 async def on_member_remove(member: discord.Member):
     async with global_rate_limiter:
         guild = member.guild
-        if not (deserter_role := guild.get_role(Config.DESERTER_ROLE_ID)):
+        if not (deserter_role := guild.get_role(Config.RMP_ROLE_ID)):
             return
     
         if deserter_role not in member.roles:
             return
             
-        if not (alert_channel := guild.get_channel(Config.DESERTER_ALERT_CHANNEL_ID)):
+        if not (alert_channel := guild.get_channel(Config.HR_CHAT_CHANNEL_ID)):
             return
 
         # Clean nickname for logs + DB
@@ -2910,6 +2909,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
