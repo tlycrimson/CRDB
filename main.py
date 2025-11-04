@@ -1509,26 +1509,6 @@ async def on_resumed():
         logger.error(f"❌ Failed to restore tracker after resume: {e}")
 
 
-@bot.event
-async def on_message(message: discord.Message):
-    # Ignore bot messages
-    if message.author.bot:
-        return
-        
-    # Process commands (must await so commands work)
-    try:
-        await bot.process_commands(message)
-    except Exception:
-        logger.exception("Error while processing commands for message %s", getattr(message, "id", None))
-
-    # Background message tracking - fire-and-forget
-    async def _background_message_track(msg):
-        try:
-            await bot.message_tracker.handle_message(msg)
-        except Exception:
-            logger.exception("message_tracker.handle_message failed")
-
-    asyncio.create_task(_background_message_track(message))
 
         
 # --- COMMANDS --- 
@@ -2904,6 +2884,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
