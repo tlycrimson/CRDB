@@ -1542,7 +1542,7 @@ async def on_message(message: discord.Message):
 # /addxp Command
 @bot.tree.command(name="add-xp", description="Add XP to a user")
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-@min_rank_required(Config.CSM)
+@min_rank_required(Config.)
 async def add_xp(interaction: discord.Interaction, user: discord.User, xp: int):
     async with global_rate_limiter:
         # Validate XP amount
@@ -1589,7 +1589,7 @@ async def add_xp(interaction: discord.Interaction, user: discord.User, xp: int):
 # /take-xp Command
 @bot.tree.command(name="take-xp", description="Takes XP from user")
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-@min_rank_required(Config.CSM)
+@min_rank_required(Config.CSM_ROLE_ID)
 async def take_xp(interaction: discord.Interaction, user: discord.User, xp: int):
     async with global_rate_limiter:
         if xp <= 0:
@@ -1757,7 +1757,7 @@ async def leaderboard(interaction: discord.Interaction):
 # Give Event XP Command
 @bot.tree.command(name="give-event-xp", description="Give XP to attendees mentioned in an event log message")
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-@min_rank_required(Config.CSM)
+@min_rank_required(Config.CSM_ROLE_ID)
 async def give_event_xp(
     interaction: discord.Interaction,
     message_link: str,
@@ -2909,6 +2909,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
