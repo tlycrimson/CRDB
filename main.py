@@ -15,7 +15,7 @@ import mimetypes
 import functools
 import numpy as np
 from typing import Optional, Set, Dict, List, Tuple, Any, Literal
-from decorators import min_rank_required, has_allowed_role
+from decorators import min_rank_required, has_allowed_role, has_allowed_role_2
 from rate_limiter import RateLimiter
 from discord import app_commands
 from config import Config
@@ -2909,6 +2909,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
