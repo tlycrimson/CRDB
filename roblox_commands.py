@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 import logging
 from typing import Any, Dict, Optional
 from aiohttp.resolver import AsyncResolver
-from decorators import min_rank_required, has_allowed_role
+from decorators import min_rank_required, has_allowed_role, has_allowed_role_2
 
 # Configure root logger
 logging.basicConfig(
@@ -319,4 +319,5 @@ def create_sc_command(bot: commands.Bot):
                 pass  # Ignore if interaction is already dead
     
     return sc
+
 
