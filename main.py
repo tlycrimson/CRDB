@@ -1288,7 +1288,7 @@ bot = commands.Bot(
 if not intents.members:
     logger.warning("Privileged intent 'members' is disabled in code. Some checks may fail.")
 if not intents.message_content:
-    logger.warning("Privileged intent 'message_content' is disabled in code. Message tracker will not work.")
+    logger.warning("Privileged intent 'message_content' is disabled in code.")
 logger.info("Bot initialized with intents: members=%s, message_content=%s, reactions=%s, guilds=%s",
             intents.members, intents.message_content, intents.reactions, intents.guilds)
 
@@ -1435,11 +1435,6 @@ async def on_ready():
     except Exception as e:
         logger.error(f"❌ ReactionLogger channel validation failed: {e}")
 
-    try:
-        await bot.message_tracker.on_ready_setup()
-        logger.info("✅ Message tracker setup complete")
-    except Exception as e:
-        logger.error(f"❌ Message tracker setup failed: {e}")  
 
     # Sync commands but don't block startup indefinitely
     try:
@@ -2907,6 +2902,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
