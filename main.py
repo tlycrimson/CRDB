@@ -2351,8 +2351,7 @@ async def reset_db(interaction: discord.Interaction):
         return
 
     ld_hicom_roles = [
-        guild.get_role(Config.LD_HEAD_ROLE_ID),
-        guild.get_role(Config.LD_DEP_HEAD_ROLE_ID)
+        guild.get_role(Config.HIGH_COMMAND_ROLE_ID)
     ]
     
     if not any(role in interaction.user.roles for role in ld_hicom_roles if role):
@@ -3265,6 +3264,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
