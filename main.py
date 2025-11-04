@@ -501,7 +501,7 @@ class DatabaseHandler:
 
     async def discharge_user(self, user_id: str, username: str, guild: discord.Guild) -> None:
         """Delete a user from all relevant tables, and log the result to the default channel."""
-        tables = ["users", "HRs", "LRs", "LD", "ED"]
+        tables = ["users", "HRs", "LRs"]
         success = True
     
         def _work():
@@ -693,7 +693,7 @@ class RobloxAPI:
             logger.error(f"Failed to get Roblox rank for {discord_name}: {e}")
             return "Error"
 
-# Reaction Logger for LD
+# Reaction Logger for DB_LOGGERS
 class ReactionLogger:
     def __init__(self, bot: commands.Bot):
         self.bot = bot
@@ -925,8 +925,8 @@ class ReactionLogger:
                 logger.exception("Failed to fetch member for reaction", exc_info=True)
                 return
     
-        if Config.LD_ROLE_ID:
-            monitor_role = guild.get_role(Config.LD_ROLE_ID)
+        if Config.DB_LOGGER_ID:
+            monitor_role = guild.get_role(Config.DB_LOGGER_ID)
             if not monitor_role or monitor_role not in member.roles:
                 return
     
@@ -936,46 +936,6 @@ class ReactionLogger:
         if not all((channel, member, log_channel)):
             return
     
-        try:
-            await asyncio.sleep(0.5)
-            message = await channel.fetch_message(payload.message_id)
-    
-            content = (message.content[:100] + "...") if len(message.content) > 100 else message.content
-    
-            embed = discord.Embed(
-                title="🧑‍💻 LD Activity Logged",
-                description=f"{member.mention} reacted with {payload.emoji}",
-                color=discord.Color.purple()
-            )
-            embed.add_field(name="Channel", value=channel.mention)
-            embed.add_field(name="Author", value=message.author.mention)
-            embed.add_field(name="Message", value=content, inline=False)
-            if channel.id == Config.SC_LOG_CHANNEL_ID:
-                embed.add_field(name="Points Added", value="0.5", inline=False)
-            else:
-                embed.add_field(name="Points Added", value="1", inline=False)
-            embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
-    
-            await log_channel.send(embed=embed)
-    
-            logger.info(f"Attempting to update points for: {member.display_name}")
-            await self.bot.db.increment_points("LD", member, 1)
-    
-            if channel.id == Config.SC_LOG_CHANNEL_ID or channel.id == 1165368315791806549 or channel.id == 1165368316123152385:
-                await self._update_hr_record(member, {"courses": 0.5})
-                logger.info(f"✅ Added 0.5 course point to {member.display_name} for SC channel reaction.")
-
-        except discord.NotFound:
-            return
-        except Exception as e:
-            logger.error(f"Reaction log error: {type(e).__name__}: {str(e)}")
-            if log_channel:
-                error_embed = discord.Embed(
-                    title="❌ Error",
-                    description=f"Failed to log reaction: {str(e)}",
-                    color=discord.Color.red()
-                )
-                await log_channel.send(embed=error_embed)
 
    
     async def _log_event_reaction_impl(self, payload: discord.RawReactionActionEvent, member: discord.Member):
@@ -987,8 +947,8 @@ class ReactionLogger:
         if not guild:
             return
 
-        ld_role = guild.get_role(Config.LD_ROLE_ID)
-        if not ld_role or ld_role not in member.roles:
+        db_logger_role = guild.get_role(Config.DB_LOGGER_ID)
+        if not db_logger_role or db_logger_role not in member.roles:
             return
 
         channel = guild.get_channel(payload.channel_id)
@@ -1071,8 +1031,8 @@ class ReactionLogger:
             return
 
         guild = member.guild
-        ld_role = guild.get_role(Config.LD_ROLE_ID)
-        if not ld_role or ld_role not in member.roles:
+        db_logger_role = guild.get_role(Config.DB_LOGGER_ID)
+        if not db_logger_role or db_logger_role not in member.roles:
             return
 
         try:
@@ -1111,8 +1071,8 @@ class ReactionLogger:
             return
 
         guild = member.guild
-        ld_role = guild.get_role(Config.LD_ROLE_ID)
-        if not ld_role or ld_role not in member.roles:
+        db_logger_role = guild.get_role(Config.DB_LOGGER_ID)
+        if not db_logger_role or db_logger_role not in member.roles:
             return
 
         try:
@@ -1302,253 +1262,6 @@ class ConfirmView(discord.ui.View):
 
 
 
-class MessageTracker:
-    def __init__(self, bot: commands.Bot):
-        self.bot = bot
-        self.monitor_channel_ids = set(Config.MESSAGE_TRACKER_CHANNELS)
-        self.log_channel_id = Config.MESSAGE_TRACKER_LOG_CHANNEL
-        self.tracked_role_id = Config.MESSAGE_TRACKER_ROLE_ID
-        self.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
-        self._recent_messages = deque(maxlen=50)  
-
-        
-    async def log_message(self, message: discord.Message):
-        # Check for recent duplicates
-        message_key = f"{message.channel.id}-{message.id}"
-        if message_key in self._recent_messages:
-            return
-            
-        self._recent_messages.append(message_key)
-        
-        try:
-            async with global_rate_limiter:
-                await self._log_message_impl(message)
-        except Exception as e:
-            logger.error(f"Failed to log message: {type(e).__name__}: {str(e)}", exc_info=True)
-            
-    async def is_message_processed(self, message_key: str) -> bool:
-        """Check if message was already processed in database"""
-        try:
-            def _check():
-                res = self.bot.db.supabase.table('processed_messages')\
-                    .select('id')\
-                    .eq('message_key', message_key)\
-                    .execute()
-                return len(res.data) > 0
-            return await self.bot.db.run_query(_check)
-        except Exception as e:
-            logger.error(f"Error checking processed message: {e}")
-            return False
-
-    async def mark_message_processed(self, message_key: str):
-        """Mark message as processed in database"""
-        try:
-            def _insert():
-                self.bot.db.supabase.table('processed_messages')\
-                    .insert({
-                        'message_key': message_key,
-                        'processed_at': datetime.now(timezone.utc).isoformat()
-                    })\
-                    .execute()
-            await self.bot.db.run_query(_insert)
-        except Exception as e:
-            logger.error(f"Error marking message processed: {e}")
-
-    async def _log_message_impl(self, message: discord.Message):
-        message_key = f"{message.channel.id}-{message.id}"
-        
-        # Check database first
-        if await self.is_message_processed(message_key):
-            return
-            
-        # Then check recent in-memory cache
-        if message_key in self._recent_messages:
-            return
-            
-        self._recent_messages.append(message_key)
-        await self.mark_message_processed(message_key)
-    
-
-    async def on_ready_setup(self):
-        """Setup monitoring when bot starts"""
-        guild = self.bot.guilds[0]
-        valid_channels = set()
-        for channel_id in self.monitor_channel_ids:
-            if channel := guild.get_channel(channel_id):
-                valid_channels.add(channel.id)
-                logger.info(f"👁️ Monitoring channel: #{channel.name} ({channel.id})")
-            else:
-                logger.warning(f"⚠️ Channel ID {channel_id} not found in guild!")
-        self.monitor_channel_ids = valid_channels
-    
-
-  
-    async def _safe_interaction_response(self, interaction: discord.Interaction):
-        try:
-            if not interaction.response.is_done():
-                await interaction.response.defer(ephemeral=True)
-            return True
-        except discord.errors.NotFound:
-            logger.error("Interaction expired before response could be sent")
-            return False
-        except Exception as e:
-            logger.error(f"Failed to defer interaction: {str(e)}", exc_info=True)
-            return False
-
-    async def add_channels(self, interaction: discord.Interaction, channels: str):
-        if not await self._safe_interaction_response(interaction):
-            return
-        try:
-            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
-            self.monitor_channel_ids.update(channel_ids)
-            await interaction.followup.send(f"✅ Added {len(channel_ids)} channels to monitoring", ephemeral=True)
-        except ValueError:
-            await interaction.followup.send("❌ Invalid channel ID format.", ephemeral=True)
-        except Exception as e:
-            logger.error(f"Error in add_channels: {str(e)}", exc_info=True)
-            await interaction.followup.send(f"❌ Failed to add channels: {str(e)}", ephemeral=True)
-
-    async def remove_channels(self, interaction: discord.Interaction, channels: str):
-        if not await self._safe_interaction_response(interaction):
-            return
-        try:
-            channel_ids = [int(cid.strip()) for cid in channels.split(',')]
-            self.monitor_channel_ids.difference_update(channel_ids)
-            await interaction.followup.send(f"✅ Removed {len(channel_ids)} channels from monitoring", ephemeral=True)
-        except ValueError:
-            await interaction.followup.send("❌ Invalid channel ID format.", ephemeral=True)
-        except Exception as e:
-            logger.error(f"Error in remove_channels: {str(e)}", exc_info=True)
-            await interaction.followup.send(f"❌ Failed to remove channels: {str(e)}", ephemeral=True)
-
-    async def list_channels(self, interaction: discord.Interaction):
-        if not await self._safe_interaction_response(interaction):
-            return
-        try:
-            if not self.monitor_channel_ids:
-                await interaction.followup.send("❌ No channels being monitored", ephemeral=True)
-                return
-            channel_list = "\n".join(f"• <#{cid}>" for cid in self.monitor_channel_ids)
-            embed = discord.Embed(
-                title="Monitored Message Channels",
-                description=channel_list,
-                color=discord.Color.blue()
-            )
-            await interaction.followup.send(embed=embed, ephemeral=True)
-        except Exception as e:
-            logger.error(f"Error in list_channels: {str(e)}", exc_info=True)
-            try:
-                await interaction.followup.send("❌ Failed to list channels", ephemeral=True)
-            except:
-                pass
-
-    async def handle_message(self, message: discord.Message):
-        """Handle incoming messages for tracking"""
-        try:
-            message_key = f"{message.channel.id}-{message.id}"
-            
-            # Check database FIRST (persistent across restarts)
-            if await self.is_message_processed(message_key):
-                return
-                
-            # Then check memory (current session only)
-            if message_key in self._recent_messages:
-                return
-                
-            # Mark as processed in memory
-            self._recent_messages.append(message_key)
-            
-            # Process the message (NO duplicate checks in _log_message_impl)
-            await self._log_message_impl(message)
-            
-        except Exception as e:
-            logger.error(f"Failed to handle message: {type(e).__name__}: {str(e)}", exc_info=True)
-        
-    async def _log_message_impl(self, message: discord.Message):
-        """Main implementation for logging messages"""
-        if message.author.bot or message.channel.id not in self.monitor_channel_ids:
-            return
-    
-        # Ensure we have a Member object
-        if not isinstance(message.author, discord.Member):
-            try:
-                member = await message.guild.fetch_member(message.author.id)
-            except discord.NotFound:
-                logger.warning(f"Member {message.author.id} not found in guild")
-                return
-            except Exception as e:
-                logger.error(f"Failed to fetch member: {e}")
-                return
-        else:
-            member = message.author
-    
-        # Check if user has the tracked role
-        tracked_role = message.guild.get_role(self.tracked_role_id)
-        if not tracked_role or tracked_role not in member.roles:
-            return
-    
-        log_channel = message.guild.get_channel(self.log_channel_id)
-        if not log_channel:
-            logger.error("❌ Message tracker log channel not found")
-            return
-    
-        logger.info(f"✉️ Logging message from {member.display_name} in #{message.channel.name}")
-    
-        # Process message content with truncation
-        content = message.content
-        if len(content) > 300:
-            content = content[:300] + "... [truncated]"
-    
-        # Create embed
-        embed = discord.Embed(
-            title="🎓 ED Activity Logged",
-            description=f"{member.mention} has marked an exam or logged a course!",
-            color=discord.Color.pink(),
-            timestamp=message.created_at
-        )
-    
-        embed.add_field(name="Channel", value=message.channel.mention, inline=True)
-        embed.add_field(name="Message ID", value=f"`{message.id}`", inline=True)
-        embed.add_field(name="Content", value=content, inline=False)
-        embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
-    
-        if message.attachments:
-            attachment = message.attachments[0]
-            if attachment.url.lower().endswith(('png', 'jpg', 'jpeg', 'gif', 'webp')):
-                embed.set_image(url=attachment.url)
-            else:
-                embed.add_field(name="Attachment", value=f"[{attachment.filename}]({attachment.url})", inline=False)
-    
-        # Send the embed
-        try:
-            await log_channel.send(embed=embed)
-            logger.info(f"✅ Message logged for {member.display_name}")
-            
-            # Update points
-            logger.info(f"🔢 Updating points for: {member.display_name}")
-            try:           
-                # Update database
-                points_awarded = 1
-                await self.bot.db.increment_points("ED", member, points_awarded)
-                logger.info(f"✅ Updated ED points for {member.display_name}")
-                
-                #Logs points to Courses/Departments column
-                if (message.channel.id in Config.MESSAGE_TRACKER_CHANNELS and message.channel.id != 1165368316500656241):
-                    if message.channel.id == 1165368316123152392 and not re.search(r'\(approved|denied)\b', message.content, re.IGNORECASE):
-                        return
-                    
-                    await self.bot.reaction_logger.update_hr(member, {"courses": 0.5})
-                    logger.info(f"✅ Added 0.5 course points to HR for {member.display_name}")
-
-                # MARK AS PROCESSED IN DATABASE AT THE END
-                message_key = f"{message.channel.id}-{message.id}"
-                await self.mark_message_processed(message_key)
-                
-            except Exception as e:
-                logger.error(f"Failed to update points: {str(e)}")
-                
-        except Exception as e:
-            logger.error(f"Failed to send message log: {str(e)}")
     
 
 # --- Bot Initialization ---
@@ -1799,9 +1512,9 @@ async def on_resumed():
         # Reinitialize reaction logger's rate limiter
         bot.reaction_logger.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
 
-        logger.info("✅ Restored ReactionLogger and MessageTracker after resume.")
+        logger.info("✅ Restored ReactionLogger after resume.")
     except Exception as e:
-        logger.error(f"❌ Failed to restore trackers after resume: {e}")
+        logger.error(f"❌ Failed to restore tracker after resume: {e}")
 
 
 @bot.event
@@ -2369,10 +2082,6 @@ async def reset_db(interaction: discord.Interaction):
         sup.table('LRs').update({
             'activity': 0, 'time_guarded': 0, 'events_attended': 0
         }).neq('user_id', 0).execute()
-        sup.table('ED').update({
-            'points': 0}).neq('user_id', 0).execute()
-        sup.table('LD').update({
-            'points': 0}).neq('user_id', 0).execute()
         return True
 
     try:
@@ -2455,8 +2164,6 @@ async def force_log(interaction: discord.Interaction, message_link: str):
                         await bot.reaction_logger._update_lr_record(attendee_member, {"events_attended": 1})
                         success_count += 1
 
-                # Award LD point to the logger
-                await bot.db.increment_points("LD", interaction.user, 1)
                 
                 results.append(f"✅ Event: {success_count} attendees + host logged")
                 processed = True
@@ -2485,11 +2192,11 @@ async def force_log(interaction: discord.Interaction, message_link: str):
 
                 if column_to_update:
                     await bot.reaction_logger._update_hr_record(user_member, {column_to_update: 1})
-                    # Award LD point to the logger
-                    await bot.db.increment_points("LD", interaction.user, 1)
                     
                     results.append(f"✅ {column_to_update.title()} logged")
+                    
                     processed = True
+                    
                     logger.info(f"✅ {column_to_update} force-logged")
                     
             except Exception as e:
@@ -2531,8 +2238,6 @@ async def force_log(interaction: discord.Interaction, message_link: str):
                             xp_text = f" (+{xp_to_award} XP)"
                             logger.info(f"⭐ Gave {xp_to_award} XP to {user_member.display_name} ({user_member.id}) for {total_minutes} mins (force-log)")
         
-                    # Award LD point to the logger
-                    await bot.db.increment_points("LD", interaction.user, 1)
         
                     # Finish up and include XP info in results
                     field_name = "time_guarded" if "time_guarded" in updates else "activity"
@@ -2545,18 +2250,14 @@ async def force_log(interaction: discord.Interaction, message_link: str):
                 results.append(f"❌ Activity: {str(e)[:50]}")
 
 
-        # 4. LD MONITORING CHANNELS (general LD activity)
         elif channel_id in bot.reaction_logger.monitor_channel_ids:
             try:
-                # Award LD point for general LD activity in monitored channels
-                await bot.db.increment_points("LD", interaction.user, 1)
-                results.append("✅ LD activity logged")
                 processed = True
-                logger.info("✅ LD activity force-logged")
+                logger.info("✅ Activity force-logged")
                 
             except Exception as e:
-                logger.error(f"LD logging failed: {e}")
-                results.append(f"❌ LD: {str(e)[:50]}")
+                logger.error(f"Force activity logging failed: {e}")
+                results.append(f"❌ DB_LOGGER: {str(e)[:50]}")
 
         # Send results
         if processed:
@@ -2565,8 +2266,7 @@ async def force_log(interaction: discord.Interaction, message_link: str):
                 f"✅ **Force-log completed**\n"
                 f"**Message:** [Jump to message]({message.jump_url})\n"
                 f"**Channel:** #{channel.name}\n"
-                f"**Results:**\n{result_text}\n"
-                f"**LD Points Awarded:** 1 point to {interaction.user.mention}",
+                f"**Results:**\n{result_text}",
                 ephemeral=True
             )
             
@@ -2590,7 +2290,7 @@ async def force_log(interaction: discord.Interaction, message_link: str):
             await interaction.followup.send(
                 f"❌ No applicable log types found for this message.\n"
                 f"**Channel:** #{channel.name}\n"
-                f"**Supported channels:** Events, Training, Activity logs, or LD-monitored channels",
+                f"**Supported channels:** Events, Training, Activity logs, or DB_LOGGER-monitored channels",
                 ephemeral=True
             )
 
@@ -2755,54 +2455,6 @@ async def discharge(
         await interaction.followup.send("❌ An error occurred while processing the discharge.", ephemeral=True)
     
 
-#LD Reaction Monitor Set-up Command           
-@bot.tree.command(name="message-tracker-setup", description="Setup message monitoring")
-@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)  
-async def message_tracker_setup(
-    interaction: discord.Interaction,
-    log_channel: discord.TextChannel,
-    monitor_channels: str,
-    role: discord.Role
-):
-    """Setup message tracking"""
-    await interaction.response.defer(ephemeral=True)
-    try:
-        channel_ids = [int(cid.strip()) for cid in monitor_channels.split(',')]
-        bot.message_tracker.monitor_channel_ids = set(channel_ids)
-        bot.message_tracker.log_channel_id = log_channel.id
-        bot.message_tracker.tracked_role_id = role.id
-        await interaction.followup.send("✅ Message tracking setup complete", ephemeral=True)
-    except Exception as e:
-        await interaction.followup.send(f"❌ Setup failed: {str(e)}", ephemeral=True)
-
-@bot.tree.command(name="message-tracker-add", description="Add channels to message monitoring")
-@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)  # Or whatever role you want
-async def message_tracker_add(
-    interaction: discord.Interaction,
-    channels: str
-):
-    """Add channels to message tracking"""
-    await bot.message_tracker.add_channels(interaction, channels)
-
-@bot.tree.command(name="message-tracker-remove", description="Remove channels from message monitoring")
-@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-@min_rank_required(Config.HIGH_COMMAND_ROLE_ID) 
-async def message_tracker_remove(
-    interaction: discord.Interaction,
-    channels: str
-):
-    """Remove channels from message tracking"""
-    await bot.message_tracker.remove_channels(interaction, channels)
-
-@bot.tree.command(name="message-tracker-list", description="List currently monitored channels")
-@app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)  
-async def message_tracker_list(interaction: discord.Interaction):
-    """List channels being tracked for messages"""
-    await bot.message_tracker.list_channels(interaction)
-
 
 
 @bot.tree.command(name="commands", description="List all available commands")
@@ -2815,12 +2467,6 @@ async def command_list(interaction: discord.Interaction):
     )
     
     categories = {
-        "💬 Message Tracking": [
-            "/message-tracker-setup - Setup message tracking",
-            "/message-tracker-add - Add channels to monitor",
-            "/message-tracker-remove - Remove monitored channels",
-            "/message-tracker-list - List monitored channels"
-        ],
         "🛠️ Utility": [
             "/ping - Check bot responsiveness",
             "/commands - Show this help message",
@@ -3264,6 +2910,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
