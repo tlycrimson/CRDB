@@ -865,6 +865,37 @@ class ReactionLogger:
             except discord.NotFound:
                 logger.warning(f"Member {payload.user_id} not found in guild")
                 return
+
+        # === For Background Checkers===
+        try:
+            # Check channel
+            if payload.channel_id == Config.SC_CHANNEL_ID:
+                emoji = str(payload.emoji)
+        
+                # Check if reaction tracked
+                if emoji in Config.TRACKED_REACTIONS:
+                    bg_checker_role = guild.get_role(Config.BG_CHECKER_ROLE_ID)
+                    # Must have BG checker role
+                    if bg_checker_role and bg_checker_role in member.roles:
+                        
+                        log_channel = guild.get_channel(self.log_channel_id)
+                        if log_channel:
+                            embed = discord.Embed(
+                                title="🪪 Security Check Logged",
+                                color=discord.Color.blue()
+                            )
+                            embed.add_field(name="Checker", value=f"{member.mention} ({member.id})", inline=False)
+                            embed.add_field(name="Reaction", value=emoji, inline=True)
+                            embed.add_field(name="Channel", value=f"<#{payload.channel_id}>", inline=True)
+                            embed.add_field(name="Message ID", value=f"`{payload.message_id}`", inline=False)
+        
+                            await log_channel.send(embed=embed)
+        
+                        # Prevent SC reactions from going to other log pipelines
+                    return
+        except Exception as e:
+            logger.error(f"Error handling SC reaction: {e}")
+
         
         # === Duplicate reaction prevention ===
         if await self.is_reaction_processed(payload.message_id, payload.user_id):
@@ -1022,7 +1053,7 @@ class ReactionLogger:
         mapping = {
             self.phase_log_channel_id: "phases",
             self.tryout_log_channel_id: "tryouts",
-            self.course_log_channel_id: "courses",
+            self.course_log_channel_id: "phases",
         }
         column_to_update = mapping.get(payload.channel_id)
         if not column_to_update or str(payload.emoji) != "✅":
@@ -1060,7 +1091,7 @@ class ReactionLogger:
             logger.error(f"Error processing {column_to_update} reaction: {e}")
             log_channel = guild.get_channel(self.log_channel_id)
             if log_channel:
-                await log_channel.send(embed=discord.Embed(title="❌ Training Log Error", description=str(e), color=discord.Color.red()))
+                await log_channel.send(embed=discord.Embed(title="❌ Log Error", description=str(e), color=discord.Color.red()))
 
 
     async def _log_activity_reaction_impl(self, payload: discord.RawReactionActionEvent, member: discord.Member):
@@ -2883,6 +2914,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
