@@ -1496,7 +1496,6 @@ async def on_resumed():
     try:
         await asyncio.sleep(0.5)
         await bot.reaction_logger.on_ready_setup()
-        await bot.message_tracker.on_ready_setup()
 
         if not getattr(bot.reaction_logger, "_cleanup_task", None) or bot.reaction_logger._cleanup_task.done():
             await bot.reaction_logger.start_cleanup_task()
@@ -2884,6 +2883,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
