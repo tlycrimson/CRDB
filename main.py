@@ -890,6 +890,14 @@ class ReactionLogger:
                             embed.add_field(name="Message ID", value=f"`{payload.message_id}`", inline=False)
         
                             await log_channel.send(embed=embed)
+                            logger.info
+                            logger.info(
+                                f"🪪 Security Check logged successfully: "
+                                f"Checker={member} ({member.id}), "
+                                f"Reaction={emoji}, "
+                                f"MessageID={payload.message_id}, "
+                                f"ChannelID={payload.channel_id}"
+                            )
         
                         # Prevent SC reactions from going to other log pipelines
                     return
@@ -1041,6 +1049,16 @@ class ReactionLogger:
             done_embed.add_field(name="Message", value=f"[Jump to Event]({message.jump_url})", inline=False)
 
             await log_channel.send(content=member.mention, embed=done_embed)
+            logger.info(
+                f"✅ Event logged successfully: "
+                f"Host={host_member} ({host_member.id}), "
+                f"Attendees={success_count}, "
+                f"HR_Excluded={len(hr_attendees) if hr_attendees else 0}, "
+                f"Logged_By={member} ({member.id}), "
+                f"EventType={event_name}, "
+                f"MessageID={message.id}"
+            )
+
 
         except Exception as e:
             logger.error(f"Error processing event reaction: {e}")
@@ -1086,6 +1104,13 @@ class ReactionLogger:
                 embed.add_field(name="Host", value=user_member.mention)
                 embed.add_field(name="Logged By", value=member.mention)
                 await log_channel.send(embed=embed)
+                logger.info(
+                    f"📘 Event log embed sent: "
+                    f"Title='{title}', "
+                    f"Host={user_member} ({user_member.id}), "
+                    f"Logged_By={member} ({member.id}), "
+                    f"Channel=#{log_channel.name}"
+                )
 
         except Exception as e:
             logger.error(f"Error processing {column_to_update} reaction: {e}")
@@ -2888,6 +2913,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
