@@ -869,7 +869,7 @@ class ReactionLogger:
         # === For Background Checkers===
         try:
             # Check channel
-            if payload.channel_id == Config._CHANNEL_ID:
+            if payload.channel_id == Config.SC_CHANNEL_ID:
                 emoji = str(payload.emoji)
         
                 # Check if reaction tracked
@@ -2888,6 +2888,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
