@@ -1373,32 +1373,6 @@ async def on_ready():
     logger.info("Logged in as %s (ID: %s)", bot.user, getattr(bot.user, "id", "unknown"))
     logger.info("Connected to %d guild(s)", len(bot.guilds))
 
-  """  if not os.path.exists(AVATAR_PATH):
-        logger.info("❌ GIF not found at {AVATAR_PATH}")
-        return
-
-    if os.path.exists(BANNER_PATH):
-        try:
-            with open(BANNER_PATH, "rb") as f:
-                banner_bytes = f.read()
-            await bot.user.edit(banner=banner_bytes)
-            logger.info("✅ Bot Banner updated successfully!")
-        except discord.HTTPException as e:
-            logger.info("❌ Failed to set banner: {e}")
-    else:
-        logger.info("❌ Banner not found at {BANNER_PATH}")
-            
-            
-    try:
-        with open(AVATAR_PATH, "rb") as f:
-            gif_bytes = f.read()
-
-        await bot.user.edit(avatar=gif_bytes)
-        logger.info("✅ Bot avatar updated successfully!")
-        
-    except discord.HTTPException as e:
-        logger.info("❌ Failed to set avatar: {e}")"""
-
 
     # Close old session if it somehow exists
     if hasattr(bot, "shared_session") and bot.shared_session and not bot.shared_session.closed:
@@ -2914,6 +2888,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
