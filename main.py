@@ -512,14 +512,14 @@ class DatabaseHandler:
                 except Exception as e:
                     logger.error(f"Failed to delete {username} ({user_id}) from {table}: {e}")
                     success = False
-    
+
         try:
             await self._run_sync(_work)
         except Exception as e:
             logger.error(f"Discharge operation failed for {username} ({user_id}): {e}")
             success = False
-    
-        # Prepare simple success/failure embed
+
+        # Prepare embed
         if success:
             color = discord.Color.green()
             title = "✅ Removed from Database"
@@ -531,6 +531,17 @@ class DatabaseHandler:
     
         embed = discord.Embed(title=title, description=description, color=color)
         embed.set_footer(text="Automated database removal log")
+
+        # Correct location for logging
+        try:
+            log_channel = guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
+            if log_channel:
+                await log_channel.send(embed=embed)
+            else:
+                logger.warning("Default log channel not found.")
+        except Exception as e:
+            logger.error(f"Failed to send database removal embed: {e}")
+
 
     async def save_user_roles(self, user_id: str, username: str, role_ids: list[int]):
         """Save a user's tracked roles into the 'user_roles' table."""
@@ -550,7 +561,8 @@ class DatabaseHandler:
                 logger.error(f"save_user_roles failed for {user_id}: {e}")
                 return False
 
-        return await self._run_sync(_work)
+        return await self.__run_sync(_work)
+
 
     async def get_user_roles(self, user_id: str):
         """Retrieve saved roles for a user."""
@@ -570,7 +582,6 @@ class DatabaseHandler:
 
         return await self._run_sync(_work)
 
-    
         # Send to logging channel
         try:
             log_channel = guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
@@ -3039,6 +3050,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
