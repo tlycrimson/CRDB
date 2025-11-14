@@ -561,7 +561,7 @@ class DatabaseHandler:
                 logger.error(f"save_user_roles failed for {user_id}: {e}")
                 return False
 
-        return await self.__run_sync(_work)
+        return await self._run_sync(_work)
 
 
     async def get_user_roles(self, user_id: str):
@@ -3050,6 +3050,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
