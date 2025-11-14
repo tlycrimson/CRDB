@@ -2612,100 +2612,82 @@ async def report_bug(interaction: discord.Interaction, description: str):
             ephemeral=True
         )
 
-
-# Save Roles Command
+#Save Roles Command
 @bot.tree.command(name="save-roles", description="Save a user's tracked roles to the database.")
 @has_allowed_role()
 async def save_roles(interaction: discord.Interaction, member: discord.Member):
+    # Defer immediately
+    await interaction.response.defer(ephemeral=True)
+
     tracked_ids = Config.TRACKED_ROLE_IDS
     matched_roles = [r for r in member.roles if r.id in tracked_ids]
     role_ids = [r.id for r in matched_roles]
 
-    success = await bot.db.save_user_roles(
-        user_id=str(member.id),
-        username=member.display_name,
-        role_ids=role_ids
-    )
-
-    # Build status embed
-    if success:
-        embed = discord.Embed(
-            title="✅ Roles Saved",
-            description=(
-                f"Saved **{len(role_ids)}** tracked roles for {member.mention}.\n"
-                f"**Roles:** {', '.join([r.name for r in matched_roles]) or 'None'}"
-            ),
-            color=discord.Color.green()
+    try:
+        success = await bot.db.save_user_roles(
+            user_id=str(member.id),
+            username=member.display_name,
+            role_ids=role_ids
         )
-    else:
+    except Exception as e:
         embed = discord.Embed(
             title="❌ Error Saving Roles",
-            description=f"Failed to save roles for {member.mention}.",
+            description=f"Failed to save roles for {member.mention}.\n{e}",
             color=discord.Color.red()
         )
+        await interaction.followup.send(embed=embed, ephemeral=True)
+        return
+
+    # Build status embed
+    embed = discord.Embed(
+        title="✅ Roles Saved" if success else "❌ Error Saving Roles",
+        description=(
+            f"Saved **{len(role_ids)}** tracked roles for {member.mention}.\n"
+            f"**Roles:** {', '.join([r.name for r in matched_roles]) or 'None'}"
+        ) if success else f"Failed to save roles for {member.mention}.",
+        color=discord.Color.green() if success else discord.Color.red()
+    )
 
     # Log to default channel
     log_channel = interaction.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
     if log_channel:
         await log_channel.send(embed=embed)
 
-    await interaction.response.send_message(embed=embed, ephemeral=True)
+    # Send ephemeral follow-up to the user
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
 #Restore Roles Command
-@bot.tree.command(name="restore-roles", description="Generate a Dyno command to restore saved roles.")
-@has_allowed_role()
+@bot.tree.command(name="restore-roles", description="Restore saved roles for a user.")
 async def restore_roles(interaction: discord.Interaction, member: discord.Member):
-    saved_roles = await bot.db.get_user_roles(str(member.id))
+    # Defer interaction to give more time
+    await interaction.response.defer(ephemeral=True)
 
-    if not saved_roles:
-        embed = discord.Embed(
-            title="⚠️ No Saved Roles Found",
-            description=f"No saved tracked roles were found for {member.mention}.",
-            color=discord.Color.orange()
+    # Fetch saved roles from Supabase
+    try:
+        saved_roles = await bot.db.get_user_roles(str(member.id))  # Assuming this returns a list of role IDs
+    except Exception as e:
+        await interaction.followup.send(
+            f"❌ Failed to fetch saved roles: {e}", ephemeral=True
         )
-        await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
-    valid_roles = []
-    missing_roles = []
-
-    for role_id in saved_roles:
-        role = interaction.guild.get_role(role_id)
-        if role:
-            valid_roles.append(role)
-        else:
-            missing_roles.append(role_id)
-
-    # ---- DYN0 COMMAND (ID-BASED) ----
-    # ?role userID +roleID +roleID +roleID
-    dyno_cmd = f"?role {member.id} " + " ".join(
-        f"+{role.id}" for role in valid_roles
-    )
-
-    # Embed Description
-    description = (
-        f"**Restorable Roles:** {', '.join([f'{r.name} (`{r.id}`)' for r in valid_roles]) or 'None'}\n\n"
-        f"**Dyno Command (ID-based):**\n```{dyno_cmd}```"
-    )
-
-    if missing_roles:
-        description += (
-            f"\n⚠️ Missing or deleted role IDs: `{', '.join(str(r) for r in missing_roles)}`"
+    if not saved_roles:
+        await interaction.followup.send(
+            f"⚠️ No saved roles found for {member.mention}.", ephemeral=True
         )
+        return
 
+    # Convert list of role IDs to comma-separated string for Dyno
+    roles_string = ", ".join(str(role_id) for role_id in saved_roles)
+
+    # Create embed to show the Dyno command
     embed = discord.Embed(
-        title="📜 Role Restoration Command",
-        description=description,
-        color=discord.Color.blue()
+        title=f"✅ Roles restored for {member.display_name}",
+        description=f"Use the following command in chat to reassign roles:\n`?role {roles_string}`",
+        color=discord.Color.green()
     )
+    await interaction.followup.send(embed=embed, ephemeral=True)
 
-    # Log to default log channel
-    log_channel = interaction.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
-    if log_channel:
-        await log_channel.send(embed=embed)
-
-    # Ephemeral response to the admin
-    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 
@@ -3056,6 +3038,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
