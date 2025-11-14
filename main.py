@@ -2691,6 +2691,50 @@ async def restore_roles(interaction: discord.Interaction, member: discord.Member
 
     await interaction.response.send_message(embed=embed, ephemeral=True)
 
+#List Roles
+@bot.tree.command(name="list-roles", description="List all server roles with their names and IDs.")
+@has_allowed_role()
+async def list_roles(interaction: discord.Interaction):
+
+    roles = interaction.guild.roles
+    roles_sorted = sorted(roles, key=lambda r: r.position, reverse=True)
+
+    role_lines = [
+        f"**{role.name}** — `{role.id}`"
+        for role in roles_sorted
+    ]
+
+    # Split into chunks for embed limits
+    chunks = []
+    current = ""
+
+    for line in role_lines:
+        if len(current) + len(line) + 2 > 1000:
+            chunks.append(current)
+            current = ""
+        current += line + "\n"
+
+    if current:
+        chunks.append(current)
+
+    # Build all embeds
+    embeds = []
+    for i, chunk in enumerate(chunks, start=1):
+        embed = discord.Embed(
+            title="📜 Server Roles",
+            description=chunk,
+            color=discord.Color.blurple()
+        )
+        embed.set_footer(text=f"Page {i}/{len(chunks)} — Total Roles: {len(roles_sorted)}")
+        embeds.append(embed)
+
+    # Respond with first embed *ephemerally*
+    await interaction.response.send_message(embed=embeds[0], ephemeral=True)
+
+    # Send additional embeds (also ephemeral)
+    if len(embeds) > 1:
+        for embed in embeds[1:]:
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 # HR Welcome Message
@@ -3040,6 +3084,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
