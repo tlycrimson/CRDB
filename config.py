@@ -40,11 +40,10 @@ class Config:
     HR_CHAT_CHANNEL_ID = 1165368316970405917
 
     TRACKED_ROLE_IDS = {
-        1270438123654086696,  # 🎓 Specialised Policing Degree
-        1270437785920344148,  # 🎓 Professional Policing Degree
         1344753293766819961,  # Soundboard Access
         1165368311727521799,  # Picture Permissions
         1165368311727521800,  # Mic Checked ✔️
+        1430316487561842822,  # Hall of Shame permission
         1165368311681388613,  # GMT
         1165368311681388611,  # EST
         1165368311681388612,  # AEST
@@ -133,6 +132,7 @@ class Config:
    # LD_HEAD_ROLE_ID = 1224732743036833802
    # LD_DEP_HEAD_ROLE_ID = 1224732812020813935
     # MAX_MONITORED_CHANNELS = 15
+
 
 
 
