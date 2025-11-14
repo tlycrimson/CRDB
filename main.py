@@ -532,43 +532,43 @@ class DatabaseHandler:
         embed = discord.Embed(title=title, description=description, color=color)
         embed.set_footer(text="Automated database removal log")
 
-        async def save_user_roles(self, user_id: str, username: str, role_ids: list[int]):
-            """Save a user's tracked roles into the 'user_roles' table."""
-            if not self.supabase:
-                logger.warning("Supabase not configured; save_user_roles aborted.")
+    async def save_user_roles(self, user_id: str, username: str, role_ids: list[int]):
+        """Save a user's tracked roles into the 'user_roles' table."""
+        if not self.supabase:
+            logger.warning("Supabase not configured; save_user_roles aborted.")
+            return False
+
+        def _work():
+            try:
+                self.supabase.table("user_roles").upsert({
+                    "user_id": str(user_id),
+                    "username": clean_nickname(username),
+                    "roles": role_ids
+                }).execute()
+                return True
+            except Exception as e:
+                logger.error(f"save_user_roles failed for {user_id}: {e}")
                 return False
-    
-            def _work():
-                try:
-                    self.supabase.table("user_roles").upsert({
-                        "user_id": str(user_id),
-                        "username": clean_nickname(username),
-                        "roles": role_ids
-                    }).execute()
-                    return True
-                except Exception as e:
-                    logger.error(f"save_user_roles failed for {user_id}: {e}")
-                    return False
-    
-            return await self._run_sync(_work)
-    
-        async def get_user_roles(self, user_id: str):
-            """Retrieve saved roles for a user."""
-            if not self.supabase:
-                logger.warning("Supabase not configured; get_user_roles aborted.")
+
+        return await self._run_sync(_work)
+
+    async def get_user_roles(self, user_id: str):
+        """Retrieve saved roles for a user."""
+        if not self.supabase:
+            logger.warning("Supabase not configured; get_user_roles aborted.")
+            return None
+
+        def _work():
+            try:
+                res = self.supabase.table("user_roles").select("roles").eq("user_id", str(user_id)).execute()
+                if res.data:
+                    return res.data[0].get("roles", [])
                 return None
-    
-            def _work():
-                try:
-                    res = self.supabase.table("user_roles").select("roles").eq("user_id", str(user_id)).execute()
-                    if res.data:
-                        return res.data[0].get("roles", [])
-                    return None
-                except Exception as e:
-                    logger.error(f"get_user_roles failed for {user_id}: {e}")
-                    return None
-    
-            return await self._run_sync(_work)
+            except Exception as e:
+                logger.error(f"get_user_roles failed for {user_id}: {e}")
+                return None
+
+        return await self._run_sync(_work)
 
     
         # Send to logging channel
@@ -3039,6 +3039,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
