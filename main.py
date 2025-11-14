@@ -1001,8 +1001,8 @@ class ReactionLogger:
                 logger.exception("Failed to fetch member for reaction", exc_info=True)
                 return
     
-        if Config.DB_LOGGER_ID:
-            monitor_role = guild.get_role(Config.DB_LOGGER_ID)
+        if Config.DB_LOGGER_ROLE_ID:
+            monitor_role = guild.get_role(Config.DB_LOGGER_ROLE_ID)
             if not monitor_role or monitor_role not in member.roles:
                 return
     
@@ -1023,7 +1023,7 @@ class ReactionLogger:
         if not guild:
             return
 
-        db_logger_role = guild.get_role(Config.DB_LOGGER_ID)
+        db_logger_role = guild.get_role(Config.DB_LOGGER_ROLE_ID)
         if not db_logger_role or db_logger_role not in member.roles:
             return
 
@@ -1117,7 +1117,7 @@ class ReactionLogger:
             return
 
         guild = member.guild
-        db_logger_role = guild.get_role(Config.DB_LOGGER_ID)
+        db_logger_role = guild.get_role(Config.DB_LOGGER_ROLE_ID)
         if not db_logger_role or db_logger_role not in member.roles:
             return
 
@@ -1164,7 +1164,7 @@ class ReactionLogger:
             return
 
         guild = member.guild
-        db_logger_role = guild.get_role(Config.DB_LOGGER_ID)
+        db_logger_role = guild.get_role(Config.DB_LOGGER_ROLE_ID)
         if not db_logger_role or db_logger_role not in member.roles:
             return
 
@@ -3039,6 +3039,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
