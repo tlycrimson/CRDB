@@ -2663,7 +2663,7 @@ async def restore_roles(interaction: discord.Interaction, member: discord.Member
             description=f"No saved tracked roles were found for {member.mention}.",
             color=discord.Color.orange()
         )
-        await interaction.response.send_message(embed=embed, ephemeral=False)
+        await interaction.response.send_message(embed=embed, ephemeral=True)
         return
 
     valid_roles = []
@@ -2676,18 +2676,22 @@ async def restore_roles(interaction: discord.Interaction, member: discord.Member
         else:
             missing_roles.append(role_id)
 
-    # Dyno command text
-    dyno_cmd = f"?role {member.display_name.replace(' ', '_')} " + " ".join(
-        [role.name.replace(' ', '_') for role in valid_roles]
+    # ---- DYN0 COMMAND (ID-BASED) ----
+    # ?role userID +roleID +roleID +roleID
+    dyno_cmd = f"?role {member.id} " + " ".join(
+        f"+{role.id}" for role in valid_roles
     )
 
+    # Embed Description
     description = (
-        f"**Restorable Roles:** {', '.join([r.name for r in valid_roles]) or 'None'}\n\n"
-        f"**Dyno Command:**\n```{dyno_cmd}```"
+        f"**Restorable Roles:** {', '.join([f'{r.name} (`{r.id}`)' for r in valid_roles]) or 'None'}\n\n"
+        f"**Dyno Command (ID-based):**\n```{dyno_cmd}```"
     )
 
     if missing_roles:
-        description += f"\n⚠️ Missing roles (deleted?): `{missing_roles}`"
+        description += (
+            f"\n⚠️ Missing or deleted role IDs: `{', '.join(str(r) for r in missing_roles)}`"
+        )
 
     embed = discord.Embed(
         title="📜 Role Restoration Command",
@@ -2695,12 +2699,14 @@ async def restore_roles(interaction: discord.Interaction, member: discord.Member
         color=discord.Color.blue()
     )
 
-    # Log to default channel
+    # Log to default log channel
     log_channel = interaction.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
     if log_channel:
         await log_channel.send(embed=embed)
 
+    # Ephemeral response to the admin
     await interaction.response.send_message(embed=embed, ephemeral=True)
+
 
 
 # HR Welcome Message
@@ -3050,6 +3056,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
