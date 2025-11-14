@@ -531,6 +531,45 @@ class DatabaseHandler:
     
         embed = discord.Embed(title=title, description=description, color=color)
         embed.set_footer(text="Automated database removal log")
+
+        async def save_user_roles(self, user_id: str, username: str, role_ids: list[int]):
+            """Save a user's tracked roles into the 'user_roles' table."""
+            if not self.supabase:
+                logger.warning("Supabase not configured; save_user_roles aborted.")
+                return False
+    
+            def _work():
+                try:
+                    self.supabase.table("user_roles").upsert({
+                        "user_id": str(user_id),
+                        "username": clean_nickname(username),
+                        "roles": role_ids
+                    }).execute()
+                    return True
+                except Exception as e:
+                    logger.error(f"save_user_roles failed for {user_id}: {e}")
+                    return False
+    
+            return await self._run_sync(_work)
+    
+        async def get_user_roles(self, user_id: str):
+            """Retrieve saved roles for a user."""
+            if not self.supabase:
+                logger.warning("Supabase not configured; get_user_roles aborted.")
+                return None
+    
+            def _work():
+                try:
+                    res = self.supabase.table("user_roles").select("roles").eq("user_id", str(user_id)).execute()
+                    if res.data:
+                        return res.data[0].get("roles", [])
+                    return None
+                except Exception as e:
+                    logger.error(f"get_user_roles failed for {user_id}: {e}")
+                    return None
+    
+            return await self._run_sync(_work)
+
     
         # Send to logging channel
         try:
@@ -2563,6 +2602,94 @@ async def report_bug(interaction: discord.Interaction, description: str):
         )
 
 
+# Save Roles Command
+@bot.tree.command(name="save-roles", description="Save a user's tracked roles to the database.")
+@has_allowed_role()
+async def save_roles(interaction: discord.Interaction, member: discord.Member):
+    tracked_ids = Config.TRACKED_ROLE_IDS
+    matched_roles = [r for r in member.roles if r.id in tracked_ids]
+    role_ids = [r.id for r in matched_roles]
+
+    success = await bot.db.save_user_roles(
+        user_id=str(member.id),
+        username=member.display_name,
+        role_ids=role_ids
+    )
+
+    # Build status embed
+    if success:
+        embed = discord.Embed(
+            title="✅ Roles Saved",
+            description=(
+                f"Saved **{len(role_ids)}** tracked roles for {member.mention}.\n"
+                f"**Roles:** {', '.join([r.name for r in matched_roles]) or 'None'}"
+            ),
+            color=discord.Color.green()
+        )
+    else:
+        embed = discord.Embed(
+            title="❌ Error Saving Roles",
+            description=f"Failed to save roles for {member.mention}.",
+            color=discord.Color.red()
+        )
+
+    # Log to default channel
+    log_channel = interaction.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
+    if log_channel:
+        await log_channel.send(embed=embed)
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
+
+#Restore Roles Command
+@bot.tree.command(name="restore-roles", description="Generate a Dyno command to restore saved roles.")
+@has_allowed_role()
+async def restore_roles(interaction: discord.Interaction, member: discord.Member):
+    saved_roles = await bot.db.get_user_roles(str(member.id))
+
+    if not saved_roles:
+        embed = discord.Embed(
+            title="⚠️ No Saved Roles Found",
+            description=f"No saved tracked roles were found for {member.mention}.",
+            color=discord.Color.orange()
+        )
+        await interaction.response.send_message(embed=embed, ephemeral=False)
+        return
+
+    valid_roles = []
+    missing_roles = []
+
+    for role_id in saved_roles:
+        role = interaction.guild.get_role(role_id)
+        if role:
+            valid_roles.append(role)
+        else:
+            missing_roles.append(role_id)
+
+    # Dyno command text
+    dyno_cmd = f"?role {member.display_name.replace(' ', '_')} " + " ".join(
+        [role.name.replace(' ', '_') for role in valid_roles]
+    )
+
+    description = (
+        f"**Restorable Roles:** {', '.join([r.name for r in valid_roles]) or 'None'}\n\n"
+        f"**Dyno Command:**\n```{dyno_cmd}```"
+    )
+
+    if missing_roles:
+        description += f"\n⚠️ Missing roles (deleted?): `{missing_roles}`"
+
+    embed = discord.Embed(
+        title="📜 Role Restoration Command",
+        description=description,
+        color=discord.Color.blue()
+    )
+
+    # Log to default channel
+    log_channel = interaction.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
+    if log_channel:
+        await log_channel.send(embed=embed)
+
+    await interaction.response.send_message(embed=embed, ephemeral=True)
 
 
 
@@ -2913,6 +3040,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
