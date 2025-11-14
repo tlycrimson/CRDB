@@ -2659,12 +2659,12 @@ async def save_roles(interaction: discord.Interaction, member: discord.Member):
 #Restore Roles Command
 @bot.tree.command(name="restore-roles", description="Restore saved roles for a user.")
 async def restore_roles(interaction: discord.Interaction, member: discord.Member):
-    # Defer interaction to give more time
+    # Defer the interaction immediately
     await interaction.response.defer(ephemeral=True)
 
     # Fetch saved roles from Supabase
     try:
-        saved_roles = await bot.db.get_user_roles(str(member.id))  # Assuming this returns a list of role IDs
+        saved_roles = await bot.db.get_user_roles(str(member.id))  # Returns list of role IDs
     except Exception as e:
         await interaction.followup.send(
             f"❌ Failed to fetch saved roles: {e}", ephemeral=True
@@ -2677,10 +2677,10 @@ async def restore_roles(interaction: discord.Interaction, member: discord.Member
         )
         return
 
-    # Convert list of role IDs to comma-separated string for Dyno
-    roles_string = ", ".join(str(role_id) for role_id in saved_roles)
+    # Put the user ID first, then the roles, comma-separated
+    roles_string = ", ".join([str(member.id)] + [str(role_id) for role_id in saved_roles])
 
-    # Create embed to show the Dyno command
+    # Create embed with Dyno command
     embed = discord.Embed(
         title=f"✅ Roles restored for {member.display_name}",
         description=f"Use the following command in chat to reassign roles:\n`?role {roles_string}`",
@@ -3038,6 +3038,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
