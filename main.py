@@ -2659,35 +2659,60 @@ async def save_roles(interaction: discord.Interaction, member: discord.Member):
 #Restore Roles Command
 @bot.tree.command(name="restore-roles", description="Restore saved roles for a user.")
 async def restore_roles(interaction: discord.Interaction, member: discord.Member):
-    # Defer the interaction immediately
-    await interaction.response.defer(ephemeral=True)
+    # Defer the interaction immediately with error handling
+    try:
+        await interaction.response.defer(ephemeral=True)
+        deferred = True
+    except discord.NotFound:
+        # If deferral fails, the interaction might have timed out
+        deferred = False
+    except Exception as e:
+        print(f"Error deferring interaction: {e}")
+        deferred = False
 
     # Fetch saved roles from Supabase
     try:
-        saved_roles = await bot.db.get_user_roles(str(member.id))  # Returns list of role IDs
+        saved_roles = await bot.db.get_user_roles(str(member.id))
     except Exception as e:
-        await interaction.followup.send(
-            f"❌ Failed to fetch saved roles: {e}", ephemeral=True
-        )
+        error_msg = f"❌ Failed to fetch saved roles: {e}"
+        if deferred:
+            await interaction.followup.send(error_msg, ephemeral=True)
+        else:
+            try:
+                await interaction.response.send_message(error_msg, ephemeral=True)
+            except discord.InteractionResponded:
+                await interaction.followup.send(error_msg, ephemeral=True)
         return
 
     if not saved_roles:
-        await interaction.followup.send(
-            f"⚠️ No saved roles found for {member.mention}.", ephemeral=True
-        )
+        msg = f"⚠️ No saved roles found for {member.mention}."
+        if deferred:
+            await interaction.followup.send(msg, ephemeral=True)
+        else:
+            try:
+                await interaction.response.send_message(msg, ephemeral=True)
+            except discord.InteractionResponded:
+                await interaction.followup.send(msg, ephemeral=True)
         return
 
-    # Put the user ID first, then the roles, comma-separated
-    roles_string = ", ".join([str(member.id)] + [str(role_id) for role_id in saved_roles])
+    # Format for Dyno command: ?role <user_id> <role id 1>, <role id 2>, <role id 3>
+    roles_string = ", ".join([str(role_id) for role_id in saved_roles])
+    dyno_command = f"?role {member.id} {roles_string}"
 
     # Create embed with Dyno command
     embed = discord.Embed(
         title=f"✅ Roles restored for {member.display_name}",
-        description=f"Use the following command in chat to reassign roles:\n`?role {roles_string}`",
+        description=f"Use the following command in chat to reassign roles:\n`{dyno_command}`",
         color=discord.Color.green()
     )
-    await interaction.followup.send(embed=embed, ephemeral=True)
-
+    
+    if deferred:
+        await interaction.followup.send(embed=embed, ephemeral=True)
+    else:
+        try:
+            await interaction.response.send_message(embed=embed, ephemeral=True)
+        except discord.InteractionResponded:
+            await interaction.followup.send(embed=embed, ephemeral=True)
 
 
 
@@ -3038,6 +3063,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
