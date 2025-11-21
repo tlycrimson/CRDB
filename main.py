@@ -2835,7 +2835,7 @@ async def send_rmp_welcome(member: discord.Member):
               "> - Royal Military Police,\n"
               "> - United Kingdom Forces,\n"
               "> - Household Division.\n"
-              "> **Kill those not allowed who touch or past the red line.**",
+              "> **Kill those not allowed who touch or pass the red line.**",
         inline=False
     )
     
@@ -3063,6 +3063,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
