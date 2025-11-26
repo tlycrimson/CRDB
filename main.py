@@ -2612,27 +2612,6 @@ async def report_bug(interaction: discord.Interaction, description: str):
             ephemeral=True
         )
 
-#Reply to User's Bug
-def is_developer():
-    async def predicate(interaction: discord.Interaction):
-        return interaction.user.id == 353167234698444802  
-    return app_commands.check(predicate)
-
-@bot.tree.command(
-    name="reply-bug",
-    description="Reply to a user's bug report."
-)
-@is_developer()
-@app_commands.default_permissions()  # This makes the command hidden by default
-async def reply_bug(interaction: discord.Interaction, user_id: str, message: str):
-    user = await bot.fetch_user(int(user_id))
-
-    try:
-        await user.send(f"🛠️ **Update Regarding Your Bug Report**\n{message}")
-        await interaction.response.send_message("✅ Reply sent!", ephemeral=True)
-    except discord.Forbidden:
-        await interaction.response.send_message("❌ Could not DM the user.", ephemeral=True)
-        
 
 #Save Roles Command
 @bot.tree.command(name="save-roles", description="Save a user's tracked roles to the database.")
@@ -3089,6 +3068,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
