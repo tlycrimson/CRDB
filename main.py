@@ -2618,13 +2618,12 @@ def is_developer():
         return interaction.user.id == 353167234698444802  
     return app_commands.check(predicate)
 
-
 @bot.tree.command(
     name="reply-bug",
-    description="Reply to a user's bug report.",
-    default_member_permissions=None  
+    description="Reply to a user's bug report."
 )
 @is_developer()
+@app_commands.default_permissions()  # This makes the command hidden by default
 async def reply_bug(interaction: discord.Interaction, user_id: str, message: str):
     user = await bot.fetch_user(int(user_id))
 
@@ -3090,6 +3089,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
