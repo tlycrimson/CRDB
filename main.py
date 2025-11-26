@@ -2916,8 +2916,12 @@ async def on_member_remove(member: discord.Member):
         dishonourable_embed.set_footer(text="Desertion Monitor System")
 
         # Blacklist log embed
-        current_date = datetime.now(timezone.utc)
-        ending_date = current_date + timedelta(days=30)
+        current_date = datetime.now(timezone.utc)    
+        hr_role = guild.get_role(Config.HR_ROLE_ID)  
+        if hr_role and hr_role in member.roles:
+            ending_date = current_date + timedelta(days=180)  
+        else:
+            ending_date = current_date + timedelta(days=90)   
         blacklist_embed = discord.Embed(
             title="⛔ Blacklist",
             color=discord.Color.red(),
@@ -3063,6 +3067,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
