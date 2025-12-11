@@ -1449,29 +1449,31 @@ async def on_ready():
     logger.info("Connected to %d guild(s)", len(bot.guilds))
 
     
-    # Set Avatar
-    if os.path.exists(AVATAR_PATH):
-        try:
-            with open(AVATAR_PATH, "rb") as f:
-                avatar_bytes = f.read()
-            await bot.user.edit(avatar=avatar_bytes)
-            print("✅ Bot avatar updated successfully!")
-        except discord.HTTPException as e:
-            print(f"❌ Failed to set avatar: {e}")
-    else:
-        print(f"❌ Avatar GIF not found at {AVATAR_PATH}")
+    if not os.path.exists(AVATAR_PATH):
+        logger.info("❌ GIF not found at {AVATAR_PATH}")
+        return
 
-    # Set Banner
     if os.path.exists(BANNER_PATH):
         try:
             with open(BANNER_PATH, "rb") as f:
                 banner_bytes = f.read()
             await bot.user.edit(banner=banner_bytes)
-            print("✅ Bot banner updated successfully!")
+            logger.info("✅ Bot Banner updated successfully!")
         except discord.HTTPException as e:
-            print(f"❌ Failed to set banner: {e}")
+            logger.info("❌ Failed to set banner: {e}")
     else:
-        print(f"❌ Banner image not found at {BANNER_PATH}")
+        logger.info("❌ Banner not found at {BANNER_PATH}")
+
+
+    try:
+        with open(AVATAR_PATH, "rb") as f:
+            gif_bytes = f.read()
+
+        await bot.user.edit(avatar=gif_bytes)
+        logger.info("✅ Bot avatar updated successfully!")
+
+    except discord.HTTPException as e:
+        logger.info("❌ Failed to set avatar: {e}")
 
 
     # Close old session if it somehow exists
@@ -3093,6 +3095,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
