@@ -1024,8 +1024,7 @@ class ReactionLogger:
             str(payload.emoji) not in Config.TRACKED_REACTIONS):
             return
     
-        if (payload.channel_id in Config.IGNORED_CHANNELS and 
-            str(payload.emoji) in Config.IGNORED_EMOJI):
+        if str(payload.emoji) in Config.IGNORED_EMOJI:
             return
     
         member = guild.get_member(payload.user_id)
@@ -3146,6 +3145,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
