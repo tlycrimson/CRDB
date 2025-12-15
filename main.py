@@ -741,8 +741,9 @@ class RobloxAPI:
             logger.error(f"Failed to get Roblox rank for {discord_name}: {e}")
             return "Error"
 
-# Reaction Logger for DB_LOGGERS
+# Reaction Logger 
 class ReactionLogger:
+    POINTS_PER_ACTIVITY = 0.5
     def __init__(self, bot: commands.Bot):
         self.bot = bot
         self.monitor_channel_ids = set(Config.DEFAULT_MONITOR_CHANNELS)
@@ -753,10 +754,7 @@ class ReactionLogger:
         self.tryout_log_channel_id = Config.TRYOUT_LOG_CHANNEL_ID
         self.course_log_channel_id = Config.COURSE_LOG_CHANNEL_ID
         self.activity_log_channel_id = Config.ACTIVITY_LOG_CHANNEL_ID
-
-        self.processed_messages = deque(maxlen=100)
-        self.processed_keys = set()
-        self._cleanup_task = None
+        
 
     async def setup(self, interaction=None, log_channel=None, monitor_channels=None):
         """Setup reaction logger with optional parameters"""
@@ -775,52 +773,6 @@ class ReactionLogger:
         except Exception as e:
             logger.error(f"❌ Supabase connection failed: {e}")
 
-    async def _retry_db(self, func, retries: int = 3, delay: float = 1.0):
-        """Retry wrapper for DB ops with exponential backoff."""
-        for attempt in range(retries):
-            try:
-                return await self.bot.db.run_query(func)
-            except Exception as e:
-                if attempt == retries - 1:
-                    logger.error(f"DB operation failed after {retries} attempts: {e}")
-                    raise
-                wait_time = delay * (2 ** attempt)
-                logger.warning(f"DB operation failed ({e}), retrying in {wait_time:.1f}s...")
-                await asyncio.sleep(wait_time)
-        
-    async def start_cleanup_task(self):
-        """Start periodic cleanup of processed messages"""
-        if self._cleanup_task:
-            self._cleanup_task.cancel()
-        
-        async def cleanup_loop():
-            while True:
-                await asyncio.sleep(3600)  # Cleanup every hour
-                current_time = time.time()
-                # Remove old entries to prevent memory growth
-                if len(self.processed_keys) > 200:
-                    excess = len(self.processed_keys) - 200
-                    for _ in range(excess):
-                        if self.processed_messages:
-                            old_key = self.processed_messages.popleft()
-                            self.processed_keys.discard(old_key)
-        
-        self._cleanup_task = asyncio.create_task(cleanup_loop())
-    
-    async def stop_cleanup_task(self):
-        """Stop the cleanup task"""
-        if self._cleanup_task:
-            self._cleanup_task.cancel()
-            try:
-                await self._cleanup_task
-            except asyncio.CancelledError:
-                pass
-            self._cleanup_task = None
-    
-    def _get_processed_key(self, message_id: int, user_id: int) -> str:
-        """Generate a unique key for processed message tracking"""
-        return f"{message_id}-{user_id}"
-        
     
     async def on_ready_setup(self):
         """Verify configured channels when bot starts"""
@@ -882,16 +834,14 @@ class ReactionLogger:
             remove_listeners = [
                 l for l in self.bot.extra_events.get('on_raw_reaction_remove', []) 
                 if getattr(l, '__self__', None) is self
-            ]
+            ]   
             
             status = {
-                'add_listeners': len(add_listeners),
-                'remove_listeners': len(remove_listeners),
-                'monitor_channels': len(self.monitor_channel_ids),
-                'processed_keys': len(self.processed_keys),
-                'cleanup_task_running': self._cleanup_task and not self._cleanup_task.done() if self._cleanup_task else False
+                "add_listeners": len(add_listeners),
+                "remove_listeners": len(remove_listeners),
+                "monitor_channels": len(self.monitor_channel_ids),
+                "log_channel_id": self.log_channel_id,
             }
-            
             logger.info(f"🔧 ReactionLogger Health Check: {status}")
             return status
             
@@ -902,27 +852,35 @@ class ReactionLogger:
     
     async def log_reaction(self, payload: discord.RawReactionActionEvent):
         """Main reaction handler that routes to specific loggers with DB + memory duplicate checks."""
-        logger.info(f"🔍 Reaction detected: {payload.emoji} in channel {payload.channel_id} by user {payload.user_id}")
-
+        if payload.event_type == "REACTION_REMOVE":
+            return
+        
         guild = self.bot.get_guild(payload.guild_id)
         if not guild:
             return
-
+    
         member = guild.get_member(payload.user_id)
         if not member:
             try:
                 member = await guild.fetch_member(payload.user_id)
             except discord.NotFound:
-                logger.warning(f"Member {payload.user_id} not found in guild")
                 return
+    
+        # === DUPLICATE GUARD (silent) ===
+        if await self.is_reaction_processed(payload.message_id, payload.user_id):
+            logger.debug(
+                f"Duplicate reaction ignored | "
+                f"msg={payload.message_id} user={payload.user_id}"
+            )
+            return
+            
+        
+        logger.info(f"🔍 Reaction detected: {payload.emoji} in channel {payload.channel_id} by user {payload.user_id}")
 
         # === For Background Checkers ===
-        try:
-            if payload.channel_id != Config.BGC_LOGS_CHANNEL:
-                return
-        
+        if payload.channel_id == Config.BGC_LOGS_CHANNEL:
             emoji = str(payload.emoji)
-            if emoji not in Config.TRACKED_REACTIONS:
+            if emoji == "☑️" or emoji not in Config.TRACKED_REACTIONS:
                 return
         
             hicom_role = guild.get_role(Config.HIGH_COMMAND_ROLE_ID)
@@ -936,18 +894,33 @@ class ReactionLogger:
             message = await channel.fetch_message(payload.message_id)
             log_author = message.author
         
+        
+            match = re.search(
+                r"Security\s*Check(?:\(s\)|s)?:\s*(\d+)",
+                message.content,
+                re.IGNORECASE
+            )
+            
+            if not match:
+                logger.warning(
+                    f"No Security Check count found in message {payload.message_id}"
+                )
+                return
+            
+            security_checks = int(match.group(1))
+        
             log_channel = guild.get_channel(self.log_channel_id)
             if not log_channel:
                 return
-        
-            points = 0.5
+            
+            points = self.POINTS_PER_ACTIVITY * security_checks
             embed = discord.Embed(
                 title="🪪 Security Check Log Approved",
                 color=discord.Color.blue()
             )
             embed.add_field(name="Approved by", value=f"{member.mention} ({member.id})", inline=False)
             embed.add_field(name="Logger", value=f"{log_author.mention} ({log_author.id})", inline=False)
-            embed.add_field(name="Points", value=points, inline=True)
+            embed.add_field(name="Points Awarded", value=points, inline=True)
             embed.add_field(name="Log ID", value=f"`{payload.message_id}`", inline=False)
         
             await log_channel.send(embed=embed)
@@ -957,24 +930,26 @@ class ReactionLogger:
                 f"🪪 Security Check log Approved: ApprovedBy={member.id}, Logger={log_author.id}"
             )
             # Prevents it from going to other log pipelines
+            await self.mark_reaction_processed(payload.message_id, payload.user_id)
             return
         
-        except Exception as e:
-            logger.exception("Error handling Security Check reaction")
+
 
         # === For Exam graders ===
-        try:
-            if payload.channel_id not in Config.EXAM_MONITOR_CHANNELS:
-                return
-        
+        if payload.channel_id in Config.EXAM_MONITOR_CHANNELS:
             emoji = str(payload.emoji)
-            if emoji not in Config.TRACKED_REACTIONS:
+            if emoji == "☑️" or emoji not in Config.TRACKED_REACTIONS:
                 return
         
-            examiner_role = guild.get_role(Config.BG_CHECKER_ROLE_ID)
-            if not examiner_role or examiner_role not in member.roles:
+            hicom_role = guild.get_role(Config.HIGH_COMMAND_ROLE_ID)
+            inductor_role = guild.get_role(Config.LA_ROLE_ID)
+            
+            if not (
+                (hicom_role and hicom_role in member.roles) or
+                (inductor_role and inductor_role in member.roles)
+            ):
                 return
-        
+                    
             channel = guild.get_channel(payload.channel_id)
             if not channel:
                 return
@@ -985,48 +960,40 @@ class ReactionLogger:
             log_channel = guild.get_channel(self.log_channel_id)
             if not log_channel:
                 return
-        
-            points = 0.5
-            embed = discord.Embed(
-                title="📝 Examiner / Inductor Activity Logged",
-                color=discord.Color.pink()
-            )
-        
-            if payload.channel_id == 1165368316123152392:
-                embed.add_field(name="Examiner", value=f"{examiner.mention} ({examiner.id})", inline=False)
+            
+            if payload.channel_id == Config.LA_INDUCTION_CHANNEL_ID: 
+                embed = discord.Embed(
+                    title="📝 Inductor Activity Logged",
+                    color=discord.Color.pink()
+                )
+                
+                embed.add_field(name="Inductor", value=f"{member.mention} ({member.id})", inline=False)
+                embed.add_field(name="Message Request", value=f"<#{payload.channel_id}>", inline=True)
+                embed.add_field(name="Status", value=f"{emoji}", inline=True)
+                embed.add_field(name="Points Awarded", value=self.POINTS_PER_ACTIVITY, inline=True)
+                await log_channel.send(embed=embed)
+                logger.info(
+                f"📝 Inductor Activity logged: Inductor={member.id}, Channel={payload.channel_id}"
+                ) 
+                await self._update_hr_record(member, {"courses": self.POINTS_PER_ACTIVITY})
             else:
-                embed.add_field(name="Inductor", value=f"{examiner.mention} ({examiner.id})", inline=False)
-        
-            embed.add_field(name="Points", value=points, inline=True)
-            embed.add_field(name="Exam Channel", value=f"<#{payload.channel_id}>", inline=True)
-            embed.add_field(name="Exam Message", value=f"`{payload.message_id}`", inline=False)
-        
-            await log_channel.send(embed=embed)
-            await self._update_hr_record(examiner, {"courses": points})
-        
-            logger.info(
+                points = self.POINTS_PER_ACTIVITY*2
+                embed = discord.Embed(
+                    title="📝 Examiner Activity Logged",
+                    color=discord.Color.pink()
+                )
+                embed.add_field(name="Examiner", value=f"{examiner.mention} ({examiner.id})", inline=False)
+                embed.add_field(name="Exam Type", value=f"<#{payload.channel_id}>", inline=True)
+                embed.add_field(name="Exam Message", value=f"`{payload.message_id}`", inline=False)
+                embed.add_field(name="Points Awarded", value=points, inline=True)
+                await log_channel.send(embed=embed)
+                logger.info(
                 f"📝 Examiner logged: Examiner={examiner.id}, Channel={payload.channel_id}"
-            )
+                )
+                await self._update_hr_record(examiner, {"courses": points})
+        
+            await self.mark_reaction_processed(payload.message_id, payload.user_id)      
             return
-        
-        except Exception:
-            logger.exception("Error handling Exam reaction")
-
-
-        
-        # === Duplicate reaction prevention ===
-        if await self.is_reaction_processed(payload.message_id, payload.user_id):
-            logger.debug(f"DB duplicate reaction from {payload.user_id}")
-            return
-        
-        processed_key = self._get_processed_key(payload.message_id, payload.user_id)
-        if processed_key in self.processed_keys:
-            return
-        
-        # Mark processed in memory + DB
-        self.processed_messages.append(processed_key)
-        self.processed_keys.add(processed_key)
-        await self.mark_reaction_processed(payload.message_id, payload.user_id)
         
         # === Route to handlers ===
         try:
@@ -1035,6 +1002,7 @@ class ReactionLogger:
             await self._log_event_reaction_impl(payload, member)
             await self._log_training_reaction_impl(payload, member)
             await self._log_activity_reaction_impl(payload, member)
+            await self.mark_reaction_processed(payload.message_id, payload.user_id)
         except Exception as e:
             logger.error(f"Failed to log reaction: {type(e).__name__}: {e}")
             log_channel = guild.get_channel(self.log_channel_id)
@@ -1081,7 +1049,43 @@ class ReactionLogger:
     
         if not all((channel, member, log_channel)):
             return
-    
+        
+        try:
+            await asyncio.sleep(0.5)
+            message = await channel.fetch_message(payload.message_id)
+
+            content = (message.content[:100] + "...") if len(message.content) > 100 else message.content
+
+            embed = discord.Embed(
+                title="🧑‍💻 DB Logger Activity Recorded",
+                description=f"{member.mention} reacted with {payload.emoji}",
+                color=discord.Color.purple()
+            )
+            embed.add_field(name="Channel", value=channel.mention)
+            embed.add_field(name="Author", value=message.author.mention)
+            embed.add_field(name="Message", value=content, inline=False)
+            embed.add_field(name="Points Awarded", value=self.POINTS_PER_ACTIVITY, inline=False)
+            embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
+
+            await log_channel.send(embed=embed)
+
+            logger.info(f"Attempting to update points for: {member.display_name}")
+            await self._update_hr_record(member, {"courses": self.POINTS_PER_ACTIVITY})
+            logger.info(f"✅ Added {self.POINTS_PER_ACTIVITY} points to {member.display_name} for activity.")
+
+
+        except discord.NotFound:
+            return
+        except Exception as e:
+            logger.error(f"Reaction log error: {type(e).__name__}: {str(e)}")
+            if log_channel:
+                error_embed = discord.Embed(
+                    title="❌ Error",
+                    description=f"Failed to log reaction: {str(e)}",
+                    color=discord.Color.red()
+                )
+                await log_channel.send(embed=error_embed)
+
 
    
     async def _log_event_reaction_impl(self, payload: discord.RawReactionActionEvent, member: discord.Member):
@@ -1383,20 +1387,13 @@ class ReactionLogger:
 
         
                         
-      # --- Event listeners ---
+      # --- Event listener ---
     async def on_raw_reaction_add(self, payload: discord.RawReactionActionEvent):
         """Triggered when a reaction is added anywhere the bot can see."""
         try:
             await self.log_reaction(payload)
         except Exception as e:
             logger.error(f"ReactionLogger.on_raw_reaction_add failed: {e}", exc_info=True)
-
-    async def on_raw_reaction_remove(self, payload: discord.RawReactionActionEvent):
-        """Triggered when a reaction is removed anywhere the bot can see."""
-        try:
-            await self.log_reaction(payload)
-        except Exception as e:
-            logger.error(f"ReactionLogger.on_raw_reaction_remove failed: {e}", exc_info=True)
 
           
 
@@ -3154,6 +3151,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
