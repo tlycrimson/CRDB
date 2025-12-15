@@ -954,6 +954,47 @@ class ReactionLogger:
         except Exception as e:
             logger.error(f"Error handling SC reaction: {e}")
 
+        # === For Exam graderss===
+        try:
+            # Check channel
+            if payload.channel_id in Config.EXAM_MONITOR_CHANNELS:
+                emoji = str(payload.emoji)
+        
+                # Check if reaction tracked
+                if emoji in Config.TRACKED_REACTIONS:
+                    bg_checker_role = guild.get_role(Config.BG_CHECKER_ROLE_ID)
+                    # Must have BG checker role
+                    if bg_checker_role and bg_checker_role in member.roles:
+
+                        message = await channel.fetch_message(payload.message_id)
+                        examiner = message.author
+                        
+                        log_channel = guild.get_channel(self.log_channel_id)
+                        if log_channel:
+                            embed = discord.Embed(
+                                title="📝 Examiner Logged",
+                                color=discord.Color.pink()
+                            )
+                            embed.add_field(name="Examiner", value=f"{examiner.mention} ({examiner.id})", inline=False)
+                            embed.add_field(name="Reaction", value=emoji, inline=True)
+                            embed.add_field(name="Exam Type", value=f"<#{payload.channel_id}>", inline=True)
+                            embed.add_fidled(name="Exam Message", value=f"`{payload.message_id}`", inline=False)
+        
+                            await log_channel.send(embed=embed)
+                            logger.info
+                            logger.info(
+                                f"📝 Examiner Logged successfully: "
+                                f"Examiner={examiner} ({examiner.id}), "
+                                f"Reaction={emoji}, "
+                                f"MessageRequest={payload.message_id}, "
+                                f"ChannelI={payload.channel_id}"
+                            )
+        
+                        # Prevent SC reactions from going to other log pipelines
+                    return
+        except Exception as e:
+            logger.error(f"Error handling SC reaction: {e}")
+
         
         # === Duplicate reaction prevention ===
         if await self.is_reaction_processed(payload.message_id, payload.user_id):
@@ -3095,6 +3136,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
