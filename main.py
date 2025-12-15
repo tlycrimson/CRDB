@@ -916,84 +916,102 @@ class ReactionLogger:
                 logger.warning(f"Member {payload.user_id} not found in guild")
                 return
 
-        # === For Background Checkers===
+        # === For Background Checkers ===
         try:
-            # Check channel
-            if payload.channel_id == Config.SC_CHANNEL_ID:
-                emoji = str(payload.emoji)
+            if payload.channel_id != Config.BGC_LOGS_CHANNEL:
+                return
         
-                # Check if reaction tracked
-                if emoji in Config.TRACKED_REACTIONS:
-                    bg_checker_role = guild.get_role(Config.BG_CHECKER_ROLE_ID)
-                    # Must have BG checker role
-                    if bg_checker_role and bg_checker_role in member.roles:
-                        
-                        log_channel = guild.get_channel(self.log_channel_id)
-                        if log_channel:
-                            embed = discord.Embed(
-                                title="🪪 Security Check Logged",
-                                color=discord.Color.blue()
-                            )
-                            embed.add_field(name="Checker", value=f"{member.mention} ({member.id})", inline=False)
-                            embed.add_field(name="Reaction", value=emoji, inline=True)
-                            embed.add_field(name="Channel", value=f"<#{payload.channel_id}>", inline=True)
-                            embed.add_field(name="Message ID", value=f"`{payload.message_id}`", inline=False)
+            emoji = str(payload.emoji)
+            if emoji not in Config.TRACKED_REACTIONS:
+                return
         
-                            await log_channel.send(embed=embed)
-                            logger.info
-                            logger.info(
-                                f"🪪 Security Check logged successfully: "
-                                f"Checker={member} ({member.id}), "
-                                f"Reaction={emoji}, "
-                                f"MessageID={payload.message_id}, "
-                                f"ChannelID={payload.channel_id}"
-                            )
+            hicom_role = guild.get_role(Config.HIGH_COMMAND_ROLE_ID)
+            if not hicom_role or hicom_role not in member.roles:
+                return
         
-                        # Prevent SC reactions from going to other log pipelines
-                    return
+            channel = guild.get_channel(payload.channel_id)
+            if not channel:
+                return
+        
+            message = await channel.fetch_message(payload.message_id)
+            log_author = message.author
+        
+            log_channel = guild.get_channel(self.log_channel_id)
+            if not log_channel:
+                return
+        
+            points = 0.5
+            embed = discord.Embed(
+                title="🪪 Security Check Log Approved",
+                color=discord.Color.blue()
+            )
+            embed.add_field(name="Approved by", value=f"{member.mention} ({member.id})", inline=False)
+            embed.add_field(name="Logger", value=f"{log_author.mention} ({log_author.id})", inline=False)
+            embed.add_field(name="Points", value=points, inline=True)
+            embed.add_field(name="Log ID", value=f"`{payload.message_id}`", inline=False)
+        
+            await log_channel.send(embed=embed)
+            await self._update_hr_record(log_author, {"courses": points})
+        
+            logger.info(
+                f"🪪 Security Check log Approved: ApprovedBy={member.id}, Logger={log_author.id}"
+            )
+            # Prevents it from going to other log pipelines
+            return
+        
         except Exception as e:
-            logger.error(f"Error handling SC reaction: {e}")
+            logger.exception("Error handling Security Check reaction")
 
-        # === For Exam graderss===
+        # === For Exam graders ===
         try:
-            # Check channel
-            if payload.channel_id in Config.EXAM_MONITOR_CHANNELS:
-                emoji = str(payload.emoji)
+            if payload.channel_id not in Config.EXAM_MONITOR_CHANNELS:
+                return
         
-                # Check if reaction tracked
-                if emoji in Config.TRACKED_REACTIONS:
-                    bg_checker_role = guild.get_role(Config.BG_CHECKER_ROLE_ID)
-                    # Must have BG checker role
-                    if bg_checker_role and bg_checker_role in member.roles:
+            emoji = str(payload.emoji)
+            if emoji not in Config.TRACKED_REACTIONS:
+                return
+        
+            examiner_role = guild.get_role(Config.BG_CHECKER_ROLE_ID)
+            if not examiner_role or examiner_role not in member.roles:
+                return
+        
+            channel = guild.get_channel(payload.channel_id)
+            if not channel:
+                return
+        
+            message = await channel.fetch_message(payload.message_id)
+            examiner = message.author
+        
+            log_channel = guild.get_channel(self.log_channel_id)
+            if not log_channel:
+                return
+        
+            points = 0.5
+            embed = discord.Embed(
+                title="📝 Examiner / Inductor Activity Logged",
+                color=discord.Color.pink()
+            )
+        
+            if payload.channel_id == 1165368316123152392:
+                embed.add_field(name="Examiner", value=f"{examiner.mention} ({examiner.id})", inline=False)
+            else:
+                embed.add_field(name="Inductor", value=f"{examiner.mention} ({examiner.id})", inline=False)
+        
+            embed.add_field(name="Points", value=points, inline=True)
+            embed.add_field(name="Exam Channel", value=f"<#{payload.channel_id}>", inline=True)
+            embed.add_field(name="Exam Message", value=f"`{payload.message_id}`", inline=False)
+        
+            await log_channel.send(embed=embed)
+            await self._update_hr_record(examiner, {"courses": points})
+        
+            logger.info(
+                f"📝 Examiner logged: Examiner={examiner.id}, Channel={payload.channel_id}"
+            )
+            return
+        
+        except Exception:
+            logger.exception("Error handling Exam reaction")
 
-                        message = await channel.fetch_message(payload.message_id)
-                        examiner = message.author
-                        
-                        log_channel = guild.get_channel(self.log_channel_id)
-                        if log_channel:
-                            embed = discord.Embed(
-                                title="📝 Examiner Logged",
-                                color=discord.Color.pink()
-                            )
-                            embed.add_field(name="Examiner", value=f"{examiner.mention} ({examiner.id})", inline=False)
-                            embed.add_field(name="Reaction", value=emoji, inline=True)
-                            embed.add_field(name="Exam Type", value=f"<#{payload.channel_id}>", inline=True)
-                            embed.add_fidled(name="Exam Message", value=f"`{payload.message_id}`", inline=False)
-        
-                            await log_channel.send(embed=embed)
-                            logger.info
-                            logger.info(
-                                f"📝 Examiner Logged successfully: "
-                                f"Examiner={examiner} ({examiner.id}), "
-                                f"Reaction={emoji}, "
-                                f"MessageRequest={payload.message_id}, "
-                                f"ChannelI={payload.channel_id}"
-                            )
-        
-                        # Prevent SC reactions from going to other log pipelines
-                    return
-        except Exception as e:
-            logger.error(f"Error handling SC reaction: {e}")
 
         
         # === Duplicate reaction prevention ===
@@ -3136,6 +3154,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
