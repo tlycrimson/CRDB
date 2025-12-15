@@ -1563,7 +1563,7 @@ async def on_ready():
     # === ROBUST ReactionLogger listener registration ===
     try:
         # Remove any existing listeners first to prevent duplicates
-        for event_name in ['on_raw_reaction_add', 'on_raw_reaction_remove']:
+        for event_name in ['on_raw_reaction_add']:
             if event_name in bot.extra_events:
                 bot.extra_events[event_name] = [
                     listener for listener in bot.extra_events[event_name]
@@ -1572,7 +1572,6 @@ async def on_ready():
         
         # Register fresh listeners
         bot.add_listener(bot.reaction_logger.on_raw_reaction_add, "on_raw_reaction_add")
-        bot.add_listener(bot.reaction_logger.on_raw_reaction_remove, "on_raw_reaction_remove")
         
         # Verify registration
         reaction_listeners = len([
@@ -1605,10 +1604,6 @@ async def on_ready():
     except asyncio.TimeoutError:
         logger.warning("command sync timed out (continuing)")
 
-    if hasattr(bot, "reaction_logger"):
-        if not getattr(bot.reaction_logger, "_cleanup_task", None) or bot.reaction_logger._cleanup_task.done():
-            await bot.reaction_logger.start_cleanup_task()
-            logger.info("ReactionLogger cleanup task started.")
 
 @bot.event
 async def on_disconnect():
@@ -3151,6 +3146,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
