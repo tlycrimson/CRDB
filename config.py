@@ -18,9 +18,12 @@ class Config:
         1165368316123152389, # Activity Log
         1244451957884715049, # 
         1165368316500656241, # Course Log
-        1165368316970405910, # 
+        1165368316970405910, # Course Grades
         1165368316123152393, #
         1165368313925353577, # Security Check Channel (SC Log)
+        1267563275223040111, #Degree Grades
+        1207367396424425483, #DSPG Grades
+        1165368316123152392, # Induction Request
     }
 
     EXAM_MONITOR_CHANNELS = {
@@ -143,6 +146,7 @@ class Config:
    # LD_HEAD_ROLE_ID = 1224732743036833802
    # LD_DEP_HEAD_ROLE_ID = 1224732812020813935
     # MAX_MONITORED_CHANNELS = 15
+
 
 
 
