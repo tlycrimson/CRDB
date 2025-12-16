@@ -1067,9 +1067,14 @@ class ReactionLogger:
             embed.add_field(name="Points Awarded", value=self.POINTS_PER_ACTIVITY, inline=False)
             embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
 
-            logger.debug("Sending log embed")
-            await log_channel.send(embed=embed)
-            logger.debug("Embed sent.")
+            try:
+                await asyncio.wait_for(
+                    log_channel.send(embed=embed),
+                    timeout=5
+                )
+            except asyncio.TimeoutError: 
+                logger.error("log_channel.send() timed out")
+                return
 
             logger.info(f"Attempting to update points for: {member.display_name}")
             await self._update_hr_record(member, {"courses": self.POINTS_PER_ACTIVITY})
@@ -1641,31 +1646,25 @@ async def on_resumed():
         # Remove any existing listeners to prevent duplicates
         bot.extra_events['on_raw_reaction_add'] = [l for l in bot.extra_events.get('on_raw_reaction_add', []) 
                                                   if getattr(l, '__self__', None) != bot.reaction_logger]
-        bot.extra_events['on_raw_reaction_remove'] = [l for l in bot.extra_events.get('on_raw_reaction_remove', []) 
-                                                     if getattr(l, '__self__', None) != bot.reaction_logger]
         
         # Add fresh listeners
         bot.add_listener(bot.reaction_logger.on_raw_reaction_add, "on_raw_reaction_add")
-        bot.add_listener(bot.reaction_logger.on_raw_reaction_remove, "on_raw_reaction_remove")
         
-        logger.info("🔄 Re-attached ReactionLogger event listeners after resume")
+        logger.info("🔄 Re-attached ReactionLogger event listener after resume")
     except Exception as e:
-        logger.error(f"❌ Failed to reattach ReactionLogger listeners: {e}")
+        logger.error(f"❌ Failed to reattach ReactionLogger listener: {e}")
 
     # Restart channel + cleanup setups
     try:
         await asyncio.sleep(0.5)
         await bot.reaction_logger.on_ready_setup()
 
-        if not getattr(bot.reaction_logger, "_cleanup_task", None) or bot.reaction_logger._cleanup_task.done():
-            await bot.reaction_logger.start_cleanup_task()
-            
         # Reinitialize reaction logger's rate limiter
         bot.reaction_logger.rate_limiter = EnhancedRateLimiter(calls_per_minute=GLOBAL_RATE_LIMIT)
 
         logger.info("✅ Restored ReactionLogger after resume.")
     except Exception as e:
-        logger.error(f"❌ Failed to restore tracker after resume: {e}")
+        logger.error(f"❌ Failed to restore reaction logger: {e}")
 
 
 
@@ -3148,6 +3147,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
