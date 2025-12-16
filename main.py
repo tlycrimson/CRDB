@@ -919,7 +919,8 @@ class ReactionLogger:
                 color=discord.Color.blue()
             )
             embed.add_field(name="Approved by", value=f"{member.mention} ({member.id})", inline=False)
-            embed.add_field(name="Logger", value=f"{log_author.mention} ({log_author.id})", inline=False)
+            embed.add_field(name="Logger", value=f"{log_author.mention}", inline=False)
+            embed.add_field(name="Amount of Checks", value=security_checks, inline=False)
             embed.add_field(name="Points Awarded", value=points, inline=True)
             embed.add_field(name="Log ID", value=f"`{payload.message_id}`", inline=False)
         
@@ -967,7 +968,7 @@ class ReactionLogger:
                     color=discord.Color.pink()
                 )
                 
-                embed.add_field(name="Inductor", value=f"{member.mention} ({member.id})", inline=False)
+                embed.add_field(name="Inductor", value=f"{member.mention}", inline=False)
                 embed.add_field(name="Message Request", value=f"<#{payload.channel_id}>", inline=True)
                 embed.add_field(name="Status", value=f"{emoji}", inline=True)
                 embed.add_field(name="Points Awarded", value=self.POINTS_PER_ACTIVITY, inline=True)
@@ -1066,7 +1067,9 @@ class ReactionLogger:
             embed.add_field(name="Points Awarded", value=self.POINTS_PER_ACTIVITY, inline=False)
             embed.add_field(name="Jump to", value=f"[Click here]({message.jump_url})", inline=False)
 
+            logger.debug("Sending log embed")
             await log_channel.send(embed=embed)
+            logger.debug("Embed sent.")
 
             logger.info(f"Attempting to update points for: {member.display_name}")
             await self._update_hr_record(member, {"courses": self.POINTS_PER_ACTIVITY})
@@ -3145,6 +3148,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
