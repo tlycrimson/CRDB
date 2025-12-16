@@ -831,14 +831,9 @@ class ReactionLogger:
                 l for l in self.bot.extra_events.get('on_raw_reaction_add', [])
                 if getattr(l, '__self__', None) is self
             ]
-            remove_listeners = [
-                l for l in self.bot.extra_events.get('on_raw_reaction_remove', []) 
-                if getattr(l, '__self__', None) is self
-            ]   
             
             status = {
                 "add_listeners": len(add_listeners),
-                "remove_listeners": len(remove_listeners),
                 "monitor_channels": len(self.monitor_channel_ids),
                 "log_channel_id": self.log_channel_id,
             }
@@ -852,8 +847,6 @@ class ReactionLogger:
     
     async def log_reaction(self, payload: discord.RawReactionActionEvent):
         """Main reaction handler that routes to specific loggers with DB + memory duplicate checks."""
-        if payload.event_type == "REACTION_REMOVE":
-            return
         
         guild = self.bot.get_guild(payload.guild_id)
         if not guild:
@@ -3147,6 +3140,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
