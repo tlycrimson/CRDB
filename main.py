@@ -2141,59 +2141,53 @@ async def edit_db(interaction: discord.Interaction, user: discord.User, column: 
 
 # Add autocomplete for the column parameter
 @edit_db.autocomplete('column')
-async def edit_db_column_autocomplete(interaction: discord.Interaction, current: str):
-    # Get the user parameter from the current interaction
-    user_option = next((opt for opt in interaction.data.get('options', []) if opt['name'] == 'user'), None)
-    
-    if not user_option:
+async def edit_db_column_autocomplete(
+    interaction: discord.Interaction,
+    current: str
+):
+    user_option = next(
+        (opt for opt in interaction.data.get('options', []) if opt['name'] == 'user'),
+        None
+    )
+    if not user_option or not interaction.guild:
         return []
-    
+
     user_id = int(user_option['value'])
     guild = interaction.guild
-    
-    if not guild:
-        return []
-    
-    # Get the member to check their role
+
     member = guild.get_member(user_id)
     if not member:
         try:
             member = await guild.fetch_member(user_id)
         except discord.NotFound:
             return []
-    
+
     hr_role = guild.get_role(Config.HR_ROLE_ID)
     is_hr = hr_role and hr_role in member.roles
-    
-    # Define columns based on role
-    hr_columns = ["tryouts", "events", "phases", "courses", "inspections", "joint_events"]
-    lr_columns = ["activity", "time_guarded", "events_attended"]
-    
-    available_columns = hr_columns if is_hr else lr_columns
-    
-    # Filter based on current input
-    choices = [column for column in available_columns if current.lower() in column.lower()]
-    
-    return [discord.app_commands.Choice(name=column, value=column) for column in choices[:25]]
 
+    # Display name -> DB column
+    hr_columns = {
+        "Tryouts": "tryouts",
+        "Events": "events",
+        "Phases": "phases",
+        "Logistics": "courses",       
+        "Inspections": "inspections",
+        "Joint Events": "joint_events",
+    }
 
-# Reset Database Command
-@bot.tree.command(name="reset-db", description="Reset the LR and HR tables.")
-async def reset_db(interaction: discord.Interaction):
-    await interaction.response.defer(ephemeral=True)
-    guild = interaction.guild
-    if not guild:
-        await interaction.followup.send("❌ This command can only be used in a server.")
-        return
+    lr_columns = {
+        "Activity": "activity",
+        "Time Guarded": "time_guarded",
+        "Events Attended": "events_attended",
+    }
 
-    ld_hicom_roles = [
-        guild.get_role(Config.HIGH_COMMAND_ROLE_ID)
-    ]
-    
-    if not any(role in interaction.user.roles for role in ld_hicom_roles if role):
-        await interaction.followup.send("❌ You don’t have permission to use this command.", ephemeral=True)
-        return
+    available = hr_columns if is_hr else lr_columns
 
+    return [
+        discord.app_commands.Choice(name=display, value=db_value)
+        for display, db_value in available.items()
+        if current.lower() in display.lower()
+    ][:25]
 
 
     def _reset_work():
@@ -3140,6 +3134,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
