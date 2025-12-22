@@ -1397,11 +1397,20 @@ class ReactionLogger:
 
           
 
-
 class ConfirmView(discord.ui.View):
-    def __init__(self, *, timeout: float = 30.0):
+    def __init__(self, author: discord.User, *, timeout: float = 30.0):
         super().__init__(timeout=timeout)
-        self.value = None
+        self.author = author
+        self.value: bool | None = None
+
+    async def interaction_check(self, interaction: discord.Interaction) -> bool:
+        if interaction.user.id != self.author.id:
+            await interaction.response.send_message(
+                "❌ You cannot respond to this confirmation.",
+                ephemeral=True
+            )
+            return False
+        return True
 
     @discord.ui.button(label="Confirm", style=discord.ButtonStyle.green)
     async def confirm(self, interaction: discord.Interaction, button: discord.ui.Button):
@@ -1416,7 +1425,6 @@ class ConfirmView(discord.ui.View):
         self.stop()
 
     async def on_timeout(self):
-        """Handle when the view times out"""
         self.value = False
         self.stop()
 
@@ -2211,39 +2219,69 @@ async def edit_db_column_autocomplete(
 
 # Reset Database Command
 @bot.tree.command(name="reset-db", description="Reset the LR and HR tables.")
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def reset_db(interaction: discord.Interaction):
     await interaction.response.defer(ephemeral=True)
+
     guild = interaction.guild
     if not guild:
-        await interaction.followup.send("❌ This command can only be used in a server.")
+        await interaction.followup.send(
+            "❌ This command can only be used in a server.",
+            ephemeral=True
+        )
         return
 
-    ld_hicom_roles = [
-        guild.get_role(Config.HIGH_COMMAND_ROLE_ID)
-    ]
+    view = ConfirmView(author=interaction.user)
 
-    if not any(role in interaction.user.roles for role in ld_hicom_roles if role):
-        await interaction.followup.send("❌ You don’t have permission to use this command.", ephemeral=True)
+    await interaction.followup.send(
+        "⚠️ **Are you sure you want to reset the database?**\n"
+        "This will reset **ALL LR and HR stats**.\n\n"
+        "Click **Confirm** to proceed or **Cancel** to abort.",
+        view=view,
+        ephemeral=True
+    )
+
+    # Wait for user input (or timeout)
+    await view.wait()
+
+    if view.value is not True:
+        await interaction.followup.send(
+            "❎ Database reset cancelled.",
+            ephemeral=True
+        )
         return
-
 
     def _reset_work():
         sup = bot.db.supabase
         sup.table('HRs').update({
-            'tryouts': 0, 'events': 0, 'phases': 0,
-            'courses': 0, 'inspections': 0, 'joint_events': 0
+            'tryouts': 0,
+            'events': 0,
+            'phases': 0,
+            'courses': 0,
+            'inspections': 0,
+            'joint_events': 0
         }).neq('user_id', 0).execute()
+
         sup.table('LRs').update({
-            'activity': 0, 'time_guarded': 0, 'events_attended': 0
+            'activity': 0,
+            'time_guarded': 0,
+            'events_attended': 0
         }).neq('user_id', 0).execute()
+
         return True
 
     try:
         await bot.db.run_query(_reset_work)
-        await interaction.followup.send("✅ Database reset successfully!", ephemeral=True)
+        await interaction.followup.send(
+            "✅ **Database reset successfully!**",
+            ephemeral=True
+        )
     except Exception as e:
         logger.exception("reset_db failed: %s", e)
-        await interaction.followup.send(f"❌ Error resetting database: {e}", ephemeral=True)
+        await interaction.followup.send(
+            f"❌ Error resetting database:\n```{e}```",
+            ephemeral=True
+        )
 
 
 
@@ -3172,6 +3210,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
