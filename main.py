@@ -2811,97 +2811,80 @@ async def _view_full_welcome(interaction: discord.Interaction, db_type: str, dis
         )
 
 async def _edit_title_menu(interaction: discord.Interaction, db_type: str, display_name: str, embeds_data: list):
-    """Menu to select which embed title to edit"""
-    class EmbedSelectView(discord.ui.View):
-        def __init__(self, embeds_data, db_type, display_name):
+    """Menu to select which embed title to edit - WORKING VERSION"""
+    
+    class TitleSelectView(discord.ui.View):
+        def __init__(self, db_type, display_name, embeds_data):
             super().__init__(timeout=60)
-            self.selected_index = None
-            self.embeds_data = embeds_data
             self.db_type = db_type
             self.display_name = display_name
-            
-            # Create dropdown
-            options = []
-            for i, embed in enumerate(embeds_data):
-                title = embed.get('title', f'Embed {i+1}')[:100]
-                options.append(discord.SelectOption(
-                    label=f"Embed {i+1}: {title}",
+            self.embeds_data = embeds_data
+        
+        @discord.ui.select(
+            placeholder="Select embed to edit title...",
+            options=[
+                discord.SelectOption(
+                    label=f"Embed {i+1}: {embed.get('title', f'Embed {i+1}')[:100]}",
                     value=str(i),
                     description=embed.get('description', '')[:100] or "No description"
-                ))
+                )
+                for i, embed in enumerate(embeds_data)
+            ]
+        )
+        async def select_callback(self, select_interaction: discord.Interaction, select: discord.ui.Select):
+            embed_index = int(select.values[0])
+            current_title = self.embeds_data[embed_index].get('title', '')
             
-            select = discord.ui.Select(
-                placeholder="Select embed to edit title...",
-                options=options,
-                custom_id="embed_select"
-            )
-            select.callback = self.select_callback
-            self.add_item(select)
-        
-        async def select_callback(self, select_interaction: discord.Interaction):
-            # Defer first to prevent timeout
-            await select_interaction.response.defer(ephemeral=True)
-            self.selected_index = int(select_interaction.data['values'][0])
+            # Modal is defined INSIDE the callback to capture embed_index
+            class TitleModal(discord.ui.Modal, title=f"Edit Title - Embed {embed_index + 1}"):
+                def __init__(self, embed_index, embeds_data, db_type):
+                    super().__init__()
+                    self.embed_index = embed_index
+                    self.embeds_data = embeds_data
+                    self.db_type = db_type
+                    
+                    self.title_input = discord.ui.TextInput(
+                        label="New Title",
+                        default=current_title,
+                        max_length=256,
+                        required=True
+                    )
+                    self.add_item(self.title_input)
+                
+                async def on_submit(self, modal_interaction: discord.Interaction):
+                    await modal_interaction.response.defer(ephemeral=True)
+                    
+                    new_title = self.title_input.value
+                    updated_embeds = self.embeds_data.copy()
+                    old_title = updated_embeds[self.embed_index].get('title', 'Untitled')
+                    updated_embeds[self.embed_index]['title'] = new_title
+                    
+                    success, new_data = await bot.db.update_welcome_message(
+                        self.db_type,
+                        updated_embeds,
+                        f"{modal_interaction.user.name} ({modal_interaction.user.id})",
+                        admin_user=modal_interaction.user,
+                        change_details=f"Changed title of Embed {self.embed_index + 1}\nFrom: '{old_title}'\nTo: '{new_title}'"
+                    )
+                    
+                    if success:
+                        await modal_interaction.followup.send(
+                            f"✅ Updated title of Embed {self.embed_index + 1} to: **{new_title}**",
+                            ephemeral=True
+                        )
+                    else:
+                        await modal_interaction.followup.send("❌ Failed to save changes.", ephemeral=True)
             
-            # Send the modal directly from the select interaction
-            await _edit_title_modal(select_interaction, self.db_type, self.display_name, self.embeds_data, self.selected_index)
-            self.stop()
+            # Create and show the modal
+            modal = TitleModal(embed_index, self.embeds_data, self.db_type)
+            await select_interaction.response.send_modal(modal)
     
-    view = EmbedSelectView(embeds_data, db_type, display_name)
-    
-    # Send initial response with the dropdown
+    view = TitleSelectView(db_type, display_name, embeds_data)
     await interaction.response.send_message(
-        f"Select which embed of **{display_name}** to edit:",
+        f"Select which embed of **{display_name}** to edit title:",
         view=view,
         ephemeral=True
     )
-
-
-async def _edit_title_modal(interaction: discord.Interaction, db_type: str, display_name: str, embeds_data: list, embed_index: int):
-    """Modal for editing embed title"""
-    current_embed = embeds_data[embed_index]
-    current_title = current_embed.get('title', '')
-    
-    class TitleModal(discord.ui.Modal, title=f"Edit Title - Embed {embed_index + 1}"):
-        new_title = discord.ui.TextInput(
-            label="New Title",
-            placeholder="Enter new title...",
-            default=current_title,
-            max_length=256,
-            required=True
-        )
-        
-        async def on_submit(self, modal_interaction: discord.Interaction):
-            await modal_interaction.response.defer(ephemeral=True)
-            
-            # Update the embed
-            updated_embeds = embeds_data.copy()
-            old_title = updated_embeds[embed_index].get('title', 'Untitled')
-            updated_embeds[embed_index]['title'] = self.new_title.value
-            
-            # Save to database WITH LOGGING
-            success, new_data = await bot.db.update_welcome_message(
-                db_type,
-                updated_embeds,
-                f"{modal_interaction.user.name} ({modal_interaction.user.id})",
-                admin_user=modal_interaction.user,
-                change_details=f"Changed title of Embed {embed_index + 1}\nFrom: '{old_title}'\nTo: '{self.new_title.value}'"
-            )
-            
-            if success:
-                await modal_interaction.followup.send(
-                    f"✅ Updated title of Embed {embed_index + 1} to: **{self.new_title.value}**",
-                    ephemeral=True
-                )
-            else:
-                await modal_interaction.followup.send(
-                    "❌ Failed to save changes.",
-                    ephemeral=True
-                )
-    
-    modal = TitleModal()
-    # ✅ CORRECT: Send modal directly from the interaction
-    await interaction.response.send_modal(modal)
 
 async def _edit_description_menu(interaction: discord.Interaction, db_type: str, display_name: str, embeds_data: list):
     """Menu to select which embed description to edit"""
@@ -4543,6 +4526,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
