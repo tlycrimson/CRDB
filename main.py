@@ -1852,52 +1852,6 @@ async def on_resumed():
 
         
 # --- BOT COMMANDS --- 
-
-#test welcome messages
-@bot.tree.command(name="test-welcome", description="Test welcome message system")
-@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
-async def test_welcome(interaction: discord.Interaction, type: Literal["HR", "RMP"]):
-    """Test if welcome messages are loaded correctly"""
-    await interaction.response.defer(ephemeral=True)
-    
-    db_type = "hr_welcome" if type == "HR" else "rmp_welcome"
-    display_name = "HR Welcome" if type == "HR" else "RMP Welcome"
-    
-    message_data = await bot.db.get_welcome_message(db_type)
-    
-    if not message_data:
-        await interaction.followup.send(f"❌ No {display_name} found in cache/database.", ephemeral=True)
-        return
-    
-    embed_count = len(message_data.get('embeds', []))
-    
-    embed = discord.Embed(
-        title=f"✅ {display_name} Status",
-        color=discord.Color.green()
-    )
-    
-    embed.add_field(name="Cache Status", value="✅ Loaded", inline=True)
-    embed.add_field(name="Embed Count", value=str(embed_count), inline=True)
-    embed.add_field(name="Last Updated", value=str(message_data.get('last_updated', 'Unknown')), inline=True)
-    embed.add_field(name="Updated By", value=message_data.get('updated_by', 'Unknown'), inline=True)
-    embed.add_field(name="Version", value=str(message_data.get('version', 1)), inline=True)
-    
-    # Show embed previews
-    for i, embed_data in enumerate(message_data['embeds'][:2], 1):  # Show first 2
-        title = embed_data.get('title', f'Embed {i}')
-        desc_preview = embed_data.get('description', '')[:100] + "..." if len(embed_data.get('description', '')) > 100 else embed_data.get('description', 'No description')
-        embed.add_field(
-            name=f"Embed {i} Preview",
-            value=f"**{title}**\n{desc_preview}",
-            inline=False
-        )
-    
-    if embed_count > 2:
-        embed.set_footer(text=f"+ {embed_count - 2} more embeds not shown")
-    
-    await interaction.followup.send(embed=embed, ephemeral=True)
-
-
 # /addxp Command
 @bot.tree.command(name="add-xp", description="Add XP to a user")
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
@@ -2863,8 +2817,6 @@ async def _edit_title_menu(interaction: discord.Interaction, db_type: str, displ
                         self.db_type,
                         updated_embeds,
                         f"{modal_interaction.user.name} ({modal_interaction.user.id})"
-                        # Removed: admin_user=modal_interaction.user,
-                        # Removed: change_details=f"Changed title..."
                     )
                     
                     if success:
@@ -3428,8 +3380,6 @@ async def _reset_to_default(interaction: discord.Interaction, db_type: str, disp
             db_type,
             default_embeds,
             f"{interaction.user.name} ({interaction.user.id}) - Reset to default",
-            admin_user=interaction.user,
-            change_details=f"RESET TO DEFAULT CONFIGURATION\nRestored {len(default_embeds)} embeds"
         )
         
         if success:
@@ -4442,6 +4392,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
