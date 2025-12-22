@@ -1975,7 +1975,7 @@ async def xp_command(interaction: discord.Interaction, user: Optional[discord.Us
         progress = make_progress_bar(xp, current_threshold, next_threshold)
 
         embed = discord.Embed(
-            title=f"📊 XP Profile: {cleaned_name}",
+            title=f"{cleaned_name}",
             color=discord.Color.green()
         ).set_thumbnail(url=target_user.display_avatar.url)
 
@@ -4392,6 +4392,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
