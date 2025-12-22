@@ -858,133 +858,6 @@ class RankTracker:
         data, timestamp = self.member_cache[cache_key]
         return time.time() - timestamp < self.cache_ttl
     
-    async def startup_update(self):
-        """Run on bot startup to update all existing database records"""
-        if self.startup_completed:
-            self.logger.info("Startup update already completed, skipping")
-            return
-        
-        try:
-            self.logger.info("Starting automatic rank update for all database records...")
-            
-            # Get the main guild
-            guild = self.bot.guilds[0] if self.bot.guilds else None
-            if not guild:
-                self.logger.warning("No guild found for startup update")
-                return
-            
-            # Step 1: Update HR table records
-            hr_results = await self._update_table_on_startup(guild, "HRs")
-            
-            # Step 2: Update LR table records
-            lr_results = await self._update_table_on_startup(guild, "LRs")
-            
-            # Log results
-            total_updated = hr_results['updated'] + lr_results['updated']
-            total_failed = hr_results['failed'] + lr_results['failed']
-            
-            self.logger.info(
-                f"✅ Startup update completed: "
-                f"Updated {total_updated} records "
-                f"(HR: {hr_results['updated']}, LR: {lr_results['updated']}), "
-                f"Failed: {total_failed}"
-            )
-            
-            if hr_results['errors'] or lr_results['errors']:
-                self.logger.warning(f"Startup errors: {len(hr_results['errors'] + lr_results['errors'])}")
-            
-            self.startup_completed = True
-            
-        except Exception as e:
-            self.logger.error(f"Failed during startup update: {e}")
-    
-    async def _update_table_on_startup(self, guild: discord.Guild, table: str) -> dict:
-        """Update all records in a specific table"""
-        results = {
-            'updated': 0,
-            'failed': 0,
-            'not_found': 0,
-            'errors': []
-        }
-        
-        try:
-            # Get all user IDs from the table
-            def _get_user_ids():
-                sup = self.bot.db.supabase
-                res = sup.table(table).select('user_id, username').execute()
-                return res.data if getattr(res, 'data', None) else []
-            
-            user_records = await self.bot.db.run_query(_get_user_ids)
-            
-            if not user_records:
-                self.logger.info(f"No records found in {table} table")
-                return results
-            
-            self.logger.info(f"Found {len(user_records)} records in {table} table")
-            
-            # Process each user
-            for i, record in enumerate(user_records, 1):
-                user_id_str = str(record['user_id'])
-                username = record.get('username', 'Unknown')
-                
-                try:
-                    # Convert to integer
-                    user_id = int(user_id_str)
-                    
-                    # Try to get member from guild
-                    member = guild.get_member(user_id)
-                    if not member:
-                        # Try to fetch if not in cache
-                        try:
-                            member = await guild.fetch_member(user_id)
-                        except discord.NotFound:
-                            results['not_found'] += 1
-                            continue
-                        except discord.HTTPException as e:
-                            if e.status == 429:
-                                # Rate limited, wait and retry
-                                await asyncio.sleep(1)
-                                member = await guild.fetch_member(user_id)
-                            else:
-                                raise
-                    
-                    # Update this member's record
-                    success = await self.update_member_in_database(member)
-                    
-                    if success:
-                        results['updated'] += 1
-                    else:
-                        results['failed'] += 1
-                    
-                    # Progress logging every 25 records
-                    if i % 25 == 0:
-                        self.logger.info(f"Processed {i}/{len(user_records)} records from {table}")
-                    
-                    # Rate limiting delay between members
-                    if i % 10 == 0:
-                        await asyncio.sleep(0.5)
-                    
-                except Exception as e:
-                    results['failed'] += 1
-                    results['errors'].append(f"User {user_id_str} ({username}): {str(e)[:100]}")
-                    self.logger.warning(f"Failed to update {username} ({user_id_str}): {e}")
-                    
-                    # Longer delay on error
-                    await asyncio.sleep(1)
-            
-            self.logger.info(
-                f"Completed {table} table update: "
-                f"{results['updated']} updated, "
-                f"{results['failed']} failed, "
-                f"{results['not_found']} not found in guild"
-            )
-            
-        except Exception as e:
-            self.logger.error(f"Failed to update {table} table: {e}")
-            results['errors'].append(f"Table error: {str(e)}")
-        
-        return results
-    
     
     async def get_member_info(self, member: discord.Member, force_refresh: bool = False) -> dict:
         """Get comprehensive member information including rank and division"""
@@ -1334,6 +1207,41 @@ class RankTracker:
         except Exception as e:
             self.logger.error(f"Failed to get division stats: {e}")
             return {'error': str(e)}
+    
+    def _is_rank_related_role(self, role_id: int) -> bool:
+        """Check if a role ID is related to rank/division determination"""
+        # Check all rank-related role IDs
+        return role_id in (
+            # Division roles
+            Config.SOR_ROLE_ID,
+            Config.HQ_ROLE_ID,
+            Config.RSM_ROLE_ID,
+            Config.TRAINEE_ROLE_ID,
+            # All rank roles
+            *Config.SOR_HR_RANKS.keys(),
+            *Config.PW_HR_RANKS.keys(),
+            *Config.SOR_LR_RANKS.keys(),
+            *Config.PW_LR_RANKS.keys(),
+            # HR/LR role (for determining which table)
+            Config.HR_ROLE_ID,
+            Config.RMP_ROLE_ID  # If you want to track RMP role changes
+        )
+    
+    def _roles_changed_affect_rank(self, before_roles: list, after_roles: list) -> bool:
+        """Check if role changes affect rank/division determination"""
+        before_set = set(before_roles)
+        after_set = set(after_roles)
+        
+        # Get roles that were added or removed
+        added_roles = after_set - before_set
+        removed_roles = before_set - after_set
+        
+        # Check if any added/removed roles are rank-related
+        for role_id in added_roles.union(removed_roles):
+            if self._is_rank_related_role(role_id):
+                return True
+        
+        return False
 
 
 # Roblox API helper functions
@@ -2308,16 +2216,6 @@ async def on_ready():
     bot.rank_tracker = RankTracker(bot)
     logger.info("✅ Rank tracker initialized")
     
-    # Start automatic update in background
-    if bot.guilds:
-        async def startup_update_task():
-            try:
-                await asyncio.sleep(10)
-                await bot.rank_tracker.startup_update()
-            except Exception as e:
-                logger.error(f"Startup update task failed: {e}")
-        
-        asyncio.create_task(startup_update_task())
 
 
 
@@ -4675,6 +4573,7 @@ async def _send_original_rmp_welcome(member: discord.Member):
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
     async with global_rate_limiter:
+        # ===== WELCOME MESSAGES =====
         # Check for HR role
         if hr_role := after.guild.get_role(Config.HR_ROLE_ID):
             if hr_role not in before.roles and hr_role in after.roles:
@@ -4685,20 +4584,48 @@ async def on_member_update(before: discord.Member, after: discord.Member):
             if rmp_role not in before.roles and rmp_role in after.roles:
                 await send_rmp_welcome(after)
 
+        # ===== RANK TRACKING =====
         # Check if roles changed
-        if set(before.roles) != set(after.roles):
-            # Check if this member has RMP or HR role
-            rmp_role = after.guild.get_role(Config.RMP_ROLE_ID)
-            hr_role = after.guild.get_role(Config.HR_ROLE_ID)
+        if set(before.roles) == set(after.roles):
+            return  # No role changes, exit early
+        
+        # Get role IDs for comparison
+        before_role_ids = [role.id for role in before.roles]
+        after_role_ids = [role.id for role in after.roles]
+        
+        # Check if rank-related roles changed (only update if they did)
+        if hasattr(bot, 'rank_tracker') and bot.rank_tracker:
+            if not bot.rank_tracker._roles_changed_affect_rank(before_role_ids, after_role_ids):
+                return  # Role changes don't affect rank, exit early
+        
+        # Only update if member has RMP or HR role
+        rmp_role = after.guild.get_role(Config.RMP_ROLE_ID)
+        hr_role = after.guild.get_role(Config.HR_ROLE_ID)
+        
+        if not ((rmp_role and rmp_role in after.roles) or (hr_role and hr_role in after.roles)):
+            return  # Not an RMP or HR member, exit early
+        
+        # Update rank in database (with slight delay to prevent rapid updates)
+        try:
+            await asyncio.sleep(0.5)  # Small delay
             
-            if (rmp_role and rmp_role in after.roles) or (hr_role and hr_role in after.roles):
-                # Update rank in database
-                try:
-                    await bot.rank_tracker.update_member_in_database(after)
-                    logger.info(f"Auto-updated rank for {after.display_name} after role change")
-                except Exception as e:
-                    logger.error(f"Failed to auto-update rank for {after.display_name}: {e}")
-
+            if hasattr(bot, 'rank_tracker') and bot.rank_tracker:
+                success = await bot.rank_tracker.update_member_in_database(after)
+                
+                if success:
+                    member_info = await bot.rank_tracker.get_member_info(after)
+                    logger.info(
+                        f"🔄 Auto-updated rank for {after.display_name}: "
+                        f"Division={member_info['division']}, Rank={member_info['rank']}"
+                    )
+                else:
+                    logger.warning(f"Failed to auto-update rank for {after.display_name}")
+            else:
+                logger.warning("Rank tracker not initialized, cannot update rank")
+                
+        except Exception as e:
+            logger.error(f"Error in on_member_update for {after.display_name}: {e}")
+            
 @bot.event
 async def on_member_remove(member: discord.Member):
     async with global_rate_limiter:
@@ -4933,6 +4860,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
