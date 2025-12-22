@@ -2209,6 +2209,44 @@ async def edit_db_column_autocomplete(
         await interaction.followup.send(f"❌ Error resetting database: {e}", ephemeral=True)
 
 
+# Reset Database Command
+@bot.tree.command(name="reset-db", description="Reset the LR and HR tables.")
+async def reset_db(interaction: discord.Interaction):
+    await interaction.response.defer(ephemeral=True)
+    guild = interaction.guild
+    if not guild:
+        await interaction.followup.send("❌ This command can only be used in a server.")
+        return
+
+    ld_hicom_roles = [
+        guild.get_role(Config.HIGH_COMMAND_ROLE_ID)
+    ]
+
+    if not any(role in interaction.user.roles for role in ld_hicom_roles if role):
+        await interaction.followup.send("❌ You don’t have permission to use this command.", ephemeral=True)
+        return
+
+
+    def _reset_work():
+        sup = bot.db.supabase
+        sup.table('HRs').update({
+            'tryouts': 0, 'events': 0, 'phases': 0,
+            'courses': 0, 'inspections': 0, 'joint_events': 0
+        }).neq('user_id', 0).execute()
+        sup.table('LRs').update({
+            'activity': 0, 'time_guarded': 0, 'events_attended': 0
+        }).neq('user_id', 0).execute()
+        return True
+
+    try:
+        await bot.db.run_query(_reset_work)
+        await interaction.followup.send("✅ Database reset successfully!", ephemeral=True)
+    except Exception as e:
+        logger.exception("reset_db failed: %s", e)
+        await interaction.followup.send(f"❌ Error resetting database: {e}", ephemeral=True)
+
+
+
 
 # Manual Fallback Log Command (covers all ReactionLogger cases)
 @bot.tree.command(name="force-log", description="Force log a message by link (reaction logger fallback)")
@@ -3134,6 +3172,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
