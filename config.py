@@ -129,6 +129,14 @@ class Config:
         1324062837907394651,  # 🎓 Information Award
         1180513363881644084,  # ⚔️ Combatant Award
         1180513399398989844,  # 🩺 Medical Award
+        1450546812099366932,  # 📝Task Efficiency Award 
+        1450902236006711390,  # 📝Advanced Task Efficiency Award    
+        1165368311618469968,  # 🥇I Distinguished Conduct Medal 
+        1312843022324596776,  # 🏅 I Loyal Service Award 
+        1165368311618469964,  # 🎖️I Accolade of Honour 
+        1452729923104931860,  # 🥇I Monumental Leadership Award 
+        1452730974654693527,  # 🥇I Crimson Provost Distinction
+        1452730978563915889,  # 🥇I Regimental Valor & Conduct Award
     }
 
 
@@ -146,6 +154,7 @@ class Config:
    # LD_HEAD_ROLE_ID = 1224732743036833802
    # LD_DEP_HEAD_ROLE_ID = 1224732812020813935
     # MAX_MONITORED_CHANNELS = 15
+
 
 
 
