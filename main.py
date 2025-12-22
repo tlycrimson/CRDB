@@ -826,13 +826,14 @@ def dict_to_embed(data: dict) -> discord.Embed:
     
     return embed
 
-
+# Ranks and Division Tracker
 class RankTracker:
     """Tracks and updates member ranks and divisions in the database"""
     
     def __init__(self, bot):
         self.bot = bot
         self.logger = logging.getLogger(__name__)
+        self.startup_completed = False  # Track if startup update is done
         
         # Combine all rank mappings for quick lookup
         self.all_ranks = {
@@ -847,13 +848,143 @@ class RankTracker:
         self.cache_ttl = 300  # 5 minutes cache
         
     def _get_cache_key(self, member_id: int) -> str:
+        """Generate cache key for a member"""
         return f"member_{member_id}"
     
     def _is_cache_valid(self, cache_key: str) -> bool:
+        """Check if cached data is still valid"""
         if cache_key not in self.member_cache:
             return False
         data, timestamp = self.member_cache[cache_key]
         return time.time() - timestamp < self.cache_ttl
+    
+    async def startup_update(self):
+        """Run on bot startup to update all existing database records"""
+        if self.startup_completed:
+            self.logger.info("Startup update already completed, skipping")
+            return
+        
+        try:
+            self.logger.info("Starting automatic rank update for all database records...")
+            
+            # Get the main guild
+            guild = self.bot.guilds[0] if self.bot.guilds else None
+            if not guild:
+                self.logger.warning("No guild found for startup update")
+                return
+            
+            # Step 1: Update HR table records
+            hr_results = await self._update_table_on_startup(guild, "HRs")
+            
+            # Step 2: Update LR table records
+            lr_results = await self._update_table_on_startup(guild, "LRs")
+            
+            # Log results
+            total_updated = hr_results['updated'] + lr_results['updated']
+            total_failed = hr_results['failed'] + lr_results['failed']
+            
+            self.logger.info(
+                f"✅ Startup update completed: "
+                f"Updated {total_updated} records "
+                f"(HR: {hr_results['updated']}, LR: {lr_results['updated']}), "
+                f"Failed: {total_failed}"
+            )
+            
+            if hr_results['errors'] or lr_results['errors']:
+                self.logger.warning(f"Startup errors: {len(hr_results['errors'] + lr_results['errors'])}")
+            
+            self.startup_completed = True
+            
+        except Exception as e:
+            self.logger.error(f"Failed during startup update: {e}")
+    
+    async def _update_table_on_startup(self, guild: discord.Guild, table: str) -> dict:
+        """Update all records in a specific table"""
+        results = {
+            'updated': 0,
+            'failed': 0,
+            'not_found': 0,
+            'errors': []
+        }
+        
+        try:
+            # Get all user IDs from the table
+            def _get_user_ids():
+                sup = self.bot.db.supabase
+                res = sup.table(table).select('user_id, username').execute()
+                return res.data if getattr(res, 'data', None) else []
+            
+            user_records = await self.bot.db.run_query(_get_user_ids)
+            
+            if not user_records:
+                self.logger.info(f"No records found in {table} table")
+                return results
+            
+            self.logger.info(f"Found {len(user_records)} records in {table} table")
+            
+            # Process each user
+            for i, record in enumerate(user_records, 1):
+                user_id_str = str(record['user_id'])
+                username = record.get('username', 'Unknown')
+                
+                try:
+                    # Convert to integer
+                    user_id = int(user_id_str)
+                    
+                    # Try to get member from guild
+                    member = guild.get_member(user_id)
+                    if not member:
+                        # Try to fetch if not in cache
+                        try:
+                            member = await guild.fetch_member(user_id)
+                        except discord.NotFound:
+                            results['not_found'] += 1
+                            continue
+                        except discord.HTTPException as e:
+                            if e.status == 429:
+                                # Rate limited, wait and retry
+                                await asyncio.sleep(1)
+                                member = await guild.fetch_member(user_id)
+                            else:
+                                raise
+                    
+                    # Update this member's record
+                    success = await self.update_member_in_database(member)
+                    
+                    if success:
+                        results['updated'] += 1
+                    else:
+                        results['failed'] += 1
+                    
+                    # Progress logging every 25 records
+                    if i % 25 == 0:
+                        self.logger.info(f"Processed {i}/{len(user_records)} records from {table}")
+                    
+                    # Rate limiting delay between members
+                    if i % 10 == 0:
+                        await asyncio.sleep(0.5)
+                    
+                except Exception as e:
+                    results['failed'] += 1
+                    results['errors'].append(f"User {user_id_str} ({username}): {str(e)[:100]}")
+                    self.logger.warning(f"Failed to update {username} ({user_id_str}): {e}")
+                    
+                    # Longer delay on error
+                    await asyncio.sleep(1)
+            
+            self.logger.info(
+                f"Completed {table} table update: "
+                f"{results['updated']} updated, "
+                f"{results['failed']} failed, "
+                f"{results['not_found']} not found in guild"
+            )
+            
+        except Exception as e:
+            self.logger.error(f"Failed to update {table} table: {e}")
+            results['errors'].append(f"Table error: {str(e)}")
+        
+        return results
+    
     
     async def get_member_info(self, member: discord.Member, force_refresh: bool = False) -> dict:
         """Get comprehensive member information including rank and division"""
@@ -2173,6 +2304,22 @@ async def on_ready():
     except asyncio.TimeoutError:
         logger.warning("command sync timed out (continuing)")
 
+    # Initialize rank tracker
+    bot.rank_tracker = RankTracker(bot)
+    logger.info("✅ Rank tracker initialized")
+    
+    # Start automatic update in background
+    if bot.guilds:
+        async def startup_update_task():
+            try:
+                await asyncio.sleep(10)
+                await bot.rank_tracker.startup_update()
+            except Exception as e:
+                logger.error(f"Startup update task failed: {e}")
+        
+        asyncio.create_task(startup_update_task())
+
+
 
 @bot.event
 async def on_disconnect():
@@ -2232,41 +2379,6 @@ async def on_resumed():
 
         
 # --- BOT COMMANDS --- 
-
-#Update everyones ranks
-@bot.tree.command(name="update-all-ranks", description="Update ranks for all members (Admin only)")
-@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
-async def update_all_ranks(interaction: discord.Interaction):
-    """Mass update ranks for all members"""
-    await interaction.response.defer()
-    
-    # Send initial message
-    progress_msg = await interaction.followup.send("🔄 Starting mass rank update...")
-    
-    # Run the update
-    results = await bot.rank_tracker.update_all_members(interaction.guild)
-    
-    # Create results embed
-    embed = discord.Embed(
-        title="📊 Mass Rank Update Results",
-        color=discord.Color.green() if results['success'] > 0 else discord.Color.red(),
-        timestamp=datetime.now(timezone.utc)
-    )
-    
-    embed.add_field(name="Total Members", value=str(results['total']), inline=True)
-    embed.add_field(name="Successfully Updated", value=str(results['success']), inline=True)
-    embed.add_field(name="Failed", value=str(results['failed']), inline=True)
-    embed.add_field(name="HR Records", value=str(results['updated_hr']), inline=True)
-    embed.add_field(name="LR Records", value=str(results['updated_lr']), inline=True)
-    
-    if results['errors']:
-        error_list = "\n".join(results['errors'][:5])  # Show first 5 errors
-        if len(results['errors']) > 5:
-            error_list += f"\n...and {len(results['errors']) - 5} more"
-        embed.add_field(name="Errors", value=f"```{error_list}```", inline=False)
-    
-    await progress_msg.edit(content="✅ Mass rank update completed!", embed=embed)
-
 # /addxp Command
 @bot.tree.command(name="add-xp", description="Add XP to a user")
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
@@ -4821,6 +4933,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
