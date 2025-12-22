@@ -575,9 +575,9 @@ class DatabaseHandler:
         """Get welcome message (uses cache)"""
         return await welcome_cache.get(message_type)
     
-    async def update_welcome_message(self, message_type: str, embeds_data: list, updated_by: str):
-        """Update welcome message (updates both cache and database)"""
-        return await welcome_cache.update(message_type, embeds_data, updated_by)
+    async def update_welcome_message(self, message_type: str, embeds_data: list, updated_by: str, admin_user: discord.User = None, change_details: str = None):
+        """Update welcome message (updates both cache and database) with logging"""
+        return await welcome_cache.update(message_type, embeds_data, updated_by, admin_user, change_details)
     
     async def get_welcome_message_history(self, message_type: str, limit: int = 5):
         """Get historical versions of welcome messages"""
@@ -4526,6 +4526,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
