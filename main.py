@@ -3170,9 +3170,15 @@ async def run_bot_forever():
     while True:
         try:
             logger.info(f"Starting Discord client (attempt {consecutive_failures + 1})...")
+            
+            # Close any existing session before starting
+            if hasattr(bot, "shared_session") and bot.shared_session and not bot.shared_session.closed:
+                await bot.shared_session.close()
+                bot.shared_session = None
+            
             await bot.start(TOKEN)
             
-            # Reset backoff on successful run
+            # Reset on successful run
             backoff = 1.0
             consecutive_failures = 0
             
@@ -3185,22 +3191,50 @@ async def run_bot_forever():
                 
         except discord.errors.HTTPException as e:
             consecutive_failures += 1
+            
+            # Clean up session before retry
+            if hasattr(bot, "shared_session") and bot.shared_session and not bot.shared_session.closed:
+                await bot.shared_session.close()
+                bot.shared_session = None
+            
             if getattr(e, "status", None) == 429:
                 retry_after = float(e.response.headers.get('Retry-After', 30) if getattr(e, "response", None) else 30)
                 logger.warning(f"Rate limited during login. Waiting {retry_after}s.")
                 await asyncio.sleep(retry_after)
+                
+                # Don't continue the loop - break out and restart fresh
+                logger.info("Closing bot and restarting due to rate limit...")
+                try:
+                    await bot.close()
+                except:
+                    pass
                 continue
+                
             logger.error(f"HTTPException in run loop: {e}")
             
         except Exception as e:
             consecutive_failures += 1
+            
+            # Clean up session
+            if hasattr(bot, "shared_session") and bot.shared_session and not bot.shared_session.closed:
+                await bot.shared_session.close()
+                bot.shared_session = None
+            
             logger.error(f"Unexpected error in Discord client: {type(e).__name__}: {e}")
 
         # Exponential backoff with jitter
         sleep_time = min(max_backoff, backoff * (2 ** consecutive_failures))
-        sleep_time *= random.uniform(0.8, 1.2)  # Add jitter
+        sleep_time *= random.uniform(0.8, 1.2)
         
         logger.info(f"Discord client stopped; restarting in {sleep_time:.1f}s")
+        
+        # Ensure bot is closed before restart
+        try:
+            if not bot.is_closed():
+                await bot.close()
+        except:
+            pass
+            
         await asyncio.sleep(sleep_time)
         backoff = sleep_time
 
@@ -3210,6 +3244,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
