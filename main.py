@@ -4573,16 +4573,44 @@ async def _send_original_rmp_welcome(member: discord.Member):
 @bot.event
 async def on_member_update(before: discord.Member, after: discord.Member):
     async with global_rate_limiter:
+        # ===== CHECK FOR RMP ROLE REMOVAL (DESERTION/REMOVAL) =====
+        rmp_role = after.guild.get_role(Config.RMP_ROLE_ID)
+        
+        if rmp_role and rmp_role in before.roles and rmp_role not in after.roles:
+            # Member had RMP role but lost it - handle desertion/removal
+            cleaned_nickname = re.sub(r'\[.*?\]', '', after.display_name).strip() or after.name
+            
+            try:
+                await bot.db.discharge_user(str(after.id), cleaned_nickname, after.guild)
+                logger.info(f"Removed {cleaned_nickname} ({after.id}) from database due to RMP role removal")
+            except Exception as e:
+                logger.error(f"Error removing {cleaned_nickname} ({after.id}) from DB: {e}")
+            
+            # Optionally send alert about role removal
+            try:
+                alert_channel = after.guild.get_channel(Config.HR_CHAT_CHANNEL_ID)
+                if alert_channel:
+                    embed = discord.Embed(
+                        title="⚠️ RMP Role Removed",
+                        description=f"{after.mention} no longer has the RMP role.",
+                        color=discord.Color.orange(),
+                        timestamp=datetime.now(timezone.utc)
+                    )
+                    embed.add_field(name="User", value=f"{cleaned_nickname} ({after.id})", inline=True)
+                    embed.add_field(name="Action", value="Database record removed", inline=True)
+                    await alert_channel.send(embed=embed)
+            except Exception as e:
+                logger.error(f"Failed to send RMP removal alert: {e}")
+        
         # ===== WELCOME MESSAGES =====
-        # Check for HR role
+        # Check for HR role addition
         if hr_role := after.guild.get_role(Config.HR_ROLE_ID):
             if hr_role not in before.roles and hr_role in after.roles:
                 await send_hr_welcome(after)
         
-        # Check for RMP role
-        if rmp_role := after.guild.get_role(Config.RMP_ROLE_ID):
-            if rmp_role not in before.roles and rmp_role in after.roles:
-                await send_rmp_welcome(after)
+        # Check for RMP role addition
+        if rmp_role and rmp_role not in before.roles and rmp_role in after.roles:
+            await send_rmp_welcome(after)
 
         # ===== RANK TRACKING =====
         # Check if roles changed
@@ -4598,8 +4626,8 @@ async def on_member_update(before: discord.Member, after: discord.Member):
             if not bot.rank_tracker._roles_changed_affect_rank(before_role_ids, after_role_ids):
                 return  # Role changes don't affect rank, exit early
         
-        # Only update if member has RMP or HR role
-        rmp_role = after.guild.get_role(Config.RMP_ROLE_ID)
+        # Only update rank if member has RMP or HR role
+        rmp_role = after.guild.get_role(Config.RMP_ROLE_ID)  # Re-fetch in case we need it
         hr_role = after.guild.get_role(Config.HR_ROLE_ID)
         
         if not ((rmp_role and rmp_role in after.roles) or (hr_role and hr_role in after.roles)):
@@ -4860,6 +4888,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
