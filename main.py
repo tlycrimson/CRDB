@@ -2721,7 +2721,7 @@ async def force_log(interaction: discord.Interaction, message_link: str):
 
 
 #Edit-Welcome Messages Commands
-@bot.tree.command(name="edit-welcome", description="Edit welcome messages for HRs or new RMP members")
+@bot.tree.command(name="edit-welcome", description="Edit welcome messages for HR or new RMP members")
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def edit_welcome(
     interaction: discord.Interaction,
@@ -2729,8 +2729,6 @@ async def edit_welcome(
     action: Literal["View Full", "Edit Title", "Edit Description", "Edit Color", "Add Field", "Remove Field", "Add Embed", "Remove Embed", "Reset to Default"] = "View Full"
 ):
     """Main command for editing welcome messages"""
-    
-    await interaction.response.defer(ephemeral=True)
     
     # Map display name to database type
     type_mapping = {
@@ -2740,13 +2738,16 @@ async def edit_welcome(
     db_type = type_mapping.get(message_type)
     
     if not db_type:
-        await interaction.followup.send("❌ Invalid message type.", ephemeral=True)
+        await interaction.response.send_message("❌ Invalid message type.", ephemeral=True)
         return
     
     # Get current message
     message_data = await bot.db.get_welcome_message(db_type)
     if not message_data or 'embeds' not in message_data:
-        await interaction.followup.send(f"❌ No {message_type} found in database.", ephemeral=True)
+        await interaction.response.send_message(
+            f"❌ No {message_type} found in database.", 
+            ephemeral=True
+        )
         return
     
     embeds_data = message_data['embeds']
@@ -2782,8 +2783,14 @@ async def edit_welcome(
 async def _view_full_welcome(interaction: discord.Interaction, db_type: str, display_name: str, embeds_data: list):
     """View the full welcome message with all embeds"""
     if not embeds_data:
-        await interaction.followup.send(f"❌ {display_name} has no embeds.", ephemeral=True)
+        await interaction.response.send_message(
+            f"❌ {display_name} has no embeds.", 
+            ephemeral=True
+        )
         return
+    
+    # Defer since we might send multiple messages
+    await interaction.response.defer(ephemeral=True)
     
     # Create Discord embed objects
     discord_embeds = []
@@ -2791,9 +2798,14 @@ async def _view_full_welcome(interaction: discord.Interaction, db_type: str, dis
         discord_embeds.append(dict_to_embed(embed_data))
     
     # Send all embeds (Discord allows up to 10 per message)
-    for chunk in [discord_embeds[i:i+10] for i in range(0, len(discord_embeds), 10)]:
+    for i, chunk in enumerate([discord_embeds[j:j+10] for j in range(0, len(discord_embeds), 10)]):
+        if i == 0:
+            content = f"**{display_name} - Full Preview**\nTotal embeds: {len(discord_embeds)}"
+        else:
+            content = f"**{display_name} - Continued (Part {i+1})**"
+        
         await interaction.followup.send(
-            content=f"**{display_name} - Full Preview**" if chunk == discord_embeds[:10] else None,
+            content=content,
             embeds=chunk,
             ephemeral=True
         )
@@ -2801,10 +2813,12 @@ async def _view_full_welcome(interaction: discord.Interaction, db_type: str, dis
 async def _edit_title_menu(interaction: discord.Interaction, db_type: str, display_name: str, embeds_data: list):
     """Menu to select which embed title to edit"""
     class EmbedSelectView(discord.ui.View):
-        def __init__(self, embeds_data):
+        def __init__(self, embeds_data, db_type, display_name):
             super().__init__(timeout=60)
             self.selected_index = None
             self.embeds_data = embeds_data
+            self.db_type = db_type
+            self.display_name = display_name
             
             # Create dropdown
             options = []
@@ -2825,21 +2839,23 @@ async def _edit_title_menu(interaction: discord.Interaction, db_type: str, displ
             self.add_item(select)
         
         async def select_callback(self, select_interaction: discord.Interaction):
-            await select_interaction.response.defer()
+            # Defer first to prevent timeout
+            await select_interaction.response.defer(ephemeral=True)
             self.selected_index = int(select_interaction.data['values'][0])
+            
+            # Send the modal directly from the select interaction
+            await _edit_title_modal(select_interaction, self.db_type, self.display_name, self.embeds_data, self.selected_index)
             self.stop()
     
-    view = EmbedSelectView(embeds_data)
-    await interaction.followup.send(
+    view = EmbedSelectView(embeds_data, db_type, display_name)
+    
+    # Send initial response with the dropdown
+    await interaction.response.send_message(
         f"Select which embed of **{display_name}** to edit:",
         view=view,
         ephemeral=True
     )
-    
-    await view.wait()
-    
-    if view.selected_index is not None:
-        await _edit_title_modal(interaction, db_type, display_name, embeds_data, view.selected_index)
+
 
 async def _edit_title_modal(interaction: discord.Interaction, db_type: str, display_name: str, embeds_data: list, embed_index: int):
     """Modal for editing embed title"""
@@ -2860,13 +2876,16 @@ async def _edit_title_modal(interaction: discord.Interaction, db_type: str, disp
             
             # Update the embed
             updated_embeds = embeds_data.copy()
+            old_title = updated_embeds[embed_index].get('title', 'Untitled')
             updated_embeds[embed_index]['title'] = self.new_title.value
             
-            # Save to database
-            success = await bot.db.update_welcome_message(
+            # Save to database WITH LOGGING
+            success, new_data = await bot.db.update_welcome_message(
                 db_type,
                 updated_embeds,
-                f"{modal_interaction.user.name} ({modal_interaction.user.id})"
+                f"{modal_interaction.user.name} ({modal_interaction.user.id})",
+                admin_user=modal_interaction.user,
+                change_details=f"Changed title of Embed {embed_index + 1}\nFrom: '{old_title}'\nTo: '{self.new_title.value}'"
             )
             
             if success:
@@ -2881,16 +2900,18 @@ async def _edit_title_modal(interaction: discord.Interaction, db_type: str, disp
                 )
     
     modal = TitleModal()
-    await interaction.followup.send("Opening editor...", ephemeral=True)
-    await interaction.channel.send_modal(modal)
+    # ✅ CORRECT: Send modal directly from the interaction
+    await interaction.response.send_modal(modal)
 
 async def _edit_description_menu(interaction: discord.Interaction, db_type: str, display_name: str, embeds_data: list):
     """Menu to select which embed description to edit"""
     class EmbedSelectView(discord.ui.View):
-        def __init__(self, embeds_data):
+        def __init__(self, embeds_data, db_type, display_name):
             super().__init__(timeout=60)
             self.selected_index = None
             self.embeds_data = embeds_data
+            self.db_type = db_type
+            self.display_name = display_name
             
             options = []
             for i, embed in enumerate(embeds_data):
@@ -2910,21 +2931,19 @@ async def _edit_description_menu(interaction: discord.Interaction, db_type: str,
             self.add_item(select)
         
         async def select_callback(self, select_interaction: discord.Interaction):
-            await select_interaction.response.defer()
+            await select_interaction.response.defer(ephemeral=True)
             self.selected_index = int(select_interaction.data['values'][0])
+            
+            # Send modal directly
+            await _edit_description_modal(select_interaction, self.db_type, self.display_name, self.embeds_data, self.selected_index)
             self.stop()
     
-    view = EmbedSelectView(embeds_data)
-    await interaction.followup.send(
+    view = EmbedSelectView(embeds_data, db_type, display_name)
+    await interaction.response.send_message(
         f"Select which embed of **{display_name}** to edit description:",
         view=view,
         ephemeral=True
     )
-    
-    await view.wait()
-    
-    if view.selected_index is not None:
-        await _edit_description_modal(interaction, db_type, display_name, embeds_data, view.selected_index)
 
 async def _edit_description_modal(interaction: discord.Interaction, db_type: str, display_name: str, embeds_data: list, embed_index: int):
     """Modal for editing embed description"""
@@ -2945,12 +2964,15 @@ async def _edit_description_modal(interaction: discord.Interaction, db_type: str
             await modal_interaction.response.defer(ephemeral=True)
             
             updated_embeds = embeds_data.copy()
+            old_desc_preview = updated_embeds[embed_index].get('description', '')[:100] + "..." if updated_embeds[embed_index].get('description') and len(updated_embeds[embed_index].get('description')) > 100 else updated_embeds[embed_index].get('description', 'No description')
             updated_embeds[embed_index]['description'] = self.new_description.value
             
-            success = await bot.db.update_welcome_message(
+            success, new_data = await bot.db.update_welcome_message(
                 db_type,
                 updated_embeds,
-                f"{modal_interaction.user.name} ({modal_interaction.user.id})"
+                f"{modal_interaction.user.name} ({modal_interaction.user.id})",
+                admin_user=modal_interaction.user,
+                change_details=f"Changed description of Embed {embed_index + 1}\nOld preview: {old_desc_preview}\nNew preview: {self.new_description.value[:100]}..."
             )
             
             if success:
@@ -2963,16 +2985,17 @@ async def _edit_description_modal(interaction: discord.Interaction, db_type: str
                 await modal_interaction.followup.send("❌ Failed to save changes.", ephemeral=True)
     
     modal = DescriptionModal()
-    await interaction.followup.send("Opening editor...", ephemeral=True)
-    await interaction.channel.send_modal(modal)
+    await interaction.response.send_modal(modal)  # ✅ Fixed
 
 async def _edit_color_menu(interaction: discord.Interaction, db_type: str, display_name: str, embeds_data: list):
     """Menu to select which embed color to edit"""
     class EmbedSelectView(discord.ui.View):
-        def __init__(self, embeds_data):
+        def __init__(self, embeds_data, db_type, display_name):
             super().__init__(timeout=60)
             self.selected_index = None
             self.embeds_data = embeds_data
+            self.db_type = db_type
+            self.display_name = display_name
             
             options = []
             for i, embed in enumerate(embeds_data):
@@ -2992,21 +3015,19 @@ async def _edit_color_menu(interaction: discord.Interaction, db_type: str, displ
             self.add_item(select)
         
         async def select_callback(self, select_interaction: discord.Interaction):
-            await select_interaction.response.defer()
+            await select_interaction.response.defer(ephemeral=True)
             self.selected_index = int(select_interaction.data['values'][0])
+            
+            # Send modal directly
+            await _edit_color_modal(select_interaction, self.db_type, self.display_name, self.embeds_data, self.selected_index)
             self.stop()
     
-    view = EmbedSelectView(embeds_data)
-    await interaction.followup.send(
+    view = EmbedSelectView(embeds_data, db_type, display_name)
+    await interaction.response.send_message(
         f"Select which embed of **{display_name}** to edit color:",
         view=view,
         ephemeral=True
     )
-    
-    await view.wait()
-    
-    if view.selected_index is not None:
-        await _edit_color_modal(interaction, db_type, display_name, embeds_data, view.selected_index)
 
 async def _edit_color_modal(interaction: discord.Interaction, db_type: str, display_name: str, embeds_data: list, embed_index: int):
     """Modal for editing embed color"""
@@ -3037,31 +3058,35 @@ async def _edit_color_modal(interaction: discord.Interaction, db_type: str, disp
             updated_embeds = embeds_data.copy()
             updated_embeds[embed_index]['color'] = self.new_color.value.upper()
             
-            success = await bot.db.update_welcome_message(
+            success, new_data = await bot.db.update_welcome_message(
                 db_type,
                 updated_embeds,
-                f"{modal_interaction.user.name} ({modal_interaction.user.id})"
+                f"{modal_interaction.user.name} ({modal_interaction.user.id})",
+                admin_user=modal_interaction.user,
+                change_details=f"Changed color of Embed {embed_index + 1}\nFrom: {current_color}\nTo: {self.new_color.value.upper()}"
             )
             
             if success:
                 await modal_interaction.followup.send(
-                    f"✅ Updated color of Embed {embed_index + 1} to: **{self.new_color.value}**",
+                    f"✅ Updated color of Embed {embed_index + 1} to: **{self.new_color.value.upper()}**",
                     ephemeral=True
                 )
             else:
                 await modal_interaction.followup.send("❌ Failed to save changes.", ephemeral=True)
     
     modal = ColorModal()
-    await interaction.followup.send("Opening editor...", ephemeral=True)
-    await interaction.channel.send_modal(modal)
+    await interaction.response.send_modal(modal)
+
 
 async def _add_field_menu(interaction: discord.Interaction, db_type: str, display_name: str, embeds_data: list):
     """Menu to add a field to an embed"""
     class EmbedSelectView(discord.ui.View):
-        def __init__(self, embeds_data):
+        def __init__(self, embeds_data, db_type, display_name):
             super().__init__(timeout=60)
             self.selected_index = None
             self.embeds_data = embeds_data
+            self.db_type = db_type
+            self.display_name = display_name
             
             options = []
             for i, embed in enumerate(embeds_data):
@@ -3081,21 +3106,19 @@ async def _add_field_menu(interaction: discord.Interaction, db_type: str, displa
             self.add_item(select)
         
         async def select_callback(self, select_interaction: discord.Interaction):
-            await select_interaction.response.defer()
+            await select_interaction.response.defer(ephemeral=True)
             self.selected_index = int(select_interaction.data['values'][0])
+            
+            # Send modal directly
+            await _add_field_modal(select_interaction, self.db_type, self.display_name, self.embeds_data, self.selected_index)
             self.stop()
     
-    view = EmbedSelectView(embeds_data)
-    await interaction.followup.send(
+    view = EmbedSelectView(embeds_data, db_type, display_name)
+    await interaction.response.send_message(
         f"Select which embed of **{display_name}** to add a field to:",
         view=view,
         ephemeral=True
     )
-    
-    await view.wait()
-    
-    if view.selected_index is not None:
-        await _add_field_modal(interaction, db_type, display_name, embeds_data, view.selected_index)
 
 async def _add_field_modal(interaction: discord.Interaction, db_type: str, display_name: str, embeds_data: list, embed_index: int):
     """Modal for adding a field"""
@@ -3143,11 +3166,13 @@ async def _add_field_modal(interaction: discord.Interaction, db_type: str, displ
             
             updated_embeds[embed_index]['fields'].append(new_field)
             
-            # Save to database
-            success = await bot.db.update_welcome_message(
+            # Save to database WITH LOGGING
+            success, new_data = await bot.db.update_welcome_message(
                 db_type,
                 updated_embeds,
-                f"{modal_interaction.user.name} ({modal_interaction.user.id})"
+                f"{modal_interaction.user.name} ({modal_interaction.user.id})",
+                admin_user=modal_interaction.user,
+                change_details=f"Added field to Embed {embed_index + 1}\nField: '{self.field_name.value}'\nValue: {self.field_value.value[:100]}...\nInline: {inline_bool}"
             )
             
             if success:
@@ -3159,8 +3184,8 @@ async def _add_field_modal(interaction: discord.Interaction, db_type: str, displ
                 await modal_interaction.followup.send("❌ Failed to save changes.", ephemeral=True)
     
     modal = AddFieldModal()
-    await interaction.followup.send("Opening field editor...", ephemeral=True)
-    await interaction.channel.send_modal(modal)
+    await interaction.response.send_modal(modal)
+
 
 async def _remove_field_menu(interaction: discord.Interaction, db_type: str, display_name: str, embeds_data: list):
     """Menu to remove a field from an embed"""
@@ -3171,14 +3196,20 @@ async def _remove_field_menu(interaction: discord.Interaction, db_type: str, dis
             embeds_with_fields.append((i, embed))
     
     if not embeds_with_fields:
-        await interaction.followup.send(f"❌ No embeds in {display_name} have fields to remove.", ephemeral=True)
+        await interaction.response.send_message(
+            f"❌ No embeds in {display_name} have fields to remove.", 
+            ephemeral=True
+        )
         return
     
     class EmbedSelectView(discord.ui.View):
-        def __init__(self, embeds_with_fields):
+        def __init__(self, embeds_with_fields, db_type, display_name, embeds_data):
             super().__init__(timeout=60)
             self.selected_embed_index = None
             self.embeds_with_fields = embeds_with_fields
+            self.db_type = db_type
+            self.display_name = display_name
+            self.embeds_data = embeds_data
             
             options = []
             for i, embed in embeds_with_fields:
@@ -3198,21 +3229,19 @@ async def _remove_field_menu(interaction: discord.Interaction, db_type: str, dis
             self.add_item(select)
         
         async def select_callback(self, select_interaction: discord.Interaction):
-            await select_interaction.response.defer()
+            await select_interaction.response.defer(ephemeral=True)
             self.selected_embed_index = int(select_interaction.data['values'][0])
+            
+            # Send field selection directly
+            await _remove_field_selection(select_interaction, self.db_type, self.display_name, self.embeds_data, self.selected_embed_index)
             self.stop()
     
-    view = EmbedSelectView(embeds_with_fields)
-    await interaction.followup.send(
+    view = EmbedSelectView(embeds_with_fields, db_type, display_name, embeds_data)
+    await interaction.response.send_message(
         f"Select which embed of **{display_name}** to remove a field from:",
         view=view,
         ephemeral=True
     )
-    
-    await view.wait()
-    
-    if view.selected_embed_index is not None:
-        await _remove_field_selection(interaction, db_type, display_name, embeds_data, view.selected_embed_index)
 
 async def _remove_field_selection(interaction: discord.Interaction, db_type: str, display_name: str, embeds_data: list, embed_index: int):
     """Select which field to remove"""
@@ -3220,13 +3249,21 @@ async def _remove_field_selection(interaction: discord.Interaction, db_type: str
     fields = embed.get('fields', [])
     
     if not fields:
-        await interaction.followup.send(f"❌ Embed {embed_index + 1} has no fields to remove.", ephemeral=True)
+        await interaction.response.send_message(
+            f"❌ Embed {embed_index + 1} has no fields to remove.", 
+            ephemeral=True
+        )
         return
     
     class FieldSelectView(discord.ui.View):
-        def __init__(self, fields):
+        def __init__(self, fields, db_type, display_name, embeds_data, embed_index):
             super().__init__(timeout=60)
             self.selected_field_index = None
+            self.fields = fields
+            self.db_type = db_type
+            self.display_name = display_name
+            self.embeds_data = embeds_data
+            self.embed_index = embed_index
             
             options = []
             for i, field in enumerate(fields):
@@ -3246,61 +3283,63 @@ async def _remove_field_selection(interaction: discord.Interaction, db_type: str
             self.add_item(select)
         
         async def select_callback(self, select_interaction: discord.Interaction):
-            await select_interaction.response.defer()
+            await select_interaction.response.defer(ephemeral=True)
             self.selected_field_index = int(select_interaction.data['values'][0])
+            
+            # Show confirmation
+            field_to_remove = self.fields[self.selected_field_index]
+            field_name = field_to_remove.get('name', f'Field {self.selected_field_index + 1}')
+            
+            confirm_view = ConfirmView(select_interaction.user)
+            await select_interaction.followup.send(
+                f"⚠️ **Confirm Removal**\nAre you sure you want to remove field **{field_name}** from Embed {self.embed_index + 1}?",
+                view=confirm_view,
+                ephemeral=True
+            )
+            
+            await confirm_view.wait()
+            
+            if confirm_view.value:
+                # Remove the field
+                updated_embeds = self.embeds_data.copy()
+                updated_embeds[self.embed_index]['fields'].pop(self.selected_field_index)
+                
+                # If no fields left, remove the fields key
+                if not updated_embeds[self.embed_index]['fields']:
+                    updated_embeds[self.embed_index].pop('fields', None)
+                
+                # Save to database
+                success, new_data = await bot.db.update_welcome_message(
+                    self.db_type,
+                    updated_embeds,
+                    f"{select_interaction.user.name} ({select_interaction.user.id})",
+                    admin_user=select_interaction.user,
+                    change_details=f"Removed field from Embed {self.embed_index + 1}\nField: '{field_name}'"
+                )
+                
+                if success:
+                    await select_interaction.followup.send(
+                        f"✅ Removed field **{field_name}** from Embed {self.embed_index + 1}",
+                        ephemeral=True
+                    )
+                else:
+                    await select_interaction.followup.send("❌ Failed to save changes.", ephemeral=True)
+            else:
+                await select_interaction.followup.send("❌ Field removal cancelled.", ephemeral=True)
+            
             self.stop()
     
-    view = FieldSelectView(fields)
-    await interaction.followup.send(
+    view = FieldSelectView(fields, db_type, display_name, embeds_data, embed_index)
+    await interaction.response.send_message(
         f"Select which field to remove from Embed {embed_index + 1}:",
         view=view,
         ephemeral=True
     )
     
-    await view.wait()
-    
-    if view.selected_field_index is not None:
-        # Show confirmation
-        field_to_remove = fields[view.selected_field_index]
-        field_name = field_to_remove.get('name', f'Field {view.selected_field_index + 1}')
-        
-        confirm_view = ConfirmView(interaction.user)
-        await interaction.followup.send(
-            f"⚠️ **Confirm Removal**\nAre you sure you want to remove field **{field_name}** from Embed {embed_index + 1}?",
-            view=confirm_view,
-            ephemeral=True
-        )
-        
-        await confirm_view.wait()
-        
-        if confirm_view.value:
-            # Remove the field
-            updated_embeds = embeds_data.copy()
-            updated_embeds[embed_index]['fields'].pop(view.selected_field_index)
-            
-            # If no fields left, remove the fields key
-            if not updated_embeds[embed_index]['fields']:
-                updated_embeds[embed_index].pop('fields', None)
-            
-            # Save to database
-            success = await bot.db.update_welcome_message(
-                db_type,
-                updated_embeds,
-                f"{interaction.user.name} ({interaction.user.id})"
-            )
-            
-            if success:
-                await interaction.followup.send(
-                    f"✅ Removed field **{field_name}** from Embed {embed_index + 1}",
-                    ephemeral=True
-                )
-            else:
-                await interaction.followup.send("❌ Failed to save changes.", ephemeral=True)
-        else:
-            await interaction.followup.send("❌ Field removal cancelled.", ephemeral=True)
 
 async def _add_embed_menu(interaction: discord.Interaction, db_type: str, display_name: str, embeds_data: list):
     """Add a new embed to the welcome message"""
+    
     class AddEmbedModal(discord.ui.Modal, title=f"Add New Embed to {display_name}"):
         title = discord.ui.TextInput(
             label="Embed Title",
@@ -3353,11 +3392,13 @@ async def _add_embed_menu(interaction: discord.Interaction, db_type: str, displa
             updated_embeds = embeds_data.copy()
             updated_embeds.append(new_embed)
             
-            # Save to database
-            success = await bot.db.update_welcome_message(
+            # Save to database WITH LOGGING
+            success, new_data = await bot.db.update_welcome_message(
                 db_type,
                 updated_embeds,
-                f"{modal_interaction.user.name} ({modal_interaction.user.id})"
+                f"{modal_interaction.user.name} ({modal_interaction.user.id})",
+                admin_user=modal_interaction.user,
+                change_details=f"Added new embed to {display_name}\nTitle: '{self.title.value}'\nTotal embeds now: {len(updated_embeds)}"
             )
             
             if success:
@@ -3368,24 +3409,26 @@ async def _add_embed_menu(interaction: discord.Interaction, db_type: str, displa
             else:
                 await modal_interaction.followup.send("❌ Failed to save changes.", ephemeral=True)
     
+    # ✅ Send modal immediately (no initial response needed)
     modal = AddEmbedModal()
-    await interaction.followup.send("Opening embed creator...", ephemeral=True)
-    await interaction.channel.send_modal(modal)
+    await interaction.response.send_modal(modal)
 
 async def _remove_embed_menu(interaction: discord.Interaction, db_type: str, display_name: str, embeds_data: list):
     """Remove an embed from the welcome message"""
     if len(embeds_data) <= 1:
-        await interaction.followup.send(
+        await interaction.response.send_message(
             f"❌ Cannot remove embed. {display_name} must have at least 1 embed.",
             ephemeral=True
         )
         return
     
     class EmbedSelectView(discord.ui.View):
-        def __init__(self, embeds_data):
+        def __init__(self, embeds_data, db_type, display_name):
             super().__init__(timeout=60)
             self.selected_index = None
             self.embeds_data = embeds_data
+            self.db_type = db_type
+            self.display_name = display_name
             
             options = []
             for i, embed in enumerate(embeds_data):
@@ -3404,57 +3447,73 @@ async def _remove_embed_menu(interaction: discord.Interaction, db_type: str, dis
             self.add_item(select)
         
         async def select_callback(self, select_interaction: discord.Interaction):
-            await select_interaction.response.defer()
+            await select_interaction.response.defer(ephemeral=True)
             self.selected_index = int(select_interaction.data['values'][0])
+            
+            # Show confirmation
+            embed_to_remove = self.embeds_data[self.selected_index]
+            embed_title = embed_to_remove.get('title', f'Embed {self.selected_index + 1}')
+            
+            confirm_view = ConfirmView(select_interaction.user)
+            await select_interaction.followup.send(
+                f"⚠️ **Confirm Removal**\nAre you sure you want to remove:\n**{embed_title}**\n\nThis will reduce {self.display_name} to {len(self.embeds_data)-1} embeds.",
+                view=confirm_view,
+                ephemeral=True
+            )
+            
+            await confirm_view.wait()
+            
+            if confirm_view.value:
+                # Remove the embed
+                updated_embeds = self.embeds_data.copy()
+                updated_embeds.pop(self.selected_index)
+                
+                # Save to database
+                success, new_data = await bot.db.update_welcome_message(
+                    self.db_type,
+                    updated_embeds,
+                    f"{select_interaction.user.name} ({select_interaction.user.id})",
+                    admin_user=select_interaction.user,
+                    change_details=f"Removed embed from {self.display_name}\nEmbed: '{embed_title}'\nRemaining: {len(updated_embeds)} embeds"
+                )
+                
+                if success:
+                    await select_interaction.followup.send(
+                        f"✅ Removed embed **{embed_title}** from {self.display_name}\nRemaining embeds: {len(updated_embeds)}",
+                        ephemeral=True
+                    )
+                else:
+                    await select_interaction.followup.send("❌ Failed to save changes.", ephemeral=True)
+            else:
+                await select_interaction.followup.send("❌ Embed removal cancelled.", ephemeral=True)
+            
             self.stop()
     
-    view = EmbedSelectView(embeds_data)
-    await interaction.followup.send(
+    view = EmbedSelectView(embeds_data, db_type, display_name)
+    await interaction.response.send_message(
         f"⚠️ **Remove Embed from {display_name}**\nSelect which embed to remove:",
         view=view,
         ephemeral=True
     )
     
-    await view.wait()
-    
-    if view.selected_index is not None:
-        # Show confirmation
-        embed_to_remove = embeds_data[view.selected_index]
-        embed_title = embed_to_remove.get('title', f'Embed {view.selected_index + 1}')
-        
-        confirm_view = ConfirmView(interaction.user)
-        await interaction.followup.send(
-            f"⚠️ **Confirm Removal**\nAre you sure you want to remove:\n**{embed_title}**\n\nThis will reduce {display_name} to {len(embeds_data)-1} embeds.",
-            view=confirm_view,
-            ephemeral=True
-        )
-        
-        await confirm_view.wait()
-        
-        if confirm_view.value:
-            # Remove the embed
-            updated_embeds = embeds_data.copy()
-            updated_embeds.pop(view.selected_index)
-            
-            # Save to database
-            success = await bot.db.update_welcome_message(
-                db_type,
-                updated_embeds,
-                f"{interaction.user.name} ({interaction.user.id})"
-            )
-            
-            if success:
-                await interaction.followup.send(
-                    f"✅ Removed embed **{embed_title}** from {display_name}\nRemaining embeds: {len(updated_embeds)}",
-                    ephemeral=True
-                )
-            else:
-                await interaction.followup.send("❌ Failed to save changes.", ephemeral=True)
-        else:
-            await interaction.followup.send("❌ Embed removal cancelled.", ephemeral=True)
 
 async def _reset_to_default(interaction: discord.Interaction, db_type: str, display_name: str):
     """Reset welcome message to default"""
+    # Defer first since we're showing a view
+    await interaction.response.defer(ephemeral=True)
+    
+    # Get default messages
+    default_messages = await _get_default_messages()
+    default_embeds = default_messages.get(db_type, [])
+    
+    if not default_embeds:
+        await interaction.followup.send(
+            f"❌ No default found for {display_name}.",
+            ephemeral=True
+        )
+        return
+    
+    # Show confirmation
     confirm_view = ConfirmView(interaction.user)
     await interaction.followup.send(
         f"⚠️ **Reset {display_name} to Default**\nThis will restore the original welcome message.\n\n**Are you sure?**",
@@ -3465,22 +3524,13 @@ async def _reset_to_default(interaction: discord.Interaction, db_type: str, disp
     await confirm_view.wait()
     
     if confirm_view.value:
-        # Load default messages (you'll need to define these)
-        default_messages = await _get_default_messages()
-        default_embeds = default_messages.get(db_type, [])
-        
-        if not default_embeds:
-            await interaction.followup.send(
-                f"❌ No default found for {display_name}.",
-                ephemeral=True
-            )
-            return
-        
         # Save defaults to database
-        success = await bot.db.update_welcome_message(
+        success, new_data = await bot.db.update_welcome_message(
             db_type,
             default_embeds,
-            f"{interaction.user.name} ({interaction.user.id}) - Reset to default"
+            f"{interaction.user.name} ({interaction.user.id}) - Reset to default",
+            admin_user=interaction.user,
+            change_details=f"RESET TO DEFAULT CONFIGURATION\nRestored {len(default_embeds)} embeds"
         )
         
         if success:
@@ -4493,6 +4543,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
