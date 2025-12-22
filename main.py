@@ -574,10 +574,11 @@ class DatabaseHandler:
     async def get_welcome_message(self, message_type: str):
         """Get welcome message (uses cache)"""
         return await welcome_cache.get(message_type)
-    
-    async def update_welcome_message(self, message_type: str, embeds_data: list, updated_by: str, admin_user: discord.User = None, change_details: str = None):
-        """Update welcome message (updates both cache and database) with logging"""
-        return await welcome_cache.update(message_type, embeds_data, updated_by, admin_user, change_details)
+
+    async def update_welcome_message(self, message_type: str, embeds_data: list, updated_by: str):
+        """Update welcome message (updates both cache and database)"""
+        # SIMPLIFIED CALL - pass only the arguments the cache expects
+        return await welcome_cache.update(message_type, embeds_data, updated_by)
     
     async def get_welcome_message_history(self, message_type: str, limit: int = 5):
         """Get historical versions of welcome messages"""
@@ -658,7 +659,6 @@ async def log_xp_to_discord(
 
 
 # Welcome Message Cache & Functions
-# Add after imports, before bot initialization
 class WelcomeMessageCache:
     """In-memory cache for welcome messages with multiple embed support"""
     
@@ -2859,12 +2859,13 @@ async def _edit_title_menu(interaction: discord.Interaction, db_type: str, displ
                     old_title = updated_embeds[self.embed_index].get('title', 'Untitled')
                     updated_embeds[self.embed_index]['title'] = new_title
                     
+                    # SIMPLIFIED CALL - remove admin_user and change_details
                     success, new_data = await bot.db.update_welcome_message(
                         self.db_type,
                         updated_embeds,
-                        f"{modal_interaction.user.name} ({modal_interaction.user.id})",
-                        admin_user=modal_interaction.user,
-                        change_details=f"Changed title of Embed {self.embed_index + 1}\nFrom: '{old_title}'\nTo: '{new_title}'"
+                        f"{modal_interaction.user.name} ({modal_interaction.user.id})"
+                        # Removed: admin_user=modal_interaction.user,
+                        # Removed: change_details=f"Changed title..."
                     )
                     
                     if success:
@@ -4526,6 +4527,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
