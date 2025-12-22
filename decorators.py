@@ -74,7 +74,7 @@ def min_rank_required(required_role_id: int):
             return True
 
         await interaction.response.send_message(
-            f"⛔ You need at least the {required_role.mention} role.",
+            f"⛔ You don't have permission to use this command.",
             ephemeral=True
         )
         return False
@@ -114,6 +114,7 @@ def has_allowed_role_2():
         )
         return False
     return app_commands.check(predicate)
+
 
 
 
