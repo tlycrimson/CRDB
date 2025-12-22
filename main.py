@@ -116,28 +116,7 @@ def make_progress_bar(xp: int, current: int, next_threshold: Optional[int]) -> s
     bar = "🟩" * filled + "⬛" * (10 - filled)
     return f"{bar} ({gained}/{total_needed} XP)"
 
-async def send_hr_welcome_test(member: discord.Member):
-    """Send a test HR welcome message fetched from Supabase."""
-    logger.info(f"📬 Preparing to send HR welcome message to {member.display_name} ({member.id})")
 
-    template = test_messages.get("hr_welcome")
-    if not template:
-        logger.warning("⚠️ No 'hr_welcome' message found in test_messages dict.")
-        template = "Welcome to HR, {user_mention}! (default fallback)"
-
-    message = template.format(user_mention=member.mention)
-
-    try:
-        await member.send(message)
-        logger.info(f"✅ Successfully sent HR welcome message to {member.display_name}")
-    except discord.Forbidden:
-        logger.error(f"🚫 Cannot send DM to {member.display_name} — they likely have DMs disabled.")
-    except discord.HTTPException as e:
-        logger.error(f"❌ Discord HTTP error while sending HR welcome: {e}")
-    except Exception as e:
-        logger.error(f"❌ Unexpected error sending HR welcome: {e}")
-
-    
 
 
 # Global rate limiter configuration
@@ -591,6 +570,31 @@ class DatabaseHandler:
                 logger.warning("Default log channel not found.")
         except Exception as e:
             logger.error(f"Failed to send database removal embed: {e}")
+            
+    async def get_welcome_message(self, message_type: str):
+        """Get welcome message (uses cache)"""
+        return await welcome_cache.get(message_type)
+    
+    async def update_welcome_message(self, message_type: str, embeds_data: list, updated_by: str):
+        """Update welcome message (updates both cache and database)"""
+        return await welcome_cache.update(message_type, embeds_data, updated_by)
+    
+    async def get_welcome_message_history(self, message_type: str, limit: int = 5):
+        """Get historical versions of welcome messages"""
+        def _work():
+            result = bot.db.supabase.table('welcome_messages') \
+                .select('*') \
+                .eq('message_type', message_type) \
+                .order('last_updated', desc=True) \
+                .limit(limit) \
+                .execute()
+            return result.data
+        
+        try:
+            return await self._run_sync(_work)
+        except Exception as e:
+            logger.error(f"Error getting history for {message_type}: {e}")
+            return []
 
 # Clean up old processed reactions and messages in db
 async def start_cleanup_task(self):
@@ -651,6 +655,177 @@ async def log_xp_to_discord(
         logger.error(f"Failed to log XP to Discord: {str(e)}")
         return False
 
+
+
+# Welcome Message Cache & Functions
+# Add after imports, before bot initialization
+class WelcomeMessageCache:
+    """In-memory cache for welcome messages with multiple embed support"""
+    
+    def __init__(self):
+        self._cache = {}  # message_type -> {"embeds": [], "metadata": {}}
+        self._lock = asyncio.Lock()
+        self._initialized = False
+        
+    async def initialize(self):
+        """Load all welcome messages from database on startup"""
+        if self._initialized:
+            return
+            
+        async with self._lock:
+            try:
+                for msg_type in ['hr_welcome', 'rmp_welcome']:
+                    data = await self._load_from_database(msg_type)
+                    if data:
+                        self._cache[msg_type] = data
+                
+                logger.info(f"✅ Loaded {len(self._cache)} welcome messages into cache")
+                self._initialized = True
+                
+            except Exception as e:
+                logger.error(f"Failed to initialize welcome message cache: {e}")
+                # Initialize with empty cache, will use original functions as fallback
+    
+    async def _load_from_database(self, message_type: str):
+        """Load a specific message type from database"""
+        def _work():
+            result = bot.db.supabase.table('welcome_messages') \
+                .select('*') \
+                .eq('message_type', message_type) \
+                .eq('is_active', True) \
+                .limit(1) \
+                .execute()
+            
+            if result.data and len(result.data) > 0:
+                return {
+                    'id': result.data[0]['id'],
+                    'message_type': result.data[0]['message_type'],
+                    'embeds': result.data[0]['embeds'],
+                    'last_updated': result.data[0]['last_updated'],
+                    'updated_by': result.data[0]['updated_by'],
+                    'version': result.data[0].get('version', 1)
+                }
+            return None
+        
+        try:
+            return await bot.db._run_sync(_work)
+        except Exception as e:
+            logger.error(f"Error loading {message_type} from database: {e}")
+            return None
+    
+    async def get(self, message_type: str, refresh: bool = False):
+        """
+        Get a welcome message from cache.
+        If refresh=True or not in cache, load from database.
+        """
+        async with self._lock:
+            if refresh or message_type not in self._cache:
+                data = await self._load_from_database(message_type)
+                if data:
+                    self._cache[message_type] = data
+            
+            return self._cache.get(message_type)
+    
+    async def update(self, message_type: str, embeds_data: list, updated_by: str):
+        """
+        Update welcome message with multiple embeds.
+        """
+        async with self._lock:
+            try:
+                # 1. Mark old message as inactive
+                def _deactivate_old():
+                    bot.db.supabase.table('welcome_messages') \
+                        .update({'is_active': False}) \
+                        .eq('message_type', message_type) \
+                        .eq('is_active', True) \
+                        .execute()
+                
+                await bot.db._run_sync(_deactivate_old)
+                
+                # 2. Get next version number
+                def _get_next_version():
+                    result = bot.db.supabase.table('welcome_messages') \
+                        .select('version') \
+                        .eq('message_type', message_type) \
+                        .order('version', desc=True) \
+                        .limit(1) \
+                        .execute()
+                    
+                    if result.data and len(result.data) > 0:
+                        return result.data[0]['version'] + 1
+                    return 1
+                
+                next_version = await bot.db._run_sync(_get_next_version)
+                
+                # 3. Insert new active message
+                def _insert_new():
+                    new_message = {
+                        'message_type': message_type,
+                        'version': next_version,
+                        'embeds': embeds_data,
+                        'updated_by': updated_by,
+                        'is_active': True
+                    }
+                    
+                    result = bot.db.supabase.table('welcome_messages') \
+                        .insert(new_message) \
+                        .execute()
+                    
+                    return result.data[0] if result.data else None
+                
+                new_message = await bot.db._run_sync(_insert_new)
+                
+                if new_message:
+                    # 4. Update cache
+                    self._cache[message_type] = {
+                        'id': new_message['id'],
+                        'message_type': new_message['message_type'],
+                        'embeds': new_message['embeds'],
+                        'last_updated': new_message['last_updated'],
+                        'updated_by': new_message['updated_by'],
+                        'version': new_message['version']
+                    }
+                    
+                    logger.info(f"✅ Updated {message_type} welcome message with {len(embeds_data)} embeds")
+                    return True
+                else:
+                    logger.error(f"Failed to insert new {message_type} message")
+                    return False
+                    
+            except Exception as e:
+                logger.error(f"Error updating welcome message {message_type}: {e}")
+                return False
+
+# Create global instance
+welcome_cache = WelcomeMessageCache()
+
+
+def dict_to_embed(data: dict) -> discord.Embed:
+    """Convert dictionary to Discord Embed object"""
+    embed = discord.Embed(
+        title=data.get('title', ''),
+        description=data.get('description', ''),
+        color=discord.Color.from_str(data.get('color', '#000000'))
+    )
+    
+    if 'footer' in data:
+        embed.set_footer(text=data['footer'])
+    
+    if 'thumbnail' in data:
+        embed.set_thumbnail(url=data['thumbnail'])
+    
+    if 'image' in data:
+        embed.set_image(url=data['image'])
+    
+    if 'fields' in data:
+        for field in data['fields']:
+            embed.add_field(
+                name=field.get('name', ''),
+                value=field.get('value', ''),
+                inline=field.get('inline', False)
+            )
+    
+    return embed
 
 # Roblox API helper functions
 class RobloxAPI:
@@ -1558,6 +1733,13 @@ async def on_ready():
     )
     logger.info("Created new shared aiohttp.ClientSession for this session")
 
+    # Initialize welcome message cache
+    try:
+        await welcome_cache.initialize()
+        logger.info("✅ Welcome message cache initialized")
+    except Exception as e:
+        logger.error(f"Failed to initialize welcome cache: {e}")
+
     # Attach/start connection monitor and component setup
     bot.connection_monitor = ConnectionMonitor(bot)
     await bot.connection_monitor.start()
@@ -1670,7 +1852,53 @@ async def on_resumed():
 
 
         
-# --- COMMANDS --- 
+# --- BOT COMMANDS --- 
+
+#test welcome messages
+@bot.tree.command(name="test-welcome", description="Test welcome message system")
+@min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
+async def test_welcome(interaction: discord.Interaction, type: Literal["HR", "RMP"]):
+    """Test if welcome messages are loaded correctly"""
+    await interaction.response.defer(ephemeral=True)
+    
+    db_type = "hr_welcome" if type == "HR" else "rmp_welcome"
+    display_name = "HR Welcome" if type == "HR" else "RMP Welcome"
+    
+    message_data = await bot.db.get_welcome_message(db_type)
+    
+    if not message_data:
+        await interaction.followup.send(f"❌ No {display_name} found in cache/database.", ephemeral=True)
+        return
+    
+    embed_count = len(message_data.get('embeds', []))
+    
+    embed = discord.Embed(
+        title=f"✅ {display_name} Status",
+        color=discord.Color.green()
+    )
+    
+    embed.add_field(name="Cache Status", value="✅ Loaded", inline=True)
+    embed.add_field(name="Embed Count", value=str(embed_count), inline=True)
+    embed.add_field(name="Last Updated", value=str(message_data.get('last_updated', 'Unknown')), inline=True)
+    embed.add_field(name="Updated By", value=message_data.get('updated_by', 'Unknown'), inline=True)
+    embed.add_field(name="Version", value=str(message_data.get('version', 1)), inline=True)
+    
+    # Show embed previews
+    for i, embed_data in enumerate(message_data['embeds'][:2], 1):  # Show first 2
+        title = embed_data.get('title', f'Embed {i}')
+        desc_preview = embed_data.get('description', '')[:100] + "..." if len(embed_data.get('description', '')) > 100 else embed_data.get('description', 'No description')
+        embed.add_field(
+            name=f"Embed {i} Preview",
+            value=f"**{title}**\n{desc_preview}",
+            inline=False
+        )
+    
+    if embed_count > 2:
+        embed.set_footer(text=f"+ {embed_count - 2} more embeds not shown")
+    
+    await interaction.followup.send(embed=embed, ephemeral=True)
+
+
 # /addxp Command
 @bot.tree.command(name="add-xp", description="Add XP to a user")
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
@@ -2861,10 +3089,35 @@ async def restore_roles(interaction: discord.Interaction, member: discord.Member
 
 # HR Welcome Message
 async def send_hr_welcome(member: discord.Member):
+    """Send HR welcome message using cached template"""
     if not (welcome_channel := member.guild.get_channel(Config.HR_CHAT_CHANNEL_ID)):
         logger.warning("HR welcome channel not found!")
         return
+    
+    # Get message data from cache
+    message_data = await welcome_cache.get('hr_welcome')
+    
+    if not message_data or 'embeds' not in message_data:
+        logger.error("No HR welcome message found in cache! Using fallback.")
+        await _send_fallback_hr_welcome(member, welcome_channel)
+        return
+    
+    try:
+        # Create Discord embed objects
+        discord_embeds = []
+        for embed_data in message_data['embeds']:
+            embed = dict_to_embed(embed_data)
+            discord_embeds.append(embed)
+        
+        await welcome_channel.send(content=member.mention, embeds=discord_embeds)
+        logger.info(f"✅ Sent HR welcome with {len(discord_embeds)} embeds to {member.display_name}")
+        
+    except Exception as e:
+        logger.error(f"Failed to send HR welcome: {e}")
+        await _send_fallback_hr_welcome(member, welcome_channel)
 
+async def _send_fallback_hr_welcome(member: discord.Member, channel):
+    """Fallback HR welcome if cache fails"""
     embed = discord.Embed(
         title="🎉 Welcome to the HR Team!",
         description=(
@@ -2878,45 +3131,63 @@ async def send_hr_welcome(member: discord.Member):
             "• Are you Lieutenant+ in BA? Apply for the Education Department!\n"
             "• Are you Captain+ in BA? Apply for both departments: [Applications](https://discord.com/channels/1165368311085809717/1165368316970405916)."
         ),
-        color=discord.Color.gold(),  
+        color=discord.Color.gold(),
         timestamp=datetime.now(timezone.utc)
     )
+    embed.set_footer(text="We're excited to have you on board!")
+    await channel.send(content=member.mention, embed=embed)
     
-    embed.set_footer(text="We're excited to have you on the team!")
-    
-    try:
-        await welcome_channel.send(content=f"{member.mention}", embed=embed)
-        logger.info(f"Sent HR welcome to {member.display_name}")
-    except discord.Forbidden:
-        logger.error(f"Missing permissions to send HR welcome for {member.id}")
-    except Exception as e:
-        logger.error(f"Failed to send HR welcome: {str(e)}")
 
 # RMP Welcome Message
 async def send_rmp_welcome(member: discord.Member):
-    # First embed (welcome message)
+    """Send RMP welcome message with multiple embeds using cached template"""
+    
+    # Get message data from cache (no database hit)
+    message_data = await welcome_cache.get('rmp_welcome')
+    
+    if not message_data or 'embeds' not in message_data:
+        logger.error("No RMP welcome message found in cache! Using original function.")
+        # Fallback to original function
+        await _send_original_rmp_welcome(member)
+        return
+    
+    try:
+        # Create Discord embed objects from cached data
+        discord_embeds = []
+        for embed_data in message_data['embeds']:
+            embed = dict_to_embed(embed_data)
+            discord_embeds.append(embed)
+        
+        # Send all embeds
+        try:
+            await member.send(embeds=discord_embeds)
+            logger.info(f"✅ Sent {len(discord_embeds)} RMP welcome embeds to {member.display_name}")
+        except discord.Forbidden:
+            # Try public channel as fallback
+            if welcome_channel := member.guild.get_channel(722002957738180620):
+                await welcome_channel.send(content=member.mention, embeds=discord_embeds)
+                logger.info(f"✅ Sent RMP welcome to {member.display_name} in public channel")
+        
+    except Exception as e:
+        logger.error(f"Failed to send RMP welcome: {e}")
+        # Fallback to original
+        await _send_original_rmp_welcome(member)
+
+# Keep your original RMP welcome function but rename it
+async def _send_original_rmp_welcome(member: discord.Member):
+    """Original RMP welcome function as fallback"""
     embed1 = discord.Embed(
-        title=" 👮| Welcome to the Royal Military Police",
-        description="Congratulations on passing your security check, you're officially a TRAINING member of the police force. Please be sure to read the information found below.\n\n"
-                   "> ** 1.** Make sure to read all of the rules found in <#1165368313925353580> and in the brochure found below.\n\n"
-                   "> **2.** You **MUST** read the RMP main guide and MSL before starting your duties.\n\n"
-                   "> **3.** You can't use your L85 unless you are doing it for Self-Militia or enforcing the PD rules. (Self-defence)\n\n"
-                   "> **4.** Make sure to follow the Chain Of Command. 2nd Lieutenant > Lieutenant > Captain > Major > Lieutenant Colonel > Colonel > Brigadier > Major General\n\n"
-                   "> **5.** For phases, you may wait for one to be hosted in <#1207367013698240584> or request the phase you need in <#1270700562433839135>.\n\n"
-                   "> **6.** All the information about the Defence School of Policing and Guarding is found in both <#1237062439720452157> and <#1207366893631967262>\n\n"
-                   "> **7.** Choose your timezone here https://discord.com/channels/1165368311085809717/1165368313925353578\n\n"
-                   "**Besides that, good luck with your phases!**",
+        title="👮| Welcome to the Royal Military Police",
+        description="Congratulations on passing your security check, you're officially a TRAINING member of the police force. Please be sure to read the information found below.\n\n> ** 1.** Make sure to read all of the rules found in <#1165368313925353580> and in the brochure found below.\n\n> **2.** You **MUST** read the RMP main guide and MSL before starting your duties.\n\n> **3.** You can't use your L85 unless you are doing it for Self-Militia or enforcing the PD rules. (Self-defence)\n\n> **4.** Make sure to follow the Chain Of Command. 2nd Lieutenant > Lieutenant > Captain > Major > Lieutenant Colonel > Colonel > Brigadier > Major General\n\n> **5.** For phases, you may wait for one to be hosted in <#1207367013698240584> or request the phase you need in <#1270700562433839135>.\n\n> **6.** All the information about the Defence School of Policing and Guarding is found in both <#1237062439720452157> and <#1207366893631967262>\n\n> **7.** Choose your timezone here https://discord.com/channels/1165368311085809717/1165368313925353578\n\n**Besides that, good luck with your phases!**",
         color=discord.Color.from_str("#330000") 
     )
 
-    # Special Role Embed
     special_embed = discord.Embed(
         title="Special Roles",
-        description=" > Get your role pings here <#1196085670360404018> and don't forget the Game Night role RMP always hoosts fun events, don't miss out!",
+        description="> Get your role pings here <#1196085670360404018> and don't forget the Game Night role RMP always hosts fun events, don't miss out!",
         color=discord.Color.from_str("#330000")
     )
     
-    # Second embed (detailed rules)
     embed2 = discord.Embed(
         title="Trainee Constable Brochure",
         color=discord.Color.from_str("#660000")
@@ -2924,61 +3195,37 @@ async def send_rmp_welcome(member: discord.Member):
     
     embed2.add_field(
         name="**TOP 5 RULES**",
-        value="> **1**. You **MUST** read the RMP main guide and MSL before starting your duties.\n"
-              "> **2**. You **CANNOT** enforce the MSL. Only the Parade Deck (PD) rules **AFTER** you pass your phase 1.\n"
-              "> **3**. You **CANNOT** use your bike on the PD or the pavements.\n"
-              "> **4**. You **MUST** use good spelling and grammar to the best of your ability.\n"
-              "> **5**. You **MUST** remain mature and respectful at all times.",
+        value="> **1**. You **MUST** read the RMP main guide and MSL before starting your duties.\n> **2**. You **CANNOT** enforce the MSL. Only the Parade Deck (PD) rules **AFTER** you pass your phase 1.\n> **3**. You **CANNOT** use your bike on the PD or the pavements.\n> **4**. You **MUST** use good spelling and grammar to the best of your ability.\n> **5**. You **MUST** remain mature and respectful at all times.",
         inline=False
     )
     
     embed2.add_field(
-        name="**WHO'S ALLOWED ON THE PD AT ALL TIMES?__",
-        value="> ↠ Royal Army Medical Corps,\n"
-              "> ↠ Royal Military Police,\n" 
-              "> ↠ Intelligence Corps.\n"
-              "> ↠ Royal Family.",
+        name="**WHO'S ALLOWED ON THE PD AT ALL TIMES?**",
+        value="> ↠ Royal Army Medical Corps,\n> ↠ Royal Military Police,\n> ↠ Intelligence Corps.\n> ↠ Royal Family.",
         inline=False
     )
     
     embed2.add_field(
         name="**WHO'S ALLOWED ON THE PD WHEN CARRYING OUT THEIR DUTIES?**",
-        value="> ↠ United Kingdom Special Forces,\n"
-              "> ↠ Grenadier Guards,\n"
-              "> ↠ Foreign Relations,\n"
-              "> ↠ Royal Logistic Corps,\n"
-              "> ↠ Adjutant General's Corps,\n"
-              "> ↠ High Ranks, RSM, CSM and ASM hosting,\n"
-              "> ↠ Regimental personnel watching one of their regiment's events inside Pad area.",
+        value="> ↠ United Kingdom Special Forces,\n> ↠ Grenadier Guards,\n> ↠ Foreign Relations,\n> ↠ Royal Logistic Corps,\n> ↠ Adjutant General's Corps,\n> ↠ High Ranks, RSM, CSM and ASM hosting,\n> ↠ Regimental personnel watching one of their regiment's events inside Pad area.",
         inline=False
     )
     
     embed2.add_field(
         name="**HOW DO I ENFORCE PD RULES ON PEOPLE NOT ALLOWED ON IT?**",
-        value="> 1. Give them their first warning to get off the PD, \"W1, off the PD!\"\n"
-              "> 2. Wait 3-5 seconds for them to listen; if they don't, give them their second warning, \"W2, off the PD!\"\n"
-              "> 3. Wait 3-5 seconds for them to listen; if they don't kill them.",
+        value="> 1. Give them their first warning to get off the PD, \"W1, off the PD!\"\n> 2. Wait 3-5 seconds for them to listen; if they don't, give them their second warning, \"W2, off the PD!\"\n> 3. Wait 3-5 seconds for them to listen; if they don't kill them.",
         inline=False
     )
     
     embed2.add_field(
         name="**WHO'S ALLOWED __ON__ THE ACTUAL STAGE AT ALL TIMES**",
-        value="> ↠ Major General and above,\n"
-              "> ↠ Royal Family (they should have a purple name tag),\n"
-              "> ↠ Those who have been given permission by a Lieutenant General.",
+        value="> ↠ Major General and above,\n> ↠ Royal Family (they should have a purple name tag),\n> ↠ Those who have been given permission by a Lieutenant General.",
         inline=False
     )
     
     embed2.add_field(
         name="**WHO'S ALLOWED TO PASS THE RED LINE IN-FRONT OF THE STAGE?**",
-        value="> ↠ Major General and above,\n"
-              "> ↠ Royal Family,\n"
-              "> ↠ Those who have been given permission by a Lieutenant General,\n"
-              "> ↠ COMBATIVE Home Command Regiments:\n"
-              "> - Royal Military Police,\n"
-              "> - United Kingdom Forces,\n"
-              "> - Household Division.\n"
-              "> **Kill those not allowed who touch or pass the red line.**",
+        value="> ↠ Major General and above,\n> ↠ Royal Family,\n> ↠ Those who have been given permission by a Lieutenant General,\n> ↠ COMBATIVE Home Command Regiments:\n> - Royal Military Police,\n> - United Kingdom Forces,\n> - Household Division.\n> **Kill those not allowed who touch or pass the red line.**",
         inline=False
     )
     
@@ -3244,6 +3491,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
