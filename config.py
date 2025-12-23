@@ -143,7 +143,7 @@ class Config:
     # ===== DIVISION & RANK ROLES =====
     
     # Division Roles
-    SOR_ROLE_ID = 1368777853235101702  # SOR role (any SOR member has this)
+    SOR_ROLE_ID = 1282454489084858490  # SOR role (any SOR member has this)
     
     # HQ Roles
     HQ_ROLE_ID = 1165368311874326650  # Provost Marshal
@@ -238,6 +238,7 @@ class Config:
    # LD_HEAD_ROLE_ID = 1224732743036833802
    # LD_DEP_HEAD_ROLE_ID = 1224732812020813935
     # MAX_MONITORED_CHANNELS = 15
+
 
 
 
