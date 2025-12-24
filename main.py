@@ -521,6 +521,39 @@ class DatabaseHandler:
         except Exception as e:
             logger.error(f"Failed to send database removal embed: {e}")
 
+    async def add_to_hr(self, user_id: str, username: str, guild: discord.Guild) -> bool:
+    """Add or update a user in the HRs table."""
+    if not self.supabase:
+        return False
+
+    def _work():
+        try:
+            self.supabase.table("HRs").upsert({
+                "user_id": str(user_id),
+                "username": clean_nickname(username),
+                "guild_id": str(guild.id)
+            }).execute()
+            return True
+        except Exception as e:
+            logger.error(f"Failed to add {user_id} to HRs: {e}")
+            return False
+
+    return await self._run_sync(_work)
+
+    async def remove_from_lr(self, user_id: str) -> bool:
+        """Remove a user from the LRs table if they exist."""
+        if not self.supabase:
+            return False
+    
+        def _work():
+            try:
+                self.supabase.table("LRs").delete().eq("user_id", str(user_id)).execute()
+                return True
+            except Exception as e:
+                logger.error(f"Failed to remove {user_id} from LRs: {e}")
+                return False
+    
+        return await self._run_sync(_work)
 
     async def save_user_roles(self, user_id: str, username: str, role_ids: list[int]):
         """Save a user's tracked roles into the 'user_roles' table."""
@@ -4603,10 +4636,30 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                 logger.error(f"Failed to send RMP removal alert: {e}")
         
         # ===== WELCOME MESSAGES =====
-        # Check for HR role addition
-        if hr_role := after.guild.get_role(Config.HR_ROLE_ID):
-            if hr_role not in before.roles and hr_role in after.roles:
-                await send_hr_welcome(after)
+
+        #HR Welcome
+        hr_role = after.guild.get_role(Config.HR_ROLE_ID)
+        if hr_role and hr_role not in before.roles and hr_role in after.roles:
+            cleaned_nickname = re.sub(r'\[.*?\]', '', after.display_name).strip() or after.name
+        
+            try:
+                await bot.db.remove_from_lr(str(after.id))
+         
+                await bot.db.add_to_hr(
+                    user_id=str(after.id),
+                    username=cleaned_nickname,
+                    guild=after.guild
+                )
+        
+                logger.info(
+                    f"🔁 {cleaned_nickname} ({after.id}) moved from LRs → HRs in database"
+                )
+        
+            except Exception as e:
+                logger.error(f"❌ Failed HR DB transfer for {after.id}: {e}")
+        
+            await send_hr_welcome(after)
+        )
         
         # Check for RMP role addition
         if rmp_role and rmp_role not in before.roles and rmp_role in after.roles:
@@ -4888,6 +4941,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
