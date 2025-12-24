@@ -522,23 +522,23 @@ class DatabaseHandler:
             logger.error(f"Failed to send database removal embed: {e}")
 
     async def add_to_hr(self, user_id: str, username: str, guild: discord.Guild) -> bool:
-    """Add or update a user in the HRs table."""
-    if not self.supabase:
-        return False
-
-    def _work():
-        try:
-            self.supabase.table("HRs").upsert({
-                "user_id": str(user_id),
-                "username": clean_nickname(username),
-                "guild_id": str(guild.id)
-            }).execute()
-            return True
-        except Exception as e:
-            logger.error(f"Failed to add {user_id} to HRs: {e}")
+        """Add or update a user in the HRs table."""
+        if not self.supabase:
             return False
-
-    return await self._run_sync(_work)
+    
+        def _work():
+            try:
+                self.supabase.table("HRs").upsert({
+                    "user_id": str(user_id),
+                    "username": clean_nickname(username),
+                    "guild_id": str(guild.id)
+                }).execute()
+                return True
+            except Exception as e:
+                logger.error(f"Failed to add {user_id} to HRs: {e}")
+                return False
+    
+        return await self._run_sync(_work)
 
     async def remove_from_lr(self, user_id: str) -> bool:
         """Remove a user from the LRs table if they exist."""
@@ -4941,6 +4941,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
