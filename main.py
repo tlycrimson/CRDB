@@ -4659,7 +4659,7 @@ async def on_member_update(before: discord.Member, after: discord.Member):
                 logger.error(f"❌ Failed HR DB transfer for {after.id}: {e}")
         
             await send_hr_welcome(after)
-        )
+        
         
         # Check for RMP role addition
         if rmp_role and rmp_role not in before.roles and rmp_role in after.roles:
@@ -4941,6 +4941,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
