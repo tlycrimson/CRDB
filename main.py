@@ -1016,15 +1016,25 @@ class RankTracker:
                     has_pw = True
                     break
         
+        # Check HQ eligibility
+        hq_role = member.guild.get_role(Config.HQ_ROLE_ID)
+        rsm_role = member.guild.get_role(Config.RSM_ROLE_ID)
+        
+        is_hq = (
+            (hq_role and hq_role in member.roles) or
+            (rsm_role and rsm_role in member.roles)
+        )
+        
         # Determine division based on roles
-        if has_sor and has_pw:
-            return "HQ"  # Has both SOR and PW roles
+        if is_hq:
+            return "HQ"
         elif has_sor:
             return "SOR"
         elif has_pw:
             return "PW"
         else:
             return "Unknown"
+
     
     async def _determine_rank(self, member: discord.Member, division: str) -> str:
         """Determine member's rank name based on roles"""
@@ -5331,6 +5341,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
