@@ -629,6 +629,63 @@ class DatabaseHandler:
             logger.error(f"Error getting history for {message_type}: {e}")
             return []
 
+
+async def create_or_update_user_in_db(
+    discord_id: str,
+    username: str,
+    guild: discord.Guild
+) -> bool:
+    """
+    Create or update a user in the 'users' table with Roblox ID.
+    Returns: True if successful, False if failed
+    """
+    try:
+        # Clean the username
+        cleaned_username = clean_nickname(username)
+        
+        # Get Roblox ID
+        roblox_id = await get_roblox_id_from_username(cleaned_username)
+        
+        if not roblox_id:
+            logger.warning(f"Could not find Roblox ID for {cleaned_username} ({discord_id})")
+            # Still create the row but with null Roblox ID
+            roblox_id = None
+        
+        def _work():
+            sup = bot.db.supabase
+            # Check if user already exists
+            res = sup.table('users').select('*').eq('user_id', discord_id).execute()
+            
+            if getattr(res, 'data', None) and len(res.data) > 0:
+                # Update existing user
+                update_data = {
+                    "username": cleaned_username,
+                    "roblox_id": roblox_id
+                }
+                return sup.table('users').update(update_data).eq('user_id', discord_id).execute()
+            else:
+                # Create new user with default XP = 0
+                new_user = {
+                    "user_id": discord_id,
+                    "username": cleaned_username,
+                    "roblox_id": roblox_id,
+                    "xp": 0  # Default XP
+                }
+                return sup.table('users').insert(new_user).execute()
+        
+        result = await bot.db.run_query(_work)
+        
+        if roblox_id:
+            logger.info(f"✅ Created/updated user {cleaned_username} ({discord_id}) with Roblox ID: {roblox_id}")
+        else:
+            logger.info(f"✅ Created/updated user {cleaned_username} ({discord_id}) without Roblox ID")
+        
+        return True
+        
+    except Exception as e:
+        logger.error(f"❌ Failed to create/update user {discord_id} in database: {e}")
+        return False
+
 # Clean up old processed reactions and messages in db
 async def start_cleanup_task(self):
     """Clean up old database entries periodically"""
@@ -1365,6 +1422,49 @@ class RobloxAPI:
         except Exception as e:
             logger.error(f"Failed to get Roblox rank for {discord_name}: {e}")
             return "Error"
+
+
+async def get_roblox_id_from_username(username: str) -> Optional[int]:
+    """
+    Get Roblox ID from username using the Roblox API.
+    Returns: Roblox ID (int) or None if not found
+    """
+    try:
+        url = "https://users.roblox.com/v1/usernames/users"
+        
+        headers = {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json',
+            'User-Agent': USER_AGENT
+        }
+        
+        payload = {
+            "usernames": [username],
+            "excludeBannedUsers": False
+        }
+        
+        async with bot.shared_session.post(url, json=payload, headers=headers, timeout=15) as response:
+            if response.status == 200:
+                data = await response.json()
+                if data.get("data") and len(data["data"]) > 0:
+                    roblox_id = data["data"][0].get("id")
+                    if roblox_id:
+                        return int(roblox_id)
+            
+            # If we get here, user not found or API error
+            logger.warning(f"Roblox API returned: {response.status} for username: {username}")
+            if response.status == 429:
+                logger.warning("⚠ Rate limited! Adding delay...")
+                await asyncio.sleep(5)
+            return None
+            
+    except asyncio.TimeoutError:
+        logger.warning(f"Timeout connecting to Roblox API for username: {username}")
+        return None
+    except Exception as e:
+        logger.error(f"API Error fetching Roblox ID for {username}: {str(e)[:100]}")
+        return None
+
 
 # Reaction Logger 
 class ReactionLogger:
@@ -4083,20 +4183,63 @@ async def welcome_commands_error(interaction: discord.Interaction, error):
         logger.error(f"Error handler error: {e}")
 
 # Discharge Command
-@bot.tree.command(name="discharge", description="Notify members of honourable/dishonourable discharge and log it")
+@bot.tree.command(name="discharge", description="Notify members of honourable/dishonourable discharge or blacklist")
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def discharge(
     interaction: discord.Interaction,
     members: str,  # Comma-separated user mentions/IDs
     reason: str,
-    discharge_type: Literal["Honourable", "Dishonourable"] = "Honourable",
+    discharge_type: Literal["Honourable", "Dishonourable", "Blacklist"] = "Honourable",
+    duration_unit: Optional[Literal["Permanent", "Years", "Months", "Days"]] = None,
+    duration_amount: Optional[app_commands.Range[int, 1, 100]] = None,
     evidence: Optional[discord.Attachment] = None
 ):
-    view = ConfirmView()
-    await interaction.response.send_message("Confirm discharge?", view=view, ephemeral=True)
+    # Validate blacklist duration parameters
+    if discharge_type == "Blacklist":
+        if not duration_unit:
+            await interaction.response.send_message(
+                "❌ For blacklist, you must specify a duration unit (Permanent/Years/Months/Days).",
+                ephemeral=True
+            )
+            return
+        
+        if duration_unit != "Permanent" and not duration_amount:
+            await interaction.response.send_message(
+                "❌ For non-permanent blacklist, you must specify a duration amount.",
+                ephemeral=True
+            )
+            return
+        
+        # Set default amount for non-permanent if somehow missing
+        if duration_unit != "Permanent" and duration_amount is None:
+            duration_amount = 1
+
+    view = ConfirmView(author=interaction.user)
+    
+    # Create confirmation message based on type
+    if discharge_type == "Blacklist":
+        duration_text = "Permanent" if duration_unit == "Permanent" else f"{duration_amount} {duration_unit}"
+        confirmation_msg = (
+            f"⚠️ **Are you sure you want to blacklist member(s)?**\n"
+            f"**Type:** {discharge_type}\n"
+            f"**Duration:** {duration_text}\n"
+            f"**Reason:** {reason[:200]}{'...' if len(reason) > 200 else ''}\n\n"
+            f"Click **Confirm** to proceed or **Cancel** to abort."
+        )
+    else:
+        confirmation_msg = (
+            f"⚠️ **Are you sure you want to {discharge_type.lower()} discharge member(s)?**\n"
+            f"**Type:** {discharge_type}\n"
+            f"**Reason:** {reason[:200]}{'...' if len(reason) > 200 else ''}\n\n"
+            f"Click **Confirm** to proceed or **Cancel** to abort."
+        )
+    
+    await interaction.response.send_message(confirmation_msg, view=view, ephemeral=True)
     await view.wait()
+    
     if not view.value:
+        await interaction.followup.send("❎ Operation cancelled.", ephemeral=True)
         return
 
     try:
@@ -4110,6 +4253,7 @@ async def discharge(
             )
             return
 
+        # Parse member IDs
         member_ids = []
         for mention in members.split(','):
             mention = mention.strip()
@@ -4123,13 +4267,14 @@ async def discharge(
                 logger.warning(f"Invalid member identifier: {mention}")
 
         processing_msg = await interaction.followup.send(
-            "⚙️ Processing discharge...",
+            "⚙️ Processing discharge/blacklist...",
             ephemeral=True,
             wait=True
         )
 
         await bot.rate_limiter.wait_if_needed(bucket="discharge")
 
+        # Get member objects
         discharged_members = []
         for member_id in member_ids:
             if member := interaction.guild.get_member(member_id):
@@ -4141,54 +4286,117 @@ async def discharge(
             await interaction.followup.send("❌ No valid members found.", ephemeral=True)
             return
 
-        # Embed creation
-        color = discord.Color.green() if discharge_type == "Honourable" else discord.Color.red()
+        # Calculate blacklist duration if applicable
+        blacklist_duration = None
+        if discharge_type == "Blacklist":
+            if duration_unit == "Permanent":
+                blacklist_duration = "Permanent"
+            elif duration_unit == "Years":
+                blacklist_duration = f"{duration_amount} year{'s' if duration_amount > 1 else ''}"
+            elif duration_unit == "Months":
+                blacklist_duration = f"{duration_amount} month{'s' if duration_amount > 1 else ''}"
+            elif duration_unit == "Days":
+                blacklist_duration = f"{duration_amount} day{'s' if duration_amount > 1 else ''}"
+        
+        # Calculate ending date for blacklist
+        ending_date = None
+        if discharge_type == "Blacklist" and duration_unit != "Permanent":
+            current_date = datetime.now(timezone.utc)
+            if duration_unit == "Years":
+                ending_date = current_date + timedelta(days=duration_amount * 365)
+            elif duration_unit == "Months":
+                ending_date = current_date + timedelta(days=duration_amount * 30)  # Approximate
+            elif duration_unit == "Days":
+                ending_date = current_date + timedelta(days=duration_amount)
+
+        # Embed creation based on type
+        if discharge_type == "Honourable":
+            color = discord.Color.green()
+            title = "Honourable Discharge Notification"
+        elif discharge_type == "Dishonourable":
+            color = discord.Color.red()
+            title = "Dishonourable Discharge Notification"
+        else:  # Blacklist
+            color = discord.Color.dark_red()
+            title = "Blacklist Notification"
+        
+        # Create notification embed for users
         embed = discord.Embed(
-            title=f"{discharge_type} Discharge Notification",
+            title=title,
             color=color,
             timestamp=datetime.now(timezone.utc)
         )
+        
         embed.add_field(name="Reason", value=reason, inline=False)
-
+        
+        if discharge_type == "Blacklist":
+            embed.add_field(
+                name="Blacklist Duration", 
+                value=blacklist_duration, 
+                inline=False
+            )
+            
+            if ending_date:
+                embed.add_field(
+                    name="Blacklist Ends", 
+                    value=f"<t:{int(ending_date.timestamp())}:D> (<t:{int(ending_date.timestamp())}:R>)",
+                    inline=False
+                )
+        
         if evidence:
             embed.add_field(name="Evidence", value=f"[Attachment Link]({evidence.url})", inline=False)
             mime, _ = mimetypes.guess_type(evidence.filename)
             if mime and mime.startswith("image/"):
                 embed.set_image(url=evidence.url)
 
-        embed.set_footer(text=f"Discharged by {interaction.user.display_name}")
+        embed.set_footer(text=f"Action by {interaction.user.display_name}")
 
         success_count = 0
         failed_members = []
 
+        # Process each member
         for member in discharged_members:
             cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
+            
             try:
-                await bot.db.discharge_user(member.id, cleaned_nickname, interaction.guild)
-
-            except Exception as e:
-                logger.error(f"Error removing {cleaned_nickname} ({member.id}) from DB: {e}")
-            try:
+                # For blacklist, we don't remove from database immediately
+                if discharge_type != "Blacklist":
+                    await bot.db.discharge_user(str(member.id), cleaned_nickname, interaction.guild)
+                else:
+                    # For blacklist, we might want to mark them in a special way
+                    # You could add a 'blacklisted' column to the users table if needed
+                    pass
+                
+                # Try to notify the user
                 try:
                     await member.send(embed=embed)
                 except discord.Forbidden:
+                    # If DMs are closed, try public channel
                     if channel := interaction.guild.get_channel(1219410104240050236):
                         await channel.send(f"{member.mention}", embed=embed)
                 success_count += 1
+                
             except Exception as e:
                 logger.error(f"Failed to notify {member.display_name}: {str(e)}")
                 failed_members.append(member.mention)
 
+        # Create result embed
         result_embed = discord.Embed(
-            title="Discharge Summary",
+            title=f"{discharge_type} {'Discharge' if discharge_type != 'Blacklist' else 'Blacklist'} Summary",
             color=color
         )
-        result_embed.add_field(name="Action", value=f"{discharge_type} Discharge", inline=False)
+        
+        if discharge_type == "Blacklist":
+            result_embed.add_field(name="Action", value=f"{discharge_type} ({blacklist_duration})", inline=False)
+        else:
+            result_embed.add_field(name="Action", value=f"{discharge_type} Discharge", inline=False)
+            
         result_embed.add_field(
             name="Results",
             value=f"✅ Successfully notified: {success_count}\n❌ Failed: {len(failed_members)}",
             inline=False
         )
+        
         if failed_members:
             result_embed.add_field(name="Failed Members", value=", ".join(failed_members), inline=False)
 
@@ -4200,26 +4408,36 @@ async def discharge(
         # Log to D_LOG_CHANNEL_ID
         if d_log := interaction.guild.get_channel(Config.D_LOG_CHANNEL_ID):
             log_embed = discord.Embed(
-                title=f"Discharge Log",
+                title=f"{discharge_type} {'Discharge' if discharge_type != 'Blacklist' else 'Blacklist'} Log",
                 color=color,
                 timestamp=datetime.now(timezone.utc)
             )
-            log_embed.add_field(
-                name="Type",
-                value=f"🔰 {discharge_type} Discharge" if discharge_type == "Honourable" else f"🚨 {discharge_type} Discharge",
-                inline=False
-            )
+            
+            if discharge_type == "Honourable":
+                log_embed.add_field(name="Type", value="🔰 Honourable Discharge", inline=False)
+            elif discharge_type == "Dishonourable":
+                log_embed.add_field(name="Type", value="🚨 Dishonourable Discharge", inline=False)
+            else:  # Blacklist
+                log_embed.add_field(name="Type", value="⛔ Blacklist", inline=False)
+                log_embed.add_field(name="Duration", value=blacklist_duration, inline=False)
+                
+                if ending_date:
+                    log_embed.add_field(
+                        name="Ends On", 
+                        value=f"<t:{int(ending_date.timestamp())}:D>",
+                        inline=True
+                    )
+            
             log_embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
             
             # Format member mentions with their cleaned nicknames
             member_entries = []
             for member in discharged_members:
-                # Clean the nickname by removing any tags like [INS]
                 cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
                 member_entries.append(f"{member.mention} | {cleaned_nickname}")
             
             log_embed.add_field(
-                name="Discharged Members",
+                name="Affected Members",
                 value="\n".join(member_entries) or "None",
                 inline=False
             )
@@ -4227,15 +4445,69 @@ async def discharge(
             if evidence:
                 log_embed.add_field(name="Evidence", value=f"[View Attachment]({evidence.url})", inline=True)
 
-            log_embed.add_field(name="Discharged By", value=interaction.user.mention, inline=True)
+            log_embed.add_field(name="Action By", value=interaction.user.mention, inline=True)
             
             await d_log.send(embed=log_embed)
 
-    except Exception as e:
-        logger.error(f"Discharge command failed: {e}")
-        await interaction.followup.send("❌ An error occurred while processing the discharge.", ephemeral=True)
-    
+        # Also log to blacklist channel if applicable
+        if discharge_type == "Blacklist" and (b_log := interaction.guild.get_channel(Config.B_LOG_CHANNEL_ID)):
+            blacklist_log_embed = discord.Embed(
+                title="⛔ Blacklist Entry",
+                color=discord.Color.dark_red(),
+                timestamp=datetime.now(timezone.utc)
+            )
+            
+            blacklist_log_embed.add_field(name="Issuer:", value=interaction.user.mention, inline=False)
+            
+            # List all blacklisted members
+            for i, member in enumerate(discharged_members, 1):
+                cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
+                blacklist_log_embed.add_field(
+                    name=f"Member {i}",
+                    value=f"**Name:** {cleaned_nickname}\n**Discord:** {member.mention}\n**Reason:** {reason}",
+                    inline=False
+                )
+            
+            blacklist_log_embed.add_field(name="Duration:", value=blacklist_duration, inline=False)
+            
+            if ending_date:
+                blacklist_log_embed.add_field(
+                    name="Ending date", 
+                    value=f"<t:{int(ending_date.timestamp())}:D>",
+                    inline=False
+                )
+            
+            blacklist_log_embed.add_field(name="Starting date", value=f"<t:{int(datetime.now(timezone.utc).timestamp())}:D>", inline=False)
+            blacklist_log_embed.set_footer(text=f"Blacklisted by {interaction.user.display_name}")
+            
+            await b_log.send(embed=blacklist_log_embed)
 
+    except Exception as e:
+        logger.error(f"Discharge/blacklist command failed: {e}")
+        await interaction.followup.send("❌ An error occurred while processing the operation.", ephemeral=True)
+
+@discharge.autocomplete('duration_unit')
+async def discharge_duration_unit_autocomplete(
+    interaction: discord.Interaction,
+    current: str
+):
+    """Autocomplete for duration unit in blacklist discharge"""
+    # Only show options if discharge_type is "Blacklist"
+    discharge_type_option = next(
+        (opt for opt in interaction.data.get('options', []) if opt['name'] == 'discharge_type'),
+        None
+    )
+    
+    if discharge_type_option and discharge_type_option.get('value') == "Blacklist":
+        options = [
+            discord.app_commands.Choice(name="Permanent", value="Permanent"),
+            discord.app_commands.Choice(name="Years", value="Years"),
+            discord.app_commands.Choice(name="Months", value="Months"),
+            discord.app_commands.Choice(name="Days", value="Days"),
+        ]
+        return [opt for opt in options if current.lower() in opt.name.lower()][:25]
+    
+    return []
 
 
 @bot.tree.command(name="commands", description="List all available commands")
@@ -4663,6 +4935,9 @@ async def on_member_update(before: discord.Member, after: discord.Member):
         
         # Check for RMP role addition
         if rmp_role and rmp_role not in before.roles and rmp_role in after.roles:
+            # Create/update user in database with Roblox ID
+            await create_or_update_user_in_db(str(after.id), after.display_name, after.guild)
+
             await send_rmp_welcome(after)
 
         # ===== RANK TRACKING =====
@@ -4722,15 +4997,23 @@ async def on_member_remove(member: discord.Member):
 
         # Clean nickname for logs + DB
         cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
-
-        # 🔑 Remove deserter from all DB tables
+        
+        # 🔍 FIRST: Get Roblox ID from database BEFORE removing user
+        roblox_id = None
         try:
-            await bot.db.discharge_user(member.id, cleaned_nickname, interaction.guild)
-
+            def _get_roblox_id():
+                sup = bot.db.supabase
+                res = sup.table('users').select('roblox_id').eq('user_id', str(member.id)).execute()
+                if getattr(res, 'data', None) and len(res.data) > 0:
+                    return res.data[0].get('roblox_id')
+                return None
+            
+            roblox_id = await bot.db.run_query(_get_roblox_id)
+            logger.info(f"Retrieved Roblox ID for deserter {cleaned_nickname}: {roblox_id}")
         except Exception as e:
-            logger.error(f"Error removing deserter {cleaned_nickname} ({member.id}) from DB: {e}")
+            logger.error(f"Error getting Roblox ID for {cleaned_nickname}: {e}")
 
-        # 🚨 Alert embed
+        # 🚨 Alert embed (send immediately)
         embed = discord.Embed(
             title="🚨 Deserter Alert",
             description=f"{member.mention} just deserted! Please log this in BA.",
@@ -4743,25 +5026,32 @@ async def on_member_remove(member: discord.Member):
             embed=embed
         )
 
-        # Discharge log embed
-        dishonourable_embed = discord.Embed(
-            title="Discharge Log",
-            color=discord.Color.red(),
-            timestamp=datetime.now(timezone.utc)
-        )
-        dishonourable_embed.add_field(name="Type", value="🚨 Dishonourable Discharge", inline=False)
-        dishonourable_embed.add_field(name="Reason", value="```Desertion.```", inline=False)
-        dishonourable_embed.add_field(name="Discharged Members", value=f"{member.mention} | {cleaned_nickname}", inline=False)
-        dishonourable_embed.add_field(name="Discharged By", value="None - Unauthorised", inline=True)
-        dishonourable_embed.set_footer(text="Desertion Monitor System")
-
-        # Blacklist log embed
+        # Current date for blacklist calculation
         current_date = datetime.now(timezone.utc)    
         hr_role = guild.get_role(Config.HR_ROLE_ID)  
+        
         if hr_role and hr_role in member.roles:
             ending_date = current_date + timedelta(days=180)  
         else:
-            ending_date = current_date + timedelta(days=90)   
+            ending_date = current_date + timedelta(days=90)
+
+        # 🔧 Dishonourable discharge embed WITH Roblox ID
+        dishonourable_embed = discord.Embed(
+            title="Discharge Log",
+            color=discord.Color.red(),
+            timestamp=current_date
+        )
+        dishonourable_embed.add_field(name="Type", value="🚨 Dishonourable Discharge", inline=False)
+        dishonourable_embed.add_field(name="Reason", value="```Desertion.```", inline=False)
+        
+        # Build member info with Roblox ID if available [Discontinued| will probably readd later on"
+        member_info = f"{member.mention} | {cleaned_nickname}"
+        
+        dishonourable_embed.add_field(name="Discharged Members", value=member_info, inline=False)
+        dishonourable_embed.add_field(name="Discharged By", value="None - Unauthorised", inline=True)
+        dishonourable_embed.set_footer(text="Desertion Monitor System")
+
+        # ⛔ Blacklist embed
         blacklist_embed = discord.Embed(
             title="⛔ Blacklist",
             color=discord.Color.red(),
@@ -4769,11 +5059,17 @@ async def on_member_remove(member: discord.Member):
         )
         blacklist_embed.add_field(name="Issuer:", value="MP Assistant", inline=False)
         blacklist_embed.add_field(name="Name:", value=cleaned_nickname, inline=False)
+        
+        # Add Roblox ID to blacklist embed if available
+        if roblox_id:
+            blacklist_embed.add_field(name="Roblox ID:", value=str(roblox_id), inline=False)
+        
         blacklist_embed.add_field(name="Starting date", value=f"<t:{int(current_date.timestamp())}:D>", inline=False)
         blacklist_embed.add_field(name="Ending date", value=f"<t:{int(ending_date.timestamp())}:D>", inline=False)
         blacklist_embed.add_field(name="Reason:", value="Desertion.", inline=False)
         blacklist_embed.set_footer(text="Desertion Monitor System")
 
+        # 📝 SECOND: Now send the embeds to the logs
         try:
             d_log = bot.get_channel(Config.D_LOG_CHANNEL_ID)
             b_log = bot.get_channel(Config.B_LOG_CHANNEL_ID)
@@ -4781,7 +5077,7 @@ async def on_member_remove(member: discord.Member):
             if d_log and b_log:
                 await d_log.send(embed=dishonourable_embed)
                 await b_log.send(embed=blacklist_embed)
-                logger.info(f"Logged deserted member, {cleaned_nickname}.")
+                logger.info(f"Logged deserted member, {cleaned_nickname}. Roblox ID: {roblox_id}")
             else:
                 alt_channel = bot.get_channel(1165368316970405917)
                 if alt_channel:
@@ -4789,7 +5085,13 @@ async def on_member_remove(member: discord.Member):
                     logger.error(f"Failed to log deserted member {cleaned_nickname} - main channel not found")
         except Exception as e:
             logger.error(f"Error logging deserter discharge: {str(e)}")
-
+        
+        # 🗑️ THIRD: Only AFTER sending embeds, remove from database
+        try:
+            await bot.db.discharge_user(str(member.id), cleaned_nickname, guild)
+            logger.info(f"Removed {cleaned_nickname} ({member.id}) from database")
+        except Exception as e:
+            logger.error(f"Error removing deserter {cleaned_nickname} ({member.id}) from DB: {e}")
 
 
 @bot.event
