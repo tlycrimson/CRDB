@@ -1489,6 +1489,7 @@ class ReactionLogger:
         self.tryout_log_channel_id = Config.TRYOUT_LOG_CHANNEL_ID
         self.course_log_channel_id = Config.COURSE_LOG_CHANNEL_ID
         self.activity_log_channel_id = Config.ACTIVITY_LOG_CHANNEL_ID
+        self.tc_supervision_log_channel_id = Config.TC_SUPERVISION_CHANNEL_ID
         
 
     async def setup(self, interaction=None, log_channel=None, monitor_channels=None):
@@ -1920,6 +1921,7 @@ class ReactionLogger:
             self.phase_log_channel_id: "phases",
             self.tryout_log_channel_id: "tryouts",
             self.course_log_channel_id: "phases",
+            self.tc_supervision_log_channel_id: "phases",
         }
         column_to_update = mapping.get(payload.channel_id)
         if not column_to_update or str(payload.emoji) != "✅":
@@ -1949,7 +1951,10 @@ class ReactionLogger:
             log_channel = guild.get_channel(self.log_channel_id)
             if log_channel:
                 embed = discord.Embed(title=title, color=discord.Color.blue())
-                embed.add_field(name="Host", value=user_member.mention)
+                if payload.channel_id == self.tc_supervision_log_channel_id:
+                    embed.add_field(name="Supervisor", value=user_member.mention)
+                else:
+                    embed.add_field(name="Host", value=user_member.mention)
                 embed.add_field(name="Logged By", value=member.mention)
                 await log_channel.send(embed=embed)
                 logger.info(
@@ -5341,6 +5346,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
