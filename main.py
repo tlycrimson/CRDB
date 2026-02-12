@@ -4198,14 +4198,14 @@ async def welcome_commands_error(interaction: discord.Interaction, error):
         logger.error(f"Error handler error: {e}")
 
 # Discharge Command
-@bot.tree.command(name="discharge", description="Notify members of honourable/dishonourable discharge and log it")
+@bot.tree.command(name="discharge", description="Notify members of honourable/general/dishonourable discharge and log it")
 @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
 @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
 async def discharge(
     interaction: discord.Interaction,
     members: str,  # Comma-separated user mentions/IDs
     reason: str,
-    discharge_type: Literal["Honourable", "Dishonourable"] = "Honourable",
+    discharge_type: Literal["Honourable", "General", "Dishonourable"] = "General",
     evidence: Optional[discord.Attachment] = None
 ):
     view = ConfirmView(author=interaction.user)
@@ -4257,7 +4257,11 @@ async def discharge(
             return
 
         # Embed creation
-        color = discord.Color.green() if discharge_type == "Honourable" else discord.Color.red()
+        if discharge_type == "Honourable" or discharge_type == "General":
+            color = discord.Color.green() 
+        else 
+            color = discord.Color.red()
+            
         embed = discord.Embed(
             title=f"{discharge_type} Discharge Notification",
             color=color,
@@ -4321,7 +4325,7 @@ async def discharge(
             )
             log_embed.add_field(
                 name="Type",
-                value=f"🔰 {discharge_type} Discharge" if discharge_type == "Honourable" else f"🚨 {discharge_type} Discharge",
+                value = f"🔰 {discharge_type} Discharge" if discharge_type in ("Honourable", "General") else f"🚨 {discharge_type} Discharge",
                 inline=False
             )
             log_embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
@@ -5346,6 +5350,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
