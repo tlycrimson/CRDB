@@ -4257,7 +4257,13 @@ async def discharge(
             return
 
         # Embed creation
-        color = discord.Color.green() if discharge_type in ("Honourable", "General") else discord.Color.red()
+        color = discord.Color.green() 
+        if discharge_type == "General":
+            color = discord.Color.green() 
+        elif discharge_type == "Honourable":
+            color = discord.Color.gold() 
+        else:
+            color = discord.Color.red()
             
         embed = discord.Embed(
             title=f"{discharge_type} Discharge Notification",
@@ -5347,6 +5353,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
