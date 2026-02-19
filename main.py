@@ -2756,11 +2756,9 @@ async def give_event_xp(
                 
                 for i, user_id in enumerate(unique_mentions, 1):
                     try:
-                        # Update progress every 5 users
-                        if i % 5 == 0 or i == len(unique_mentions):
-                            await initial_message.edit(
-                                content=f"⏳ Processing {i}/{len(unique_mentions)} users ({success_count} successful)..."
-                            )
+                        await initial_message.edit(
+                            content=f"⏳ Processing {i}/{len(unique_mentions)} users ({success_count} successful)..."
+                        )
                         
                         # Rate limit between users
                         if i > 1:
@@ -2810,7 +2808,7 @@ async def give_event_xp(
                         
                 # Final summary
                 result_message = [
-                    f"✅ **XP Distribution Complete**",
+                    f"**__XP Distribution Completed**__",
                     f"**Given by:** {interaction.user.mention}",
                     f"**XP per user:** {xp_amount}",
                     f"**Successful distributions:** {success_count}",
@@ -5353,6 +5351,7 @@ if __name__ == '__main__':
     except Exception as e:
         logger.critical(f"Fatal error running bot: {e}", exc_info=True)
         raise
+
 
 
 
