@@ -7,4 +7,3 @@ aiohttp
 aiodns>=3.0.0
 supabase
 Pillow
-numpy
