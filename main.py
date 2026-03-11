@@ -16,7 +16,6 @@ import functools
 import numpy as np
 from typing import Optional, Set, Dict, List, Tuple, Any, Literal
 from decorators import min_rank_required, has_allowed_role, has_allowed_role_2
-from rate_limiter import RateLimiter
 from discord import app_commands
 from config import Config
 from discord.ext import commands
@@ -5252,22 +5251,6 @@ async def on_interaction(interaction: discord.Interaction):
 
         await log_channel.send(embed=embed)
 
-async def run_bot():
-    while True:
-        try:
-            await bot.start(TOKEN)
-        except discord.errors.HTTPException as e:
-            if e.status == 429:
-                retry_after = e.response.headers.get('Retry-After', 30)
-                logger.warning(f"Rate limited during login. Waiting {retry_after} seconds...")
-                await asyncio.sleep(float(retry_after))
-                continue
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error: {e}")
-            break
-        else:
-            break
 
 async def run_bot_forever():
     backoff = 1.0
