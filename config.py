@@ -1,4 +1,6 @@
 class Config:
+    POINTS_PER_ACTIVITY = 0.5
+    DEVELOPER_ID = 353167234698444802
     HIGH_COMMAND_ROLE_ID = 1165368311840784508
     BG_CHECKER_ROLE_ID = 1435045180557230184 
     DB_LOGGER_ROLE_ID = 1435045193048133732  
@@ -224,6 +226,33 @@ class Config:
         SENIOR_CONSTABLE_ROLE_ID: "Senior Constable",
         CONSTABLE_ROLE_ID: "Constable"
     }
+
+    # XP Limit Configuration
+    MAX_XP_PER_ACTION =  20  # Maximum XP that can be given/taken in a single action
+    MAX_EVENT_XP_PER_USER = 20 # Maximum XP per user in event distributions
+    MAX_EVENT_TOTAL_XP = 5000  # Maximum total XP for entire event distribution
+
+    
+    USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+
+    # Global rate limiter configuration
+    GLOBAL_RATE_LIMIT = 15  # requests per minute
+    COMMAND_COOLDOWN = 10    # seconds between command uses per user
+
+    #Regiments and Groups
+    BRITISH_ARMY_GROUP_ID = 4972535
+    RMP = 4972920
+    SI = 32578828 
+    UBA = 6447250 
+    PARAS = 4973512 
+    HSD = 14286518 
+    IC = 32014700 
+    RAMC = 15229694 
+    AAC = 15224554 
+    RAR = 14557406
+    RTR = 14609194 
+    UKSF = 5029915 
+
 
    # MESSAGE_TRACKER_CHANNELS = {
     #    1165368316500656241, # Course-log
