@@ -39,6 +39,7 @@ class PermissionsCache:
         try:
             result = await self.bot.db.supabase.table(self._table)\
                     .select("*")\
+                    .maybe_single()\
                     .execute()
 
             if result and result.data:
@@ -55,13 +56,12 @@ class PermissionsCache:
             result = await self.bot.db.supabase.table(self._table) \
                 .select('allowed_roles') \
                 .eq('group_type', group_type) \
+                .maybe_single()\
                 .execute()
             
-            if result.data:
-                return {
-                    'allowed_roles': result.data[0].get('allowed_roles', []),
-                }
-            return {'allowed_roles': []} 
+            if result and result.data:
+                return result.data
+            return []
         except Exception as e:
             logger.error("Error loading %s from database: %s", group_type, e)
             return None
@@ -76,7 +76,7 @@ class PermissionsCache:
             if refresh or group_type not in self._cache:
                 data = await self._load_from_database(group_type)
                 if data:
-                    self._cache[group_type] = data
+                    self._cache[group_type]https://github.com/tlycrimson/CRDB/edit/master/utils/permissions.py = data
             
             return self._cache.get(group_type)
 
