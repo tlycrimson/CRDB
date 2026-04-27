@@ -184,7 +184,19 @@ async def on_ready():
             logger.info("Started reaction logger cleanup task")
         except Exception as e:
             logger.exception(f"Failed to start cleanup task: %s", e)
-    
+
+    BANNER_PATH = "banner.gif"
+    if os.path.exists(BANNER_PATH):
+        try:
+            with open(BANNER_PATH, "rb") as f:
+                banner_bytes = f.read()
+            await bot.user.edit(banner=banner_bytes)
+            logger.info("Bot Banner updated successfully!")
+        except discord.HTTPException as e:
+            logger.info("Failed to set banner: {e}")
+    else:
+        logger.info("Banner not found at {BANNER_PATH}")
+ 
     send = await bot.db.send_change_log()
     if send:
         channel_ids = [Config.MAIN_COMMS_CHANNEL_ID, Config.LD_CHANNEL_ID]

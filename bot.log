@@ -34126,3 +34126,41 @@ In embeds.1.fields.0.value: Must be 1024 or fewer in length.
 2026-04-27 17:07:44,701 - utils.database - INFO - Loaded 2 welcome messages into cache
 2026-04-27 17:07:45,436 - __main__ - INFO - ==================================================
 2026-04-27 17:08:56,259 - __main__ - INFO - Bot shut down by user
+2026-04-27 17:59:29,500 - __main__ - INFO - Bot initializing with intents: members=True, message_content=True, reactions=True, guilds=True
+2026-04-27 17:59:29,502 - discord.client - WARNING - PyNaCl is not installed, voice will NOT be supported
+2026-04-27 17:59:29,502 - discord.client - WARNING - davey is not installed, voice will NOT be supported
+2026-04-27 17:59:29,503 - utils.runners - INFO - Starting bot (attempt 1)...
+2026-04-27 17:59:29,503 - discord.client - INFO - logging in using static token
+2026-04-27 17:59:30,117 - __main__ - INFO - Running setup_hook...
+2026-04-27 17:59:30,441 - utils.database - INFO - Synchronized 51 users into memory.
+2026-04-27 17:59:30,495 - utils.database - INFO - Synchronized 21 hrs into memory.
+2026-04-27 17:59:30,537 - utils.database - INFO - Synchronized 25 lrs into memory.
+2026-04-27 17:59:30,537 - __main__ - INFO - DatabaseHandler initialised
+2026-04-27 17:59:30,537 - __main__ - INFO - Rate limiters initialised
+2026-04-27 17:59:30,537 - __main__ - INFO - DiscordAPI with rate limits initalised.
+2026-04-27 17:59:30,537 - __main__ - INFO - Roblox Client initialised.
+2026-04-27 17:59:30,537 - __main__ - INFO - Shared HTTP session initialised
+2026-04-27 17:59:30,538 - __main__ - INFO - RankTracker initialised
+2026-04-27 17:59:30,577 - utils.permissions - INFO - Loaded 5 out of 5 category permissions into cache.
+2026-04-27 17:59:30,578 - __main__ - INFO - Permissions intialised
+2026-04-27 17:59:30,583 - __main__ - INFO - Loaded cog: cogs.xp
+2026-04-27 17:59:30,585 - __main__ - INFO - Loaded cog: cogs.welcome
+2026-04-27 17:59:30,590 - __main__ - INFO - Loaded cog: cogs.moderation
+2026-04-27 17:59:30,594 - __main__ - INFO - Loaded cog: cogs.reactions
+2026-04-27 17:59:30,597 - __main__ - INFO - Loaded cog: cogs.admin
+2026-04-27 17:59:30,600 - __main__ - INFO - Loaded cog: cogs.utility
+2026-04-27 17:59:30,601 - __main__ - INFO - Loaded cog: cogs.sc
+2026-04-27 17:59:30,602 - __main__ - INFO - Loaded cog: cogs.messages
+2026-04-27 17:59:30,602 - __main__ - INFO - Setup hook completed!
+2026-04-27 17:59:31,287 - discord.gateway - INFO - Shard ID None has connected to Gateway (Session ID: 288cb04d83603b029ebb43ab24e3f7ef).
+2026-04-27 17:59:33,298 - __main__ - INFO - ==================================================
+2026-04-27 17:59:33,298 - __main__ - INFO - Logged in as CRDB Rework#6321 (ID: 1481100375951020052)
+2026-04-27 17:59:33,298 - __main__ - INFO - Connected to 1 guild(s)
+2026-04-27 17:59:33,299 - cogs.reactions - WARNING - ⚠️ Default log channel 1224765477935386676 not found for guild: CRDB Test Area!
+2026-04-27 17:59:33,381 - cogs.reactions - INFO - Cleaned up old processed reactions
+2026-04-27 17:59:33,472 - cogs.messages - INFO - Cleaned up old Criminal Records, Stored Users & Requests
+2026-04-27 17:59:34,523 - __main__ - INFO - Commands synced successfully
+2026-04-27 17:59:34,606 - utils.database - INFO - Loaded 2 welcome messages into cache
+2026-04-27 17:59:35,947 - __main__ - INFO - Bot Banner updated successfully!
+2026-04-27 17:59:35,979 - __main__ - INFO - ==================================================
+2026-04-27 18:00:42,202 - __main__ - INFO - Bot shut down by user
