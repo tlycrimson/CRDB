@@ -39,7 +39,6 @@ class PermissionsCache:
         try:
             result = await self.bot.db.supabase.table(self._table)\
                     .select("*")\
-                    .maybe_single()\
                     .execute()
 
             if result and result.data:
@@ -60,12 +59,11 @@ class PermissionsCache:
                 .execute()
             
             if result and result.data:
-                x
                 return result.data
             return []
         except Exception as e:
             logger.error("Error loading %s from database: %s", group_type, e)
-            return None
+            return []
 
 
     async def get(self, group_type: str, refresh: bool = False):
