@@ -60,6 +60,7 @@ class PermissionsCache:
                 .execute()
             
             if result and result.data:
+                x
                 return result.data
             return []
         except Exception as e:
@@ -76,7 +77,7 @@ class PermissionsCache:
             if refresh or group_type not in self._cache:
                 data = await self._load_from_database(group_type)
                 if data:
-                    self._cache[group_type]https://github.com/tlycrimson/CRDB/edit/master/utils/permissions.py = data
+                    self._cache[group_type] = data
             
             return self._cache.get(group_type)
 
