@@ -88,7 +88,7 @@ class ReactionLoggerCog(commands.Cog):
         self.log_channel = guild.get_channel(self.log_channel_id)
 
         if not self.log_channel:
-            logger.warning(f"⚠️ Default log channel {self.log_channel_id} not found for guild: {guild.name}!")
+            logger.warning(f"Default log channel {self.log_channel_id} not found for guild: {guild.name}!")
         else:
             logger.info(f"Default Log channel configured for {guild.name}.")
     

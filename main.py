@@ -199,7 +199,7 @@ async def on_ready():
  
     send = await bot.db.send_change_log()
     if send:
-        channel_ids = [Config.MAIN_COMMS_CHANNEL_ID, Config.LD_CHANNEL_ID]
+        channel_ids = [Config.MAIN_COMMS_CHANNEL_ID, Config.DEFAULT_LOG_CHANNEL]
         embeds = embedBuilder.build_change_log(bot.command_prefix) 
      
         for channel_id in channel_ids:
