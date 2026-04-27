@@ -450,10 +450,12 @@ def build_activity_log(member, message, constable, time, isTimeGuarded: bool, po
         )
  
        name = "Guard Log" if isTimeGuarded else "Activity Log"  
+       field2 = "Time Guarded:" if isTimeGuarded else "Time Active:"
+
        icon_url = Config.TIME_ICON
 
        embed.add_field(name="Constable:", value=clean_nickname(constable.display_name), inline=True)
-       embed.add_field(name=f"{"Time Guarded:" if isTimeGuarded else "Time Active:"}", value=time, inline=True)
+       embed.add_field(name=field2, value=time, inline=True)
        if points:
         embed.add_field(name="XP Awarded for Time:", value=points, inline=True)
        
