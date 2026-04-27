@@ -6,7 +6,6 @@ import logging
 from discord.ext import commands
 from dotenv import load_dotenv
 
-from utils import embedBuilder
 from utils.roblox import RobloxClient
 from utils.permissions import PermissionsCache
 from utils.views import restore_approval_views

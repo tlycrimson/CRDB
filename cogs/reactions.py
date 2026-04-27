@@ -561,11 +561,11 @@ class ReactionLoggerCog(commands.Cog):
                 if h.channels is None or payload.channel_id in h.channels:
                     try:
                         await getattr(self, h.handler)(payload, guild, member)
+                        logger.info(f"Processed Reaction event | msg={payload.message_id} user={payload.user_id} reaction={payload.emoji}")
+                        await self.mark_reaction_processed(payload.message_id, payload.user_id)
                     except Exception as e:
                         await self._handle_reaction_error(e, member, h.handler)
 
-            await self.mark_reaction_processed(payload.message_id, payload.user_id)
-            logger.info(f"Processed Reaction event | msg={payload.message_id} user={payload.user_id} reaction={payload.emoji}")
         except Exception as e:
             logger.error(f"ReactionLogger.on_raw_reaction_add failed: {e}", exc_info=True)
 
