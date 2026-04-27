@@ -299,7 +299,7 @@ class Config:
     ALERTING_NOTIF_ICON = "https://img.icons8.com/?size=100&id=GuiYMUpQWuOG&format=png&color=000000"
     STAR_ICON = "https://img.icons8.com/?size=100&id=KS3ARUzPXuOj&format=png&color=000000"
     USER_ICON = "https://img.icons8.com/?size=100&id=NcQNyxjmHvuB&format=png&color=000000"
-    SCROLL_ICON = "https://img.icons8.com/?size=100&id=undefined&format=png&color=000000"
+    SCROLL_ICON = "https://img.icons8.com/?size=100&id=RbbYFLGNyoFg&format=png&color=000000"
     TROPHY_ICON = "https://img.icons8.com/?size=100&id=loPah3jTaW8a&format=png&color=000000"
     COG_ICON = "https://img.icons8.com/?size=100&id=xyFoc6U1Hu3c&format=png&color=000000"
     CROWN_ICON = "https://img.icons8.com/?size=100&id=h1WG6I4MUqdj&format=png&color=000000"
