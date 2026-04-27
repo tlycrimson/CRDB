@@ -50,7 +50,7 @@ def build_change_log(prefix):
         description = "Below features the recent changes made to the bot. If you wish to make a suggestion to improve the bot, use the /suggest command.\n\n"
         footer = "Last Updated: April 2026"
         updates = (
-                          f"- **Commands can now be executed with the bot's prefix ({prefix}) and name or their shorthand: !lb**\n"
+                          f"- **Commands can now be executed with the bot's prefix ({prefix}) and name or their shorthand: !leaderboard ↠ !lb**\n"
                           "- Set-permissions introduces granular control over who can run specific categories of commands.\n"
                           "- Improved automation for security checks, discharge requests and induction requests.\n"
                           "- The blacklist command initiated by those below the rank of PM requires manual approving.\n"
