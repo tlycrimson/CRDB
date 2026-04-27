@@ -47,7 +47,7 @@ def build_regiment_info(data: dict):
 
 def build_change_log(prefix):
         title = "MP Assistant v1.3 Change Logs"
-        description = "Below features the recent changes made to the bot. If you wish to make a suggestion to improve the bot, use the /suggest command.\n\n"
+        description = "Below features the recent changes made to the bot. If you wish to make a suggestion to improve the bot, use the suggest command. As well, if you spot a mistake or an error, use the report command.\n\n"
         footer = "Last Updated: April 2026"
         updates = (
                           f"- **Commands can now be executed with the bot's prefix ({prefix}) and name or their shorthand: !leaderboard ↠ !lb**\n"
@@ -55,14 +55,16 @@ def build_change_log(prefix):
                           "- Improved automation for security checks, discharge requests and induction requests.\n"
                           "- The blacklist command initiated by those below the rank of PM requires manual approving.\n"
                           "- The !commands has a refined UI with button interactions.\n"
-                          "- Case logs get automatically recorded and can be managed via !manage-case-logs(mcl).\n"
+                          "- Case logs get automatically recorded and can be managed via !manage-case-logs (!mcl).\n"
+                          "- When discharged, your discord ID, username and XP is stored in backup for retrieval for 30 days.\n"
+                          "- Database loggers can use !remove and !restore commands to manage users.\n"
                           "- The security check command now accepts the username and ID along with an improved display.\n"
                           "- Changed Response & Logs Layout.\n"
                           "- Leaderboard command now displays the full rankings with different categories to choose from.\n"
                           "- Improved bug report interface.\n"
                           "- Anyone can now suggest new ideas or changes for the bot.\n"
                           "- RMP members can view their data via the profile command.\n"
-                          "- Info and Stats about RMP can now be displayed using !rmp-info (info).\n"
+                          "- Info and Stats about RMP can now be displayed using !rmp-info (!info).\n"
                           "- The bot now has a privacy policy to explain how user data is handled and stored."
                         
         )
