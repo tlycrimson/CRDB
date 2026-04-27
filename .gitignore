@@ -3,3 +3,4 @@ venv/
 testconfig.py
 __pycache__/
 *.pyc
+*:Zone.Identifier
