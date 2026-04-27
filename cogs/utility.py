@@ -69,10 +69,17 @@ class UtilityCog(commands.Cog):
             usage="<category: general/xp/mod/admin/restricted (optional)>",
             description="List all available commands"
     )
-    @app_commands.checks.cooldown(1, 5.0)
     @app_commands.describe(
         category="Look at a specific group of commands (LEAVE BLANK IF NOT)",
     )
+    @app_commands.choices(category=[
+        app_commands.Choice(name="General", value="General"),
+        app_commands.Choice(name="XP Rewards", value="XP Rewards"),
+        app_commands.Choice(name="Moderation", value="Moderation"),
+        app_commands.Choice(name="Administrative", value="Administrative"),
+        app_commands.Choice(name="Restricted", value="Restricted")
+    ])
+    @app_commands.checks.cooldown(1, 5.0)
     async def command_list(
             self,
             ctx: commands.Context,

@@ -274,6 +274,13 @@ class XPCog(commands.Cog):
             usage="<category: xp/hr/activity/events/dep (optional)>",
             description="View Leaderboard for a category"
     )
+    @app_commands.choices(category=[
+        app_commands.Choice(name="XP", value="XP"),
+        app_commands.Choice(name="HR", value="HR"),
+        app_commands.Choice(name="LR Activity", value="LR Activity"),
+        app_commands.Choice(name="LR Events", value="LR Events"),
+        app_commands.Choice(name="Departments", value="Departments")
+    ])
     @app_commands.checks.cooldown(1, 5.0)
     @has_modular_permission("general")
     async def leaderboard(
@@ -345,6 +352,10 @@ class XPCog(commands.Cog):
             usage="<link> <xp> <section: a/p (optional)>",
             description="Give XP to attendees mentioned in an event log message"
     )
+    @app_commands.choices(attendees_section=[
+        app_commands.Choice(name="Attendees:", value="Attendees:"),
+        app_commands.Choice(name="Passed:", value="Passed:")
+    ])
     @app_commands.checks.cooldown(1, 5.0)
     @has_modular_permission("xp_rewards")
     async def give_event_xp(

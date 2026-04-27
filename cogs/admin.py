@@ -29,11 +29,17 @@ class AdminCog(commands.Cog):
             usage="<category: general/xp/mod/admin> <role(optional)>",
             description="View or toggle role permissions for command categories"
     )
-    @app_commands.checks.cooldown(1, 5)
     @app_commands.describe(
         category="The command group to manage",
         role="The role to add or remove (leave blank to just view current roles)"
     )
+    @app_commands.choices(category=[
+        app_commands.Choice(name="General", value="General"),
+        app_commands.Choice(name="XP Rewards", value="XP Rewards"),
+        app_commands.Choice(name="Moderation", value="Moderation"),
+        app_commands.Choice(name="Administrative", value="Administrative")
+    ])
+    @app_commands.checks.cooldown(1, 5)
     @is_admin_or_dev()
     async def set_permissions(
         self, 
@@ -97,6 +103,11 @@ class AdminCog(commands.Cog):
             usage="<member> <type: h/g/d> <reason> [evidence: attach to message (optional)]",
             description="Notify members of honourable (h)/general (g)/dishonourable (d) discharge and log it"
     )
+    @app_commands.choices(discharge_type=[
+        app_commands.Choice(name="Honourable", value="Honourable"),
+        app_commands.Choice(name="General", value="General"),
+        app_commands.Choice(name="Dishonourable", value="Dishonourable"),
+    ])
     @app_commands.checks.cooldown(1, 5.0)
     @has_modular_permission("administrative")
     async def discharge(
@@ -282,6 +293,12 @@ class AdminCog(commands.Cog):
             usage="<member> <unit: y/m/d/perm> <amount> <reason> [evidence: attach to message (optional)]",
             description="Blacklist members with specified duration"
     )
+    @app_commands.choices(duration_unit=[
+        app_commands.Choice(name="Permanent", value="Permanent"),
+        app_commands.Choice(name="Years", value="Years"),
+        app_commands.Choice(name="Months", value="Months"),
+        app_commands.Choice(name="Days", value="Days")
+    ])
     @app_commands.checks.cooldown(1, 5.0)
     @has_modular_permission("administrative")
     async def blacklist(
