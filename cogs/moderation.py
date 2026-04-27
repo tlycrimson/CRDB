@@ -1,450 +1,559 @@
-import re
-import mimetypes
+import asyncio
+import logging 
 import discord
-import logging
 from config import Config
-from datetime import datetime, timedelta, timezone
-from utils.decorators import min_rank_required
-from discord import app_commands
-from discord.utils import escape_markdown
-from discord.ext import commands
-from utils.views import ConfirmView
 from typing import Optional, Literal
-
+from utils.decorators import  has_modular_permission 
+from discord.ext import commands
+from discord import app_commands
+from utils.helpers import clean_nickname, MockPayload
+from utils.views import ConfirmView
 
 logger = logging.getLogger(__name__)
+
+
 
 class ModerationCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
-
-    # Discharge Command
-    @app_commands.command(name="discharge", description="Notify members of honourable/general/dishonourable discharge and log it")
-    @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-    @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
-    async def discharge(
-        self,
-        interaction: discord.Interaction,
-        members: str,  # Comma-separated user mentions/IDs
-        reason: str,
-        discharge_type: Literal["Honourable", "General", "Dishonourable"] = "General",
-        evidence: Optional[discord.Attachment] = None
+    
+    # Edit database command
+    @commands.hybrid_command(
+            name="edit-user",
+            aliases=["eu"],
+            usage="<member> <column: tryouts/events/phases/courses(logistics)/inspections/joint_events/activity/time_guarded/events_attended> <value>",
+            description="Edit a specific user's record in the HR or LR table."
+    )
+    @app_commands.checks.cooldown(1, 60.0)
+    @has_modular_permission("moderation")
+    async def edit_db(
+            self, 
+            ctx: commands.Context, 
+            user: discord.User, 
+            column: Literal["tryouts", "events", "phases", "courses", "inspections", "joint_events", "activity", "time_guarded", "events_attended"],
+            value: str
     ):
-        view = ConfirmView(author=interaction.user)
-        await interaction.response.send_message("Confirm discharge?", view=view, ephemeral=True)
-        await view.wait()
-        if not view.value:
+        if ctx.interaction:
+            await ctx.interaction.response.defer(ephemeral=False)
+        guild = ctx.guild
+            
+        member = guild.get_member(user.id)
+        if not member:
+            try:
+                member = await guild.fetch_member(user.id)
+            except discord.NotFound:
+                await ctx.send(f"```❌ User not found in this server.```")
+                return
+                
+        hr_role = guild.get_role(Config.HR_ROLE_ID)
+        is_hr = hr_role and hr_role in member.roles
+        table = self.bot.db.hrs_table if is_hr else self.bot.db.lrs_table
+        user_id = str(user.id)
+
+        # Define available columns based on role
+        hr_columns = ["tryouts", "events", "phases", "courses", "inspections", "joint_events"]
+        lr_columns = ["activity", "time_guarded", "events_attended"]
+        
+        # Validate column based on role
+        available_columns = hr_columns if is_hr else lr_columns
+        if column not in available_columns:
+            await ctx.send(
+                f"```❌ Invalid column {column} for {table} table."
+                f"Available columns for {'HRs' if is_hr else 'LRs'}: {', '.join(available_columns)}```"
+            )
             return
 
+
         try:
-            # Input Sanitization 
-            reason = escape_markdown(reason) 
-            # Reason character limit check
-            if len(reason) > 1000:
-                await interaction.followup.send(
-                    "❌ Reason must be under 1000 characters",
-                    ephemeral=True
-                )
-                return
-
-            member_ids = []
-            for mention in members.split(','):
-                mention = mention.strip()
-                try:
-                    if mention.startswith('<@') and mention.endswith('>'):
-                        member_id = int(mention[2:-1].replace('!', ''))  # Handle nicknames
-                    else:
-                        member_id = int(mention)
-                    member_ids.append(member_id)
-                except ValueError:
-                    logger.warning(f"Invalid member identifier: {mention}")
-
-            processing_msg = await interaction.followup.send(
-                "⚙️ Processing discharge...",
-                ephemeral=True,
-                wait=True
-            )
-
-            await self.bot.rate_limiter.wait_if_needed(bucket="discharge")
-
-            discharged_members = []
-            for member_id in member_ids:
-                if member := interaction.guild.get_member(member_id):
-                    discharged_members.append(member)
-                else:
-                    logger.warning(f"Member {member_id} not found in guild")
-
-            if not discharged_members:
-                await interaction.followup.send("❌ No valid members found.", ephemeral=True)
-                return
-
-            # Embed creation
-            color = discord.Color.green() 
-            if discharge_type == "General":
-                color = discord.Color.green() 
-            elif discharge_type == "Honourable":
-                color = discord.Color.gold() 
+            if is_hr:
+                res = await self.bot.db.get_hr_info(user_id)
             else:
-                color = discord.Color.red()
-                
-            embed = discord.Embed(
-                title=f"{discharge_type} Discharge Notification",
-                color=color,
-                timestamp=datetime.now(timezone.utc)
-            )
-            embed.add_field(name="Reason", value=reason, inline=False)
+                res = await self.bot.db.get_hr_info(user_id)
 
-            if evidence:
-                embed.add_field(name="Evidence", value=f"[Attachment Link]({evidence.url})", inline=False)
-                mime, _ = mimetypes.guess_type(evidence.filename)
-                if mime and mime.startswith("image/"):
-                    embed.set_image(url=evidence.url)
+            if not res:
+                await ctx.send(f"```❌ No record found for {clean_nickname(user.display_name)} in {table} table.```")
+                return
 
-            embed.set_footer(text=f"Discharged by {interaction.user.display_name}")
-
-            success_count = 0
-            failed_members = []
-
-            for member in discharged_members:
-                cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
+            old_value = res.get(column, "N/A")
+            try:
+                value_converted = int(value)
+            except ValueError:
                 try:
-                    await self.bot.db.discharge_user(str(member.id), cleaned_nickname, interaction.guild)
-
-                except Exception as e:
-                    logger.error(f"Error removing {cleaned_nickname} ({member.id}) from DB: {e}")
-                try:
-                    try:
-                        await member.send(embed=embed)
-                    except discord.Forbidden:
-                        if channel := interaction.guild.get_channel(1219410104240050236):
-                            await channel.send(f"{member.mention}", embed=embed)
-                    success_count += 1
-                except Exception as e:
-                    logger.error(f"Failed to notify {member.display_name}: {str(e)}")
-                    failed_members.append(member.mention)
-
-            result_embed = discord.Embed(
-                title="Discharge Summary",
-                color=color
+                    value_converted = float(value)
+                except ValueError:
+                    value_converted = value
+            
+            res = await self.bot.db.increment_points_handler(column, table, member, value, replace=True)  
+            cleaned_nickname = clean_nickname(user.display_name)
+            if not res:
+                raise Exception(f"increment_points_handler failed")
+            await ctx.send(
+                f"```✅ Updated {column} for {cleaned_nickname} from {old_value} to {value_converted}.```"
             )
-            result_embed.add_field(name="Action", value=f"{discharge_type} Discharge", inline=False)
-            result_embed.add_field(
-                name="Results",
-                value=f"✅ Successfully notified: {success_count}\n❌ Failed: {len(failed_members)}",
-                inline=False
+        except Exception as e:
+            logger.exception(f"edit_db failed: {e}")
+            await ctx.send(f"```❌ Failed to update data.```")
+
+
+    # Add autocomplete for the column parameter
+    @edit_db.autocomplete('column')
+    async def edit_db_column_autocomplete(
+        self,
+        interaction: discord.Interaction,
+        current: str
+    ):
+        user_option = next(
+            (opt for opt in interaction.data.get('options', []) if opt['name'] == 'user'),
+            None
+        )
+        if not user_option or not interaction.guild:
+            return []
+
+        user_id = int(user_option['value'])
+        guild = interaction.guild
+
+        member = guild.get_member(user_id)
+        if not member:
+            try:
+                member = await guild.fetch_member(user_id)
+            except discord.NotFound:
+                return []
+
+        hr_role = guild.get_role(Config.HR_ROLE_ID)
+        is_hr = hr_role and hr_role in member.roles
+
+        # Display name -> DB column
+        hr_columns = {
+            "Tryouts": "tryouts",
+            "Events": "events",
+            "Phases": "phases",
+            "Logistics": "courses",       
+            "Inspections": "inspections",
+            "Joint Events": "joint_events",
+        }
+
+        lr_columns = {
+            "Activity": "activity",
+            "Time Guarded": "time_guarded",
+            "Events Attended": "events_attended",
+        }
+
+        available = hr_columns if is_hr else lr_columns
+
+        return [
+            discord.app_commands.Choice(name=display, value=db_value)
+            for display, db_value in available.items()
+            if current.lower() in display.lower()
+        ][:25]
+
+
+       
+    # Remove User Command
+    @commands.hybrid_command(
+            name="remove-user",
+            usage="<member>",
+            aliases=["remove"],
+            description="Remove a user from the database"
+    )
+    @app_commands.checks.cooldown(1, 5.0)
+    @has_modular_permission("moderation")
+    async def remove_user(self, ctx: commands.Context, user: discord.User):
+        
+        if ctx.interaction:
+            await ctx.interaction.response.defer()
+        user_id = str(user.id)
+        
+        try:
+            member = await self.bot.db.get_user(user_id)
+            if member:
+                username = member['username']
+                await self.bot.db.discharge_user(user_id, username, ctx.guild)
+                return await ctx.send(f"```✅ Successfully removed {username} from the database.```")
+            else:
+                return await ctx.send("```❌ That user is not in the database.```")
+        except Exception as e:
+            logger.error(f"remove_user failed: %s", e)
+            await ctx.send("```❌ Failed to remove user from the database.```")
+       
+        return
+
+    # Manual Fallback Log Command (covers all ReactionLogger cases)
+    @commands.hybrid_command(
+            name="force-log", 
+            aliases=["log", "fl"],
+            usage="<link> <reaction>",
+            description="Force log a message by link"
+    )
+    @app_commands.checks.cooldown(1, 5.0)
+    @has_modular_permission("moderation")
+    async def force_log(self, ctx: commands.Context, message_link: str, reaction: str):
+
+        if ctx.interaction:
+            await ctx.interaction.response.defer(ephemeral=True)
+        
+        member = ctx.guild.get_member(ctx.author.id)
+
+        # 1.1 Validation Check - Parsing Link
+        try:
+            parts = message_link.split('/')
+            guild_id = int(parts[4])
+            channel_id = int(parts[5])
+            message_id = int(parts[6])
+        except (IndexError, ValueError):
+            return await ctx.send(content="```❌ Invalid message link format.```")
+        
+        if guild_id != ctx.guild.id:
+            return await ctx.send(content="```❌ Message must be from this server.```")
+        try:
+            channel = ctx.guild.get_channel(channel_id)
+            if not channel:
+                return await ctx.send(content="```❌ Channel not found.```")
+            try:
+                message = await asyncio.wait_for(
+                    channel.fetch_message(message_id),
+                    timeout=10.0
+                )
+            except discord.NotFound:
+                return await ctx.send(content="```❌ Message not found.```")
+            except discord.Forbidden:
+                return await ctx.send(content="```❌ No permissions to read that channel.```")
+        except asyncio.TimeoutError:
+            await ctx.send(content="```⌛ Timed out fetching message.```")
+            return
+
+        #1.2 Validation Check - Reaction
+        if reaction not in Config.TRACKED_REACTIONS:
+           return await ctx.send("```❌ That reaction is not being tracked.```") 
+
+        emoji = discord.PartialEmoji.from_str(reaction)
+        
+
+        # 2. Get the Cog instance
+        rl = self.bot.get_cog("ReactionLoggerCog")
+        if not rl:
+            logger.error("Could not find ReactionLogger Cog.")
+            raise Exception
+
+        #3. Check if log has been processed already
+        processed = await rl.is_reaction_processed(message_id, member)
+        
+        if processed:
+            view = ConfirmView(author=ctx.author)
+
+            await ctx.send(
+                    f"```This log has already been processed recently.\nAre you sure you want to log this?```", 
+                    view=view)
+
+            await view.wait()
+
+            if view.value is not True:
+                return await ctx.send(
+                    "```❎ Force log cancelled.```",
+                )
+
+        # 4. Build the mock payload
+        payload = MockPayload(
+            guild_id=guild_id,
+            channel_id=channel_id,
+            message_id=message_id,
+            user_id=ctx.author.id,
+            emoji=emoji,
+            member=ctx.author
+        )
+
+        # 5. Route to the matching handler(s)
+        try:
+            matched = False
+            for handler_entry in rl.REACTION_HANDLERS:
+                if handler_entry.channels and channel_id in handler_entry.channels:
+                    matched = True
+                    method = getattr(rl, handler_entry.handler)
+                    await method(payload, ctx.guild, member)
+
+            if not matched:
+                return await ctx.send(
+                    "```❌ The channel and reaction provided are not a tracked combination.```", ephemeral=True
+                )
+
+            # 7. Mark as processed only after all handlers ran successfully
+            if not processed:
+                await rl.mark_reaction_processed(message_id, ctx.author.id)
+          
+            try:
+                channel = ctx.guild.get_channel(channel_id)
+                message = await channel.fetch_message(message_id)
+                await message.add_reaction(emoji)
+            except Exception as e:
+                logger.error("Failed to react to message: %s", e)
+
+            await ctx.send(
+                "```✅ Forcefully logged: Verified for inputted link and reaction.```",
+                ephemeral=True
             )
-            if failed_members:
-                result_embed.add_field(name="Failed Members", value=", ".join(failed_members), inline=False)
-
-            await processing_msg.edit(
-                content=None,
-                embed=result_embed
-            )
-
-            # Log to D_LOG_CHANNEL_ID
-            if d_log := interaction.guild.get_channel(Config.D_LOG_CHANNEL_ID):
-                log_embed = discord.Embed(
-                    title=f"Discharge Log",
-                    color=color,
-                    timestamp=datetime.now(timezone.utc)
-                )
-                log_embed.add_field(
-                    name="Type",
-                    value = f"🔰 {discharge_type} Discharge" if discharge_type in ("Honourable", "General") else f"🚨 {discharge_type} Discharge",
-                    inline=False
-                )
-                log_embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
-                
-                # Format member mentions with their cleaned nicknames
-                member_entries = []
-                for member in discharged_members:
-                    # Clean the nickname by removing any tags like [INS]
-                    cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
-                    member_entries.append(f"{member.mention} | {cleaned_nickname}")
-                
-                log_embed.add_field(
-                    name="Discharged Members",
-                    value="\n".join(member_entries) or "None",
-                    inline=False
-                )
-                
-                if evidence:
-                    log_embed.add_field(name="Evidence", value=f"[View Attachment]({evidence.url})", inline=True)
-
-                log_embed.add_field(name="Discharged By", value=interaction.user.mention, inline=True)
-                
-                await d_log.send(embed=log_embed)
 
         except Exception as e:
-            logger.error(f"Discharge command failed: {e}")
-            await interaction.followup.send("❌ An error occurred while processing the discharge.", ephemeral=True)
+            logger.error("/force-log failed: %s", e, exc_info=True)
+            await ctx.send(
+                f"```❌ Failed to log. ```", ephemeral=True
+            )
 
-    @app_commands.command(name="blacklist", description="Blacklist members with specified duration")
-    @app_commands.checks.cooldown(1, 5.0, key=lambda i: (i.guild_id, i.user.id))
-    @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
-    async def blacklist(
-        self,
-        interaction: discord.Interaction,
-        members: str,  # Comma-separated user mentions/IDs
-        reason: str,
-        duration_unit: Literal["Permanent", "Years", "Months", "Days"],
-        duration_amount: app_commands.Range[int, 1, 100] = 1,
-        evidence: Optional[discord.Attachment] = None
-    ):
-        view = ConfirmView(author=interaction.user)
-        
-        # Create confirmation message
-        duration_text = "Permanent" if duration_unit == "Permanent" else f"{duration_amount} {duration_unit}"
-        confirmation_msg = (
-            f"⚠️ **Are you sure you want to blacklist member(s)?**\n"
-            f"**Duration:** {duration_text}\n"
-            f"**Reason:** {reason[:200]}{'...' if len(reason) > 200 else ''}\n\n"
-            f"Click **Confirm** to proceed or **Cancel** to abort."
-        )
-        
-        await interaction.response.send_message(confirmation_msg, view=view, ephemeral=True)
-        await view.wait()
-        
-        if not view.value:
-            await interaction.followup.send("❎ Blacklist cancelled.", ephemeral=True)
-            return
+
+    #Save Roles Command
+    @commands.hybrid_command(
+            name="save-roles",
+            aliases=["sr"],
+            usage="<member>",
+            description="Save a user's tracked roles to the database."
+    )
+    @app_commands.checks.cooldown(1, 5.0)
+    @has_modular_permission("moderation")
+    async def save_roles(self, ctx: commands.Context, member: discord.Member):
+        if ctx.interaction:
+            await ctx.interaction.response.defer()
+
+        tracked_ids = Config.TRACKED_ROLE_IDS
+        matched_roles = [r for r in member.roles if r.id in tracked_ids]
+        if not matched_roles:
+            return await ctx.send(f"```❎ {clean_nickname(member.display_name)} has no tracked roles to save.```")
+        role_ids = [r.id for r in matched_roles]
 
         try:
-            # Input Sanitization 
-            reason = escape_markdown(reason) 
-            # Reason character limit check
-            if len(reason) > 1000:
-                await interaction.followup.send(
-                    "❌ Reason must be under 1000 characters",
-                    ephemeral=True
-                )
-                return
-
-            # Parse member IDs
-            member_ids = []
-            for mention in members.split(','):
-                mention = mention.strip()
-                try:
-                    if mention.startswith('<@') and mention.endswith('>'):
-                        member_id = int(mention[2:-1].replace('!', ''))  # Handle nicknames
-                    else:
-                        member_id = int(mention)
-                    member_ids.append(member_id)
-                except ValueError:
-                    logger.warning(f"Invalid member identifier: {mention}")
-
-            processing_msg = await interaction.followup.send(
-                "⚙️ Processing blacklist...",
-                ephemeral=True,
-                wait=True
+            success = await self.bot.db.save_user_roles(
+                user_id=str(member.id),
+                username=member.display_name,
+                role_ids=role_ids
             )
-
-            await self.bot.rate_limiter.wait_if_needed(bucket="blacklist")
-
-            # Get member objects
-            blacklisted_members = []
-            for member_id in member_ids:
-                if member := interaction.guild.get_member(member_id):
-                    blacklisted_members.append(member)
-                else:
-                    logger.warning(f"Member {member_id} not found in guild")
-
-            if not blacklisted_members:
-                await interaction.followup.send("❌ No valid members found.", ephemeral=True)
-                return
-
-            # Calculate blacklist duration
-            if duration_unit == "Permanent":
-                blacklist_duration = "Permanent"
-            elif duration_unit == "Years":
-                blacklist_duration = f"{duration_amount} year{'s' if duration_amount > 1 else ''}"
-            elif duration_unit == "Months":
-                blacklist_duration = f"{duration_amount} month{'s' if duration_amount > 1 else ''}"
-            elif duration_unit == "Days":
-                blacklist_duration = f"{duration_amount} day{'s' if duration_amount > 1 else ''}"
-            
-            # Calculate ending date for blacklist
-            ending_date = None
-            if duration_unit != "Permanent":
-                current_date = datetime.now(timezone.utc)
-                if duration_unit == "Years":
-                    ending_date = current_date + timedelta(days=duration_amount * 365)
-                elif duration_unit == "Months":
-                    ending_date = current_date + timedelta(days=duration_amount * 30)  # Approximate
-                elif duration_unit == "Days":
-                    ending_date = current_date + timedelta(days=duration_amount)
-
-            # Create notification embed for users (Dishonourable discharge + blacklist info)
+        except Exception as e:
             embed = discord.Embed(
-                title="Dishonourable Discharge & Blacklist Notification",
-                color=discord.Color.red(),
-                timestamp=datetime.now(timezone.utc)
-            )
-            
-            embed.add_field(name="Reason", value=reason, inline=False)
-            embed.add_field(name="Blacklist Duration", value=blacklist_duration, inline=False)
-            
-            if ending_date:
-                embed.add_field(
-                    name="Blacklist Ends", 
-                    value=f"<t:{int(ending_date.timestamp())}:D> (<t:{int(ending_date.timestamp())}:R>)",
-                    inline=False
-                )
-            
-            if evidence:
-                embed.add_field(name="Evidence", value=f"[Attachment Link]({evidence.url})", inline=False)
-                mime, _ = mimetypes.guess_type(evidence.filename)
-                if mime and mime.startswith("image/"):
-                    embed.set_image(url=evidence.url)
-
-            embed.set_footer(text=f"Blacklisted by {interaction.user.display_name}")
-
-            success_count = 0
-            failed_members = []
-
-            # Process each member
-            for member in blacklisted_members:
-                cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
-                
-                try:
-                    # Remove from database (dishonourable discharge)
-                    await self.bot.db.discharge_user(str(member.id), cleaned_nickname, interaction.guild)
-                    
-                    # Try to notify the user
-                    try:
-                        await member.send(embed=embed)
-                    except discord.Forbidden:
-                        # If DMs are closed, try public channel
-                        if channel := interaction.guild.get_channel(1219410104240050236):
-                            await channel.send(f"{member.mention}", embed=embed)
-                    success_count += 1
-                    
-                except Exception as e:
-                    logger.error(f"Failed to process {member.display_name}: {str(e)}")
-                    failed_members.append(member.mention)
-
-            # Create result embed
-            result_embed = discord.Embed(
-                title="Blacklist Summary",
+                title="❌ Error Saving Roles",
+                description=f"Failed to save roles for {member.mention}.\n{e}",
                 color=discord.Color.red()
             )
-            
-            result_embed.add_field(name="Action", value=f"Dishonourable Discharge & Blacklist", inline=False)
-            result_embed.add_field(name="Duration", value=blacklist_duration, inline=False)
-            result_embed.add_field(
-                name="Results",
-                value=f"✅ Successfully processed: {success_count}\n❌ Failed: {len(failed_members)}",
-                inline=False
+            await ctx.send(embed=embed, ephemeral=True)
+            return
+
+        embed = discord.Embed(
+            title="✅ Roles Saved" if success else "❌ Error Saving Roles",
+            description=(
+                f"Saved **{len(role_ids)}** tracked roles for {member.mention}.\n"
+                f"**Roles:** {', '.join([r.name for r in matched_roles]) or 'None'}"
+            ) if success else f"Failed to save roles for {member.mention}.",
+            color=discord.Color.green() if success else discord.Color.red()
+        )
+
+        # Log to default channel
+        log_channel = ctx.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
+        if log_channel:
+            await log_channel.send(embed=embed)
+
+        # Send ephemeral follow-up to the user
+        await ctx.send(embed=embed, ephemeral=True)
+
+    #Restore Roles Command
+    @commands.hybrid_command(
+            name="restore-roles", 
+            aliases=["rr"],
+            usage="<member>",
+            description="Restore saved roles for a user."
+    )
+    @app_commands.checks.cooldown(1, 5.0)
+    @has_modular_permission("moderation")
+    async def restore_roles(self, ctx: commands.Context, member: discord.Member):
+        
+        if ctx.interaction:
+            await ctx.interaction.response.defer()
+
+        try:
+            saved_roles = await self.bot.db.get_user_roles(str(member.id))
+        except Exception:
+            error_msg = f"```❌ Failed to fetch saved roles.```"
+            await ctx.send(error_msg, ephemeral=True)
+            return
+
+        if not saved_roles:
+            msg = f"```⚠️ No saved roles found for {clean_nickname(member.display_name)}.```"
+            await ctx.send(msg, ephemeral=True)
+            return
+
+        roles_string = ", ".join([str(role_id) for role_id in saved_roles])
+        dyno_command = f"?role {member.id} {roles_string}"
+
+        # Create embed with Dyno command
+        embed = discord.Embed(
+            description=f"Use the following command in chat to reassign roles:\n`{dyno_command}`",
+            color=discord.Color.green()
+        ).set_author(name=f"Roles restored for {clean_nickname(member.display_name)}", icon_url= Config.CHECK_URL)        
+        await ctx.send(embed=embed)
+
+    #Restore User Command
+    @commands.hybrid_command(
+            name="restore-user", 
+            aliases=["restore"],
+            usage="<member>",
+            description="Restore user's data."
+    )
+    @app_commands.checks.cooldown(1, 5.0)
+    @has_modular_permission("moderation")
+    async def restore_user(self, ctx: commands.Context, member: discord.Member):
+        
+        if ctx.interaction:
+            await ctx.interaction.response.defer()
+       
+        rmp_role = ctx.guild.get_role(Config.RMP_ROLE_ID)
+        if rmp_role and rmp_role not in member.roles:
+            return await ctx.send("```❌ Cannot restore data if they do not have the RMP role.```")
+
+        try:
+            saved_user = await self.bot.db.get_stored_user(str(member.id))
+        except Exception:
+            error_msg = f"```❌ Failed to fetch saved data.```"
+            return await ctx.send(error_msg, ephemeral=True)
+
+        if not saved_user:
+            msg = f"```⚠️ No saved data found in backup for {clean_nickname(member.display_name)}.```"
+            await ctx.send(msg, ephemeral=True)
+            return
+        
+        username = saved_user['username']
+        guild = ctx.guild
+        roblox_id = saved_user['roblox_id']
+        xp = saved_user['xp']
+       
+        try:
+            await self.bot.db.create_or_update_user_in_db(member.id, username, guild, roblox_id, xp)
+            embed = discord.Embed(
+                    description=f"User data restored for {clean_nickname(member.display_name)}. Data Restored: discord ID, username and xp. Be aware that if the user has changed username it will revert back to their old username until an action is performed on them.",
+                color=discord.Color.green()
             )
+            name = "Sucessfully restored data"
+            icon_url = Config.CHECK_URL
+            embed.set_author(name=name, icon_url=icon_url)
             
-            if failed_members:
-                result_embed.add_field(name="Failed Members", value=", ".join(failed_members), inline=False)
+            log_channel = guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
+            if log_channel:
+                try:
+                    await log_channel.send(embed=embed)
+                except Exception as log_error:
+                    logger.error("Failed to send log embed: %s", log_error)
+            
+            await ctx.send(f"```✅ Sucessfully data restored for {clean_nickname(member.display_name)}.```")
+        except Exception as e:
+            logger.error("Failed to restore stored user for %s (%s): %s", username, member.id, e)
+            await ctx.send("```❌ Failed to restore data.```")
+            return
 
-            await processing_msg.edit(
-                content=None,
-                embed=result_embed
+        try:
+            await self.bot.db.delete_stored_user(member.id) 
+        except Exception as e:
+            logger.error("Failed to delete %s (%s) in user_store: %s", username, member.id, e)
+            return
+
+    #Manage Case Logs
+    @commands.hybrid_command(
+            name="manage-case-logs", 
+            aliases=["mcl"],
+            usage="<rbx username/id> <case-link: (optional)>",
+            description="Manage a user's case-log by viewing their record or adding/deleting a record."
+    )
+    @app_commands.describe(roblox_user="The user you want to manage (id/username)", case_link="The link to the record you want to add/remove (leave blank just to view their criminal record)")
+    @app_commands.checks.cooldown(1, 5.0)
+    @has_modular_permission("moderation")
+    async def remove_case_log(self, ctx: commands.Context, roblox_user: str, case_link: Optional[str] = None):
+
+        if ctx.interaction:
+            await ctx.interaction.response.defer(ephemeral=False)
+
+        ctx.author = ctx.author
+        cleaned_name = clean_nickname(ctx.author.display_name)
+        
+        if roblox_user.isnumeric():
+            user_record = await self.bot.db.get_criminal_record(user_id=roblox_user)
+        else:
+            user_record = await self.bot.db.get_criminal_record(username=roblox_user)
+        
+        
+        suspect_username = user_record[0]["username"] if user_record else ""
+
+        if not case_link:
+            if not user_record:
+                await ctx.send("```❌ No recent criminal record found for that user.```")
+                return
+
+            limited_records = user_record[:30]
+
+            records = "\n".join(
+                f"[Record {i}]({record['record']})"
+                for i, record in enumerate(limited_records, start=1)
             )
 
-            # ========== LOG TO DISCHARGE CHANNEL (AS DISHONOURABLE) ==========
-            if d_log := interaction.guild.get_channel(Config.D_LOG_CHANNEL_ID):
-                log_embed = discord.Embed(
-                    title="Discharge Log",
-                    color=discord.Color.red(),
-                    timestamp=datetime.now(timezone.utc)
-                )
-                
-                # Log as dishonourable discharge (same format as /discharge command)
-                log_embed.add_field(name="Type", value="🚨 Dishonourable Discharge", inline=False)
-                log_embed.add_field(name="Sub-Type", value="⛔ With Blacklist", inline=True)
-                log_embed.add_field(name="Blacklist Duration", value=blacklist_duration, inline=True)
-                
-                if ending_date:
-                    log_embed.add_field(
-                        name="Blacklist Ends", 
-                        value=f"<t:{int(ending_date.timestamp())}:D>",
-                        inline=True
-                    )
-                
-                log_embed.add_field(name="Reason", value=f"```{reason}```", inline=False)
-                
-                # Format member mentions with their cleaned nicknames (same format as /discharge)
-                member_entries = []
-                for member in blacklisted_members:
-                    cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
-                    member_entries.append(f"{member.mention} | {cleaned_nickname}")
-                
-                log_embed.add_field(
-                    name="Discharged Members",
-                    value="\n".join(member_entries) or "None",
-                    inline=False
-                )
-                
-                if evidence:
-                    log_embed.add_field(name="Evidence", value=f"[View Attachment]({evidence.url})", inline=True)
+            if len(user_record) > 30:
+                records += f"\n\n*...and {len(user_record) - 30} more records.*"
 
-                log_embed.add_field(name="Discharged By", value=interaction.user.mention, inline=True)
-                
-                await d_log.send(embed=log_embed)
+            record_embed = discord.Embed(
+                description=f"Logged cases of {suspect_username} in the past 2 days:\n{records}",
+                color=discord.Color.red()
+            ).set_author(name=f"{suspect_username}'s Criminal Record", icon_url=Config.CUFFS_ICON)
 
-            # ========== LOG TO BLACKLIST CHANNEL ==========
-            if b_log := interaction.guild.get_channel(Config.B_LOG_CHANNEL_ID):
-                blacklist_log_embed = discord.Embed(
-                    title="⛔ Blacklist Entry",
-                    color=discord.Color.dark_red(),
-                    timestamp=datetime.now(timezone.utc)
+            record_embed.set_footer(text="Use this command with the 'case_link' argument to add/remove a case.")
+
+            return await ctx.send(embed=record_embed)
+
+        try:
+            parts = case_link.split('/')
+            guild_id = int(parts[4])
+            channel_id = int(parts[5])
+            message_id = int(parts[6])
+        except (IndexError, ValueError):
+            return await ctx.send("```❌ Invalid message link format.```")
+
+        if guild_id != ctx.guild.id:
+            return await ctx.send("```❌ Message must be from this server.```")
+
+        try:
+            channel = ctx.guild.get_channel(channel_id)
+            if not channel or channel_id != Config.CASE_LOGS_CHANNEL_ID:
+                return await ctx.send("```❌ Channel not valid or not case-logs.```")
+
+            try:
+                message = await asyncio.wait_for(
+                    channel.fetch_message(message_id),
+                    timeout=10.0
                 )
-                
-                blacklist_log_embed.add_field(name="Issuer:", value=interaction.user.mention, inline=False)
-                
-                # List all blacklisted members with Roblox IDs if available
-                for member in blacklisted_members:
-                    cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
-                    
-                    # Try to get Roblox ID from database before removing
-                    roblox_id = None
-                    try:
-                        def _get_roblox_id():
-                            sup = self.bot.db.supabase
-                            res = sup.table('users').select('roblox_id').eq('user_id', str(member.id)).execute()
-                            if getattr(res, 'data', None) and len(res.data) > 0:
-                                return res.data[0].get('roblox_id')
-                            return None
-                        
-                        roblox_id = await self.bot.db.run_query(_get_roblox_id)
-                    except Exception as e:
-                        logger.error(f"Error getting Roblox ID for {cleaned_nickname}: {e}")
-                    
-                    member_info = f"**Name:** {cleaned_nickname}\n**Discord:** {member.mention}"
-                    if roblox_id:
-                        member_info += f"\n**Roblox ID:** {roblox_id}"
-                    
-                    blacklist_log_embed.add_field(
-                        name=cleaned_nickname,
-                        value=member_info,
-                        inline=False
-                    )
-                
-                blacklist_log_embed.add_field(name="Duration:", value=blacklist_duration, inline=False)
-                blacklist_log_embed.add_field(name="Reason:", value=reason, inline=False)
-                
-                if ending_date:
-                    blacklist_log_embed.add_field(
-                        name="Ending date", 
-                        value=f"<t:{int(ending_date.timestamp())}:D>",
-                        inline=False
-                    )
-                
-                blacklist_log_embed.add_field(name="Starting date", value=f"<t:{int(datetime.now(timezone.utc).timestamp())}:D>", inline=False)
-                blacklist_log_embed.set_footer(text=f"Blacklisted by {interaction.user.display_name}")
-                
-                await b_log.send(embed=blacklist_log_embed)
+            except discord.NotFound:
+                return await ctx.send("```❌ Message not found.```")
+            except discord.Forbidden:
+                return await ctx.send("```❌ No permissions to read that channel.```")
+
+        except asyncio.TimeoutError:
+            return await ctx.send("```⌛ Timed out fetching message.```")
+
+        list_of_ids = [int(record["message_id"]) for record in user_record]
+        action = "removed" if message_id in list_of_ids else "added"
+
+        try:
+            if action == "removed":
+                await self.bot.db.remove_criminal_record(message_id=message_id)
+                await ctx.send(f"```✅ Successfully removed the case log on {suspect_username}.```")
+            else:
+                mlc = self.bot.get_cog("MessageLoggerCog")
+                suspect_username = await mlc.case_logs(message, True, roblox_user)
+                if suspect_username:
+                    await ctx.send(f"```✅ Successfully added the case log on {suspect_username}.```")
+                else:
+                    return await ctx.send("```❌ An error occurred while trying to add the log to the database. Double check if the provided user aligns with the one in the case-log.```")
+
+            embed = discord.Embed(
+                description=f"[Arrest log]({case_link}) on {suspect_username} has been successfully **{action}** by {cleaned_name}.",
+                color=discord.Color.green()
+            ).set_author(name=f"Case {action.capitalize()}", icon_url=Config.CUFFS_ICON)
+
+            log_channel = ctx.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
+            if log_channel:
+                await log_channel.send(embed=embed)
 
         except Exception as e:
-            logger.error(f"Blacklist command failed: {e}")
-            await interaction.followup.send("❌ An error occurred while processing the blacklist.", ephemeral=True)
-
-
+            logger.error("remove_case_log failed: %s", e)
+            await ctx.send("```❌ An error occurred while trying to manage the case log.```")
 
 async def setup(bot):
     await bot.add_cog(ModerationCog(bot))
-

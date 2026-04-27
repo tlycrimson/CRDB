@@ -1,518 +1,621 @@
-import re
-import logging 
+import asyncio
+import logging
 import discord
-from config import Config
-from datetime import datetime, timezone
-from utils.decorators import has_allowed_role, min_rank_required 
-from discord.ext import commands
+import mimetypes
 from discord import app_commands
-from utils.views import ConfirmView
+from discord.ext import commands
+from typing import Optional, Literal
+from discord.utils import escape_markdown
+from datetime import datetime, timedelta, timezone
+
+from config import Config
+from utils import embedBuilder
+from utils.helpers import clean_nickname, BlacklistData
+from utils.views import ConfirmView, ApprovalView, save_pending_blacklist
+from utils.decorators import min_rank_required2, has_modular_permission, is_admin_or_dev
+
 
 logger = logging.getLogger(__name__)
 
 class AdminCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
+        #self.monitoring_channels_cache = MonitoringChannelsCache(bot)
 
-    # Edit database command
-    @app_commands.command(name="edit-db", description="Edit a specific user's record in the HR or LR table.")
-    @has_allowed_role()
-    async def edit_db(self, interaction: discord.Interaction, user: discord.User, column: str, value: str):
-        await interaction.response.defer(ephemeral=True)
-        guild = interaction.guild
-        if not guild:
-            await interaction.followup.send("❌ This command can only be used in a server.")
-            return
-            
-        member = guild.get_member(user.id)
-        if not member:
-            try:
-                member = await guild.fetch_member(user.id)
-            except discord.NotFound:
-                await interaction.followup.send(f"❌ {user.mention} not found in this server.")
-                return
-                
-        hr_role = guild.get_role(Config.HR_ROLE_ID)
-        is_hr = hr_role and hr_role in member.roles
-        table = "HRs" if is_hr else "LRs"
-        user_id = str(user.id)
+    #Set Permissions Command
+    @commands.hybrid_command(
+            name="set-permissions",
+            aliases=["sp"], 
+            usage="<category: general/xp/mod/admin> <role(optional)>",
+            description="View or toggle role permissions for command categories"
+    )
+    @app_commands.checks.cooldown(1, 5)
+    @app_commands.describe(
+        category="The command group to manage",
+        role="The role to add or remove (leave blank to just view current roles)"
+    )
+    @is_admin_or_dev()
+    async def set_permissions(
+        self, 
+        ctx: commands.Context, 
+        category: Literal["General", "XP Rewards", "Moderation", "Administrative", "general", "xp", "mod", "admin"],
+        role: Optional[discord.Role] = None
+    ):
+        category_low = category.lower() 
+        group_mapping = {
+            "general": "general",
+            "xp rewards": "xp_rewards",
+            "xp": "xp_rewards",
+            "moderation": "moderation",
+            "mod": "moderation",
+            "administrative": "administrative",
+            "admin": "administrative"
+        }
 
-        # Define available columns based on role
-        hr_columns = ["tryouts", "events", "phases", "courses", "inspections", "joint_events"]
-        lr_columns = ["activity", "time_guarded", "events_attended"]
+        db_type = group_mapping.get(category_low, "general")
         
-        # Validate column based on role
-        available_columns = hr_columns if is_hr else lr_columns
-        if column not in available_columns:
-            await interaction.followup.send(
-                f"❌ Invalid column `{column}` for {table} table. "
-                f"Available columns for {'HRs' if is_hr else 'LRs'}: {', '.join(available_columns)}"
-            )
-            return
+        allowed_ids = await self.bot.permissions.get(db_type)
+        
+        if role is None:
+            role_mentions = "\n".join(f"<@&{rid}>" for rid in allowed_ids)
+            list_str = role_mentions if role_mentions else "No roles assigned (Admin only)."
+            
+            embed = discord.Embed(
+                description=f"The following roles have access to these commands:\n{list_str}",
+                color=discord.Color.blue()
+                ).set_author(name=f"Permissions: {category}", icon_url=Config.SCROLL_ICON)
+            embed.set_footer(text="Tip: Use this command with the 'role' argument to add/remove access.")
 
-        def _work():
-            sup = self.bot.db.supabase
-            res = sup.table(table).select("*").eq("user_id", user_id).execute()
-            return res
+            return await ctx.send(embed=embed, ephemeral=True)
+        
+        if role.id in allowed_ids:
+            allowed_ids.remove(role.id)
+            action = "Removed"
+        else:
+            allowed_ids.append(role.id)
+            action = "Added"
 
         try:
-            res = await self.bot.db.run_query(_work)
-            if not res.data:
-                await interaction.followup.send(f"❌ No record found for {user.mention} in `{table}` table.")
-                return
-            if len(res.data) > 1:
-                await interaction.followup.send(f"❌ Multiple records found for {user.mention} in `{table}` table.")
-                return
-
-            old_value = res.data[0].get(column, "N/A")
-            try:
-                value_converted = int(value)
-            except ValueError:
-                try:
-                    value_converted = float(value)
-                except ValueError:
-                    value_converted = value
-
-            def _update_work():
-                return self.bot.db.supabase.table(table).update({column: value_converted}).eq("user_id", user_id).execute()
-
-            await self.bot.db.run_query(_update_work)
-            await interaction.followup.send(
-                f"✅ Updated `{column}` for {user.mention} from `{old_value}` to `{value_converted}`."
-            )
+            allowed_ids = list(set(allowed_ids))
+            updated = await self.bot.permissions.update(db_type, allowed_ids)
+            
+            if updated:
+                await ctx.send(
+                    f"```✅ {action} {role.name} role {'from' if action == 'Removed' else 'to'} the {category} category permissions.```",
+                    ephemeral=True
+                )
+            else:
+                raise Exception("Update failed")
         except Exception as e:
-            logger.exception("edit_db failed: %s", e)
-            await interaction.followup.send(f"❌ Failed to update data: `{e}`")
+            logger.error(f"Error updating permissions: {e}")
+            await ctx.send("```❌ Failed to update permissions.```", ephemeral=True)
 
 
-    # Add autocomplete for the column parameter
-    @edit_db.autocomplete('column')
-    async def edit_db_column_autocomplete(
+    # Discharge Command
+    @commands.hybrid_command(
+            name="discharge",
+            usage="<member> <type: h/g/d> <reason> [evidence: attach to message (optional)]",
+            description="Notify members of honourable (h)/general (g)/dishonourable (d) discharge and log it"
+    )
+    @app_commands.checks.cooldown(1, 5.0)
+    @has_modular_permission("administrative")
+    async def discharge(
         self,
-        interaction: discord.Interaction,
-        current: str
+        ctx: commands.Context,
+        members: str,  # Comma-separated user mentions/IDs
+        discharge_type: Literal["Honourable", "General", "Dishonourable", "h", "g", "d"] = "General",
+        evidence: Optional[discord.Attachment] = None,
+        *, # Puts any left over into last arg
+        reason: str = "No reason provided"
     ):
-        user_option = next(
-            (opt for opt in interaction.data.get('options', []) if opt['name'] == 'user'),
-            None
-        )
-        if not user_option or not interaction.guild:
-            return []
-
-        user_id = int(user_option['value'])
-        guild = interaction.guild
-
-        member = guild.get_member(user_id)
-        if not member:
-            try:
-                member = await guild.fetch_member(user_id)
-            except discord.NotFound:
-                return []
-
-        hr_role = guild.get_role(Config.HR_ROLE_ID)
-        is_hr = hr_role and hr_role in member.roles
-
-        # Display name -> DB column
-        hr_columns = {
-            "Tryouts": "tryouts",
-            "Events": "events",
-            "Phases": "phases",
-            "Logistics": "courses",       
-            "Inspections": "inspections",
-            "Joint Events": "joint_events",
+        if ctx.interaction:
+            await ctx.interaction.response.defer(ephemeral=True)
+        
+        type_map = {
+                "h": "Honourable",
+                "g": "General",
+                "d": "Dishonourable",
         }
 
-        lr_columns = {
-            "Activity": "activity",
-            "Time Guarded": "time_guarded",
-            "Events Attended": "events_attended",
-        }
+        charge_type = db_value = type_map.get(discharge_type.lower(), discharge_type.title())
 
-        available = hr_columns if is_hr else lr_columns
+        try:
+            reason = escape_markdown(reason) 
+            if len(reason) > 1000:
+                await ctx.send(
+                    "```❌ Reason must be under 1000 characters```",
+                    ephemeral=True
+                )
+                return
 
-        return [
-            discord.app_commands.Choice(name=display, value=db_value)
-            for display, db_value in available.items()
-            if current.lower() in display.lower()
-        ][:25]
+            member_ids = []
+            for mention in members.split(','):
+                mention = mention.strip()
+                if mention.startswith('<@') and mention.endswith('>'):
+                    member_id = int(mention[2:-1].replace('!', ''))  # Handle nicknames
+                else:
+                    member_id = int(mention)
+                member_ids.append(member_id)
 
+            member_ids = list(set(member_ids))
 
+            if ctx.author.id in member_ids:
+                return await ctx.send("```❌ You cannot discharge yourself.```", ephemeral=True)
+            
+            # Confirmation before action
+            view = ConfirmView(author=ctx.author)
+            confirmation_msg = (
+                        f"Their information will be deleted from the database and could result in permanent loss.\n\n"
+                        f"**__Discharge Information__**\n"
+                        f"**Type:** {charge_type}\n"
+                        f"**Members to be discharged:** {members}\n"
+                        f"**Reason:** {reason}\n"
+                        f"**Evidence:** {'N/A' if not evidence else ''}\n\n"
+                    )
+
+            embed = discord.Embed(description=confirmation_msg, color=discord.Color.orange())
+            embed.set_author(
+                    name="Are you sure you want to go through this discharge?",
+                    icon_url=Config.ALERT_URL
+            )
+            if evidence:
+                embed.set_image(url=evidence.url)
+
+            await ctx.send(embed=embed, view=view, ephemeral=True)
+            await view.wait()
+
+            if not view.value:
+                await ctx.send("```❎ Discharge cancelled.```", ephemeral=True)
+                return False
+
+            processing_msg = await ctx.send(
+                "```⚙️ Processing discharge...```",
+                ephemeral=True,
+            )
+
+            await self.bot.rate_limiter.wait_if_needed(bucket="discharge")
+
+            discharged_members = []
+            for member_id in member_ids:
+                if member := ctx.guild.get_member(member_id):
+                    discharged_members.append(member)
+
+            if not discharged_members:
+                await ctx.send("```❌ No valid members found.```", ephemeral=True)
+                return
+            
+            # Embed creation
+            color = discord.Color.green() 
+            if charge_type == "General":
+                color = discord.Color.green() 
+            elif charge_type == "Honourable":
+                color = discord.Color.gold() 
+            else:
+                color = discord.Color.red()
+                
+            embed = discord.Embed(
+                title=f"{charge_type} Discharge Notification",
+                color=color,
+                timestamp=datetime.now(timezone.utc)
+                ).set_thumbnail(url=Config.RMP_URL)
+            embed.add_field(name="Reason Provided:", value=f"```{reason}```", inline=False)
+            
+            if charge_type != "Dishonourable":
+                embed.description = "**Thank you for your service! Please come back to us when you can.**\n\n"
+
+            if evidence:
+                embed.add_field(name="Evidence:", value=f"[Attachment Link]({evidence.url})", inline=False)
+                mime, _ = mimetypes.guess_type(evidence.filename)
+                if mime and mime.startswith("image/"):
+                    embed.set_image(url=evidence.url)
+
+            embed.set_footer(text=f"Discharged by {ctx.author.display_name}")
+
+            success_count = 0
+            successful_members = []
+            failed_members = []
+            
+            for member in discharged_members:
+                cleaned_nickname = clean_nickname(member.display_name) or member.name
+                try:
+                    roblox_id = await self.bot.db.get_roblox_id(member.id)
+
+                    member_info = f"{cleaned_nickname} | {member.id} ({member.mention})"
+                    if roblox_id:
+                        member_info += f" | {roblox_id}"
+
+                    await self.bot.db.discharge_user(str(member.id), cleaned_nickname, ctx.guild)
+                    try:
+                        await member.send(embed=embed)
+                    except discord.Forbidden:
+                        if channel := ctx.guild.get_channel(Config.PUBLIC_CHAT_CHANNEL_ID):
+                            await channel.send(f"{member.mention}", embed=embed)
+                    
+                    successful_members.append(member_info)
+                    success_count += 1
+                except Exception as e:
+                    logger.exception(f"Error discharging %s (%s): $s", cleaned_nickname, member.id, e)
+                    failed_members.append(member.mention)
+
+            result_embed = discord.Embed(
+                title="Discharge Summary",
+                color=color
+            )
+
+            result_embed.add_field(name="Action:", value=f"{charge_type} Discharge", inline=False)
+            result_embed.add_field(
+                name="Results:",
+                value=f"Successfully notified: {success_count}\nFailed: {len(failed_members)}",
+                inline=False
+            )
+
+            if failed_members:
+                result_embed.add_field(name="Failed Members:", value=", ".join(failed_members), inline=False)
+
+            await processing_msg.edit(
+                content=None,
+                embed=result_embed
+            )
+
+            # Log to D_LOG_CHANNEL_ID
+            if d_log := ctx.guild.get_channel(Config.D_LOG_CHANNEL_ID):
+                log_embed = embedBuilder.build_discharge_log(
+                        charge_type,
+                        successful_members,
+                        ctx.author,
+                        reason=reason,
+                        evidence=evidence,
+                        color=color
+                )
+
+                await d_log.send(embed=log_embed)
+                return True
+        except Exception as e:
+            logger.error(f"Discharge command failed: {e}")
+            await ctx.send("```❌ An error occurred while processing the discharge.```", ephemeral=True)
+            return False
     
-    # Reset Database Command
-    @app_commands.command(name="reset-db", description="Reset the LR and HR tables.")
-    @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
-    async def reset_db(self, interaction: discord.Interaction):
-        await interaction.response.defer(ephemeral=True)
+    #Blacklist Command
+    @commands.hybrid_command(
+            name="blacklist", 
+            aliases=["bl"],
+            usage="<member> <unit: y/m/d/perm> <amount> <reason> [evidence: attach to message (optional)]",
+            description="Blacklist members with specified duration"
+    )
+    @app_commands.checks.cooldown(1, 5.0)
+    @has_modular_permission("administrative")
+    async def blacklist(
+        self,
+        ctx: commands.Context,
+        members: str,  # Comma-separated user mentions/IDs
+        duration_unit: Literal["Permanent", "Years", "Months", "Days", "perm", "y", "m", "d"],
+        duration_amount: int = 1,
+        evidence: Optional[discord.Attachment] = None,
+        *, # Puts any left over into last arg
+        reason: str = "No reason provided.",
+    ):
+        unit_map = {
+            "perm": "Permanent", "permanent": "Permanent",
+            "y": "Years", "years": "Years",
+            "m": "Months", "months": "Months",
+            "d": "Days", "days": "Days"
+        }
 
-        guild = interaction.guild
-        if not guild:
-            await interaction.followup.send(
-                "❌ This command can only be used in a server.",
+        unit = unit_map.get(duration_unit.lower(), "Permanent")
+
+        view = ConfirmView(author=ctx.author)
+        
+        member = ctx.guild.get_member(ctx.author.id)
+    
+        isPMorHigher = await min_rank_required2(Config.PM_ROLE_ID, ctx)
+        
+                
+        reason = escape_markdown(reason) 
+
+        if len(reason) > 1000:
+            await ctx.followup.send(
+                "❌ Reason must be under 1000 characters",
                 ephemeral=True
             )
             return
 
-        view = ConfirmView(author=interaction.user)
+        member_ids = []
+        for mention in members.split(','):
+            mention = mention.strip()
+            try:
+                if mention.startswith('<@') and mention.endswith('>'):
+                    member_id = int(mention[2:-1].replace('!', ''))  # Handle nicknames
+                else:
+                    member_id = int(mention)
+                member_ids.append(member_id)
+            except ValueError:
+                logger.warning(f"Invalid member identifier: {mention}")
+        
+        member_ids = list(set(member_ids))
 
-        await interaction.followup.send(
-            "⚠️ **Are you sure you want to reset the database?**\n"
-            "This will reset **ALL LR and HR stats**.\n\n"
-            "Click **Confirm** to proceed or **Cancel** to abort.",
-            view=view,
-            ephemeral=True
+        if ctx.author.id in member_ids:
+            return await ctx.send("```❌ You cannot blacklist yourself.```", ephemeral=True)
+
+        if isPMorHigher:
+            topMsg = "Are you sure you want to go through this blacklist?"
+        else:
+            topMsg = "Are you sure you want to request this blacklist?"
+       
+        duration_text = ""
+
+        if unit == "Permanent":
+            duration_text = f"Permanent"
+        elif unit == "Years":
+            duration_text = f"{duration_amount} Year{'s' if duration_amount > 1 else ''}"
+        elif unit == "Months":
+            duration_text = f"{duration_amount} Month{'s' if duration_amount > 1 else ''}"
+        elif unit == "Days":
+            duration_text = f"{duration_amount} Day{'s' if duration_amount > 1 else ''}"
+            
+        confirmation_msg = (
+            f"**__Blacklist Information__**\n"
+            f"**Members to be blacklisted:** {members}\n"
+            f"**Duration:** {duration_text}\n"
+            f"**Reason:** {reason}\n"
+            f"**Evidence:** {'' if evidence else 'N/A'}\n\n"
         )
 
-        # Wait for user input (or timeout)
+        embed = discord.Embed(description=confirmation_msg, color=discord.Color.orange())
+        embed.set_author(
+                name=f"{topMsg}",
+                icon_url=Config.ALERT_URL
+        )
+        if evidence:
+            embed.set_image(url=evidence.url)
+
+        await ctx.send(embed=embed, view=view, ephemeral=True)
+        await view.wait()
+        
+        if not view.value:
+            return await ctx.send("```❎ Blacklist cancelled.```", ephemeral=True)
+                                    
+        ctx_data = BlacklistData(member_ids, reason, unit, duration_amount, evidence, member)
+
+        if isPMorHigher:
+           return await self.blacklist_members(ctx_data, ctx)
+
+        request_embed = embedBuilder.build_blacklist_request(members, duration_text, reason, clean_nickname(member.display_name), evidence)     
+        
+        requestView = ApprovalView(ctx_data, self, self.bot)
+        
+        channel = ctx.guild.get_channel(Config.B_LOG_CHANNEL_ID)
+
+        msg = await channel.send(
+                f"<@&{Config.PM_ROLE_ID}>",
+                embed=request_embed, 
+                allowed_mentions=discord.AllowedMentions(roles=True), 
+                view=requestView)
+
+        await save_pending_blacklist(self.bot, msg.id, channel.id, ctx_data)
+
+        await ctx.send(f"```✅ Blacklist Request has been sent.```", ephemeral=True)
+        return
+
+    async def blacklist_members(self, ctx_data, ctx):
+        members = ctx_data.members
+        reason = ctx_data.reason
+        unit = ctx_data.unit
+        duration = ctx_data.duration
+        evidence = ctx_data.evidence
+        issuer = ctx_data.issuer
+
+        
+        try:
+            processing_msg = await ctx.send(
+                            "⚙️ Processing blacklist...",
+                            ephemeral=True,
+                        )
+
+            blacklisted_members = []
+            for member_id in members:
+                if member := ctx.guild.get_member(member_id):
+                    blacklisted_members.append(member)
+                else:
+                    logger.warning(f"Member {member_id} not found in guild")
+
+            if not blacklisted_members:
+                await ctx.send("❌ No valid members found.", ephemeral=True)
+                return
+
+            # Calculate blacklist duration
+            if unit == "Permanent":
+                blacklist_duration = "Permanent"
+            elif unit == "Years":
+                blacklist_duration = f"{duration} year{'s' if duration > 1 else ''}"
+            elif unit == "Months":
+                blacklist_duration = f"{duration} month{'s' if duration > 1 else ''}"
+            elif unit == "Days":
+                blacklist_duration = f"{duration} day{'s' if duration > 1 else ''}"
+            
+            # Calculate ending date for blacklist
+            ending_date = None
+            if unit != "Permanent":
+                current_date = datetime.now(timezone.utc)
+                if unit == "Years":
+                    ending_date = current_date + timedelta(days=duration * 365)
+                elif unit == "Months":
+                    ending_date = current_date + timedelta(days=duration * 30)  # Approximate
+                elif unit == "Days":
+                    ending_date = current_date + timedelta(days=duration)
+
+            # Create notification embed for users (Dishonourable discharge + blacklist info)
+            embed = discord.Embed(
+                title="Blacklist Notification",
+                color=discord.Color.red(),
+                timestamp=datetime.now(timezone.utc)
+            ).set_thumbnail(url=Config.RMP_URL)
+            
+            embed.add_field(name="Blacklist Duration:", value=blacklist_duration, inline=True)
+            
+            embed.add_field(name="Starting date:", value=f"<t:{int(datetime.now(timezone.utc).timestamp())}:D>", inline=True)
+
+            if ending_date:
+                embed.add_field(
+                    name="Ending date:", 
+                    value=f"<t:{int(ending_date.timestamp())}:D>",
+                    inline=True
+                )
+        
+            embed.add_field(name="Reason:", value=f"```{reason}```", inline=False)
+
+            if evidence:
+                embed.add_field(name="Evidence:", value=f"[Attachment Link]({evidence.url})", inline=False)
+                mime, _ = mimetypes.guess_type(evidence.filename)
+                if mime and mime.startswith("image/"):
+                    embed.set_image(url=evidence.url)
+        
+
+            if issuer.id == ctx.author.id:
+                embed.set_footer(text=f"Blacklisted by {clean_nickname(issuer.display_name)}")
+            else:
+                embed.set_footer(text=f"Blacklisted by {clean_nickname(issuer.display_name)} with approval of {clean_nickname(ctx.author.display_name)}")
+
+            success_count = 0
+            successful_members = []
+            failed_members = []
+
+            for member in blacklisted_members:
+                cleaned_nickname = clean_nickname(member.display_name) or member.name
+                
+                try:
+                    roblox_id = await self.bot.db.get_roblox_id(member.id)
+
+                    member_info = f"{cleaned_nickname} | {member.id} ({member.mention})"
+                    if roblox_id:
+                        member_info += f" | {roblox_id}"
+
+                    successful_members.append(member_info)
+               
+                    try:
+                        await member.send(embed=embed)
+                    except discord.Forbidden:
+                        if channel := ctx.guild.get_channel(Config.PUBLIC_CHAT_CHANNEL_ID):
+                            await channel.send(f"{member.mention}", embed=embed)
+
+                    await self.bot.db.discharge_user(str(member.id), cleaned_nickname, ctx.guild)
+                    
+                    success_count += 1
+                    
+                except Exception as e:
+                    logger.error(f"Failed to process {member.display_name}: {str(e)}")
+                    failed_members.append(member.mention)
+
+            # Create result embed
+            result_embed = discord.Embed(
+                title="Blacklist Summary",
+                color=discord.Color.red()
+            )
+            
+            result_embed.add_field(name="Action:", value=f"Dishonourable Discharge & Blacklist", inline=False)
+            result_embed.add_field(name="Duration:", value=blacklist_duration, inline=False)
+            result_embed.add_field(
+                name="Results:",
+                value=f"Successfully processed: {success_count}\nFailed: {len(failed_members)}",
+                inline=False
+            )
+            
+            if failed_members:
+                result_embed.add_field(name="Failed Members:", value=", ".join(failed_members), inline=False)
+
+            await processing_msg.edit(
+                content=None,
+                embed=result_embed
+            )
+
+            # ========== LOG TO DISCHARGE CHANNEL ==========
+            if d_log := ctx.guild.get_channel(Config.D_LOG_CHANNEL_ID):
+                d_embed = embedBuilder.build_discharge_log(
+                        "Dishonourable", 
+                        successful_members, 
+                        issuer, 
+                        reason, 
+                        "Blacklist", 
+                        blacklist_duration, 
+                        ending_date, 
+                        evidence
+                )
+
+                await d_log.send(embed=d_embed)
+
+            # ========== LOG TO BLACKLIST CHANNEL ==========
+            if b_log := ctx.guild.get_channel(Config.B_LOG_CHANNEL_ID):
+                blacklist_log_embed = embedBuilder.build_blacklist_log(
+                        issuer, successful_members, blacklist_duration, reason, ending_date)
+
+                await b_log.send(embed=blacklist_log_embed)
+
+        except Exception as e:
+            logger.error(f"Blacklist members function failed: {e}")
+            await ctx.send("❌ An error occurred while processing the blacklist.", ephemeral=True)
+
+    # Reset Database Command
+    @commands.hybrid_command(
+            name="reset-db",
+            aliases=["rdb"],
+            description="Reset the LR and HR tables."
+    )
+    @app_commands.checks.cooldown(1, 60.0)
+    @has_modular_permission("administrative")
+    async def reset_db(self, ctx: commands.Context):
+        
+        if ctx.interaction:
+            await ctx.interaction.response.defer(ephemeral=False)
+
+        view = ConfirmView(author=ctx.author)
+        
+        embed = discord.Embed(
+                description=f"This will reset **ALL LR and HR stats**.\n\nClick **Confirm** to proceed or **Cancel** to abort.",
+                color=discord.Color.red()
+        )
+
+        embed.set_author(
+                name="Are you sure you want to reset the database?",
+                icon_url=Config.ALERT_URL
+        )
+
+        await ctx.send(embed=embed, view=view)
+
         await view.wait()
 
         if view.value is not True:
-            await interaction.followup.send(
-                "❎ Database reset cancelled.",
-                ephemeral=True
+            return await ctx.send(
+                "```❎ Database reset cancelled.```",
             )
-            return
-
-        def _reset_work():
-            sup = self.bot.db.supabase
-            sup.table('HRs').update({
-                'tryouts': 0,
-                'events': 0,
-                'phases': 0,
-                'courses': 0,
-                'inspections': 0,
-                'joint_events': 0
-            }).neq('user_id', 0).execute()
-
-            sup.table('LRs').update({
-                'activity': 0,
-                'time_guarded': 0,
-                'events_attended': 0
-            }).neq('user_id', 0).execute()
-
-            return True
 
         try:
-            await self.bot.db.run_query(_reset_work)
-            await interaction.followup.send(
-                "✅ **Database reset successfully!**",
-                ephemeral=True
-            )
-        except Exception as e:
-            logger.exception("reset_db failed: %s", e)
-            await interaction.followup.send(
-                f"❌ Error resetting database:\n```{e}```",
-                ephemeral=True
+            res_hr, res_lr = await asyncio.gather(
+                self.bot.db.reset_hrs(),
+                self.bot.db.reset_lrs(),
+                return_exceptions=True 
             )
 
+            failed_tables = []
+            if not res_hr or isinstance(res_hr, Exception): failed_tables.append("HR")
+            if not res_lr or isinstance(res_lr, Exception): failed_tables.append("LR")
 
-
-
-    # Manual Fallback Log Command (covers all ReactionLogger cases)
-    @app_commands.command(name="force-log", description="Force log a message by link (reaction logger fallback)")
-    @has_allowed_role()
-    async def force_log(self, interaction: discord.Interaction, message_link: str):
-        """Force log the exact message from a link - acts as fallback for reaction logger"""
-        await interaction.response.defer(ephemeral=True)
-
-        try:
-            # Parse the link
-            match = re.match(r"https://discord\.com/channels/(\d+)/(\d+)/(\d+)", message_link)
-            if not match:
-                await interaction.followup.send("❌ Invalid message link.", ephemeral=True)
-                return
-
-            guild_id, channel_id, message_id = map(int, match.groups())
-            
-            if guild_id != interaction.guild.id:
-                await interaction.followup.send("❌ Message must be from this server.", ephemeral=True)
-                return
-
-            channel = interaction.guild.get_channel(channel_id)
-            if not channel:
-                await interaction.followup.send("❌ Channel not found.", ephemeral=True)
-                return
-
-            # Fetch the specific message
-            message = await channel.fetch_message(message_id)
-            
-            logger.info(f"🔧 Force-log: Processing message {message_id} in #{channel.name} by {interaction.user.display_name}")
-
-            processed = False
-            results = []
-
-            # 1. EVENT LOGS (event channels)
-            if channel_id in self.bot.reaction_logger.event_channel_ids:
-                try:
-                    # Extract host
-                    host_mention = re.search(r'host:\s*<@!?(\d+)>', message.content, re.IGNORECASE)
-                    host_id = int(host_mention.group(1)) if host_mention else message.author.id
-                    host_member = interaction.guild.get_member(host_id) or await interaction.guild.fetch_member(host_id)
-
-                    # Determine event type
-                    hr_update_field = "events"
-                    if channel_id == Config.W_EVENT_LOG_CHANNEL_ID:
-                        if re.search(r'\bjoint\b', message.content, re.IGNORECASE):
-                            hr_update_field = "joint_events"
-                        elif re.search(r'\b(inspection|pi)\b', message.content, re.IGNORECASE):
-                            hr_update_field = "inspections"
-
-                    # Update HR table for host
-                    await self.bot.reaction_logger._update_hr_record(host_member, {hr_update_field: 1})
-                    
-                    # Process attendees
-                    attendees_section = re.search(r'(?:Attendees:|Passed:)\s*((?:<@!?\d+>\s*)+)', message.content, re.IGNORECASE)
-                    success_count = 0
-                    hr_attendees = []
-                    
-                    if attendees_section:
-                        attendee_mentions = re.findall(r'<@!?(\d+)>', attendees_section.group(1))
-                        hr_role = interaction.guild.get_role(Config.HR_ROLE_ID)
-                        
-                        for attendee_id in attendee_mentions:
-                            attendee_member = interaction.guild.get_member(int(attendee_id))
-                            if not attendee_member:
-                                continue
-                            if hr_role and hr_role in attendee_member.roles:
-                                hr_attendees.append(attendee_id)
-                                continue
-                            await self.bot.reaction_logger._update_lr_record(attendee_member, {"events_attended": 1})
-                            success_count += 1
-
-                    
-                    results.append(f"✅ Event: {success_count} attendees + host logged")
-                    processed = True
-                    logger.info(f"✅ Event force-logged: {success_count} attendees")
-                    
-                except Exception as e:
-                    logger.error(f"Event logging failed: {e}")
-                    results.append(f"❌ Event: {str(e)[:50]}")
-
-            # 2. TRAINING LOGS (phases, tryouts, courses)
-            elif channel_id in [
-                Config.PHASE_LOG_CHANNEL_ID,
-                Config.TRYOUT_LOG_CHANNEL_ID, 
-                Config.COURSE_LOG_CHANNEL_ID,
-            ]:
-                try:
-                    user_mention = re.search(r'host:\s*<@!?(\d+)>', message.content, re.IGNORECASE)
-                    user_id = int(user_mention.group(1)) if user_mention else message.author.id
-                    user_member = interaction.guild.get_member(user_id) or await interaction.guild.fetch_member(user_id)
-
-                    column_to_update = {
-                        Config.PHASE_LOG_CHANNEL_ID: "phases",
-                        Config.TRYOUT_LOG_CHANNEL_ID: "tryouts",
-                        Config.COURSE_LOG_CHANNEL_ID: "courses",
-                    }.get(channel_id)
-
-                    if column_to_update:
-                        await self.bot.reaction_logger._update_hr_record(user_member, {column_to_update: 1})
-                        
-                        results.append(f"✅ {column_to_update.title()} logged")
-                        
-                        processed = True
-                        
-                        logger.info(f"✅ {column_to_update} force-logged")
-                        
-                except Exception as e:
-                    logger.error(f"Training logging failed: {e}")
-                    results.append(f"❌ Training: {str(e)[:50]}")
-
-        
-            # 3. ACTIVITY LOGS
-            elif channel_id == Config.ACTIVITY_LOG_CHANNEL_ID:
-                try:
-                    user_mention = re.search(r'<@!?(\d+)>', message.content)
-                    user_id = int(user_mention.group(1)) if user_mention else message.author.id
-                    user_member = interaction.guild.get_member(user_id) or await interaction.guild.fetch_member(user_id)
-            
-                    updates = {}
-                    time_match = re.search(r'Time:\s*(\d+)', message.content)
-                    if time_match:
-                        minutes = int(time_match.group(1))
-                        if "Guarded:" in message.content:
-                            updates["time_guarded"] = minutes
-                        else:
-                            updates["activity"] = minutes
-            
-                    if updates:
-                        # Update LR record
-                        await self.bot.reaction_logger._update_lr_record(user_member, updates)
-            
-                        # 🟩 NEW: Award XP (1 XP per 30 mins total)
-                        total_minutes = updates.get("activity", 0) + updates.get("time_guarded", 0)
-                        xp_to_award = total_minutes // 30
-                        xp_text = ""
-                        if xp_to_award > 0:
-                            success, new_xp = await self.bot.db.add_xp(
-                                str(user_member.id),
-                                user_member.display_name,
-                                xp_to_award
-                            )
-                            if success:
-                                xp_text = f" (+{xp_to_award} XP)"
-                                logger.info(f"⭐ Gave {xp_to_award} XP to {user_member.display_name} ({user_member.id}) for {total_minutes} mins (force-log)")
-            
-            
-                        # Finish up and include XP info in results
-                        field_name = "time_guarded" if "time_guarded" in updates else "activity"
-                        results.append(f"✅ Activity: {updates[field_name]} mins logged{xp_text}")
-                        processed = True
-                        logger.info(f"✅ Activity force-logged: {updates[field_name]} mins{xp_text}")
-            
-                except Exception as e:
-                    logger.error(f"Activity logging failed: {e}")
-                    results.append(f"❌ Activity: {str(e)[:50]}")
-
-
-            elif channel_id in self.bot.reaction_logger.monitor_channel_ids:
-                try:
-                    processed = True
-                    logger.info("✅ Activity force-logged")
-                    
-                except Exception as e:
-                    logger.error(f"Force activity logging failed: {e}")
-                    results.append(f"❌ DB_LOGGER: {str(e)[:50]}")
-
-            # Send results
-            if processed:
-                result_text = "\n".join(results)
-                await interaction.followup.send(
-                    f"✅ **Force-log completed**\n"
-                    f"**Message:** [Jump to message]({message.jump_url})\n"
-                    f"**Channel:** #{channel.name}\n"
-                    f"**Results:**\n{result_text}",
-                    ephemeral=True
-                )
+            if not failed_tables:
+                cleaned_nickname = clean_nickname(ctx.author.display_name)
+                embed = discord.Embed(
+                    description=f"**{cleaned_nickname}** has just reset the database."
+                ).set_author(name="Database Reset", icon_url=Config.RESET_ICON)
                 
-                # Also log to the main log channel
-                log_channel = interaction.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
-                if log_channel:
-                    embed = discord.Embed(
-                        title="🔄 Manual Log Entry (Force-log)",
-                        color=discord.Color.orange(),
-                        timestamp=datetime.now(timezone.utc)
-                    )
-                    embed.add_field(name="Logged by", value=interaction.user.mention, inline=True)
-                    embed.add_field(name="Channel", value=channel.mention, inline=True)
-                    embed.add_field(name="Message Type", value=channel.name, inline=True)
-                    embed.add_field(name="Results", value=result_text, inline=False)
-                    embed.add_field(name="Message", value=f"[Jump to message]({message.jump_url})", inline=False)
-                    
-                    await log_channel.send(embed=embed)
-                    
-            else:
-                await interaction.followup.send(
-                    f"❌ No applicable log types found for this message.\n"
-                    f"**Channel:** #{channel.name}\n"
-                    f"**Supported channels:** Events, Training, Activity logs, or DB_LOGGER-monitored channels",
-                    ephemeral=True
-                )
+                return await ctx.send(content="```✅ Database reset successfully!```", embed=embed)
+
+            if len(failed_tables) == 2:
+                raise Exception("Both reset functions failed")
+
+            partial_msg = f"✅ {failed_tables[0]} table reset failed, but the other succeeded. Try again."
+            return await ctx.send(f"```⚠️ {partial_msg}```")
 
         except Exception as e:
-            logger.error(f"force-log failed: {e}", exc_info=True)
-            await interaction.followup.send("❌ Failed to force-log message.", ephemeral=True)
-
-    #Save Roles Command
-    @app_commands.command(name="save-roles", description="Save a user's tracked roles to the database.")
-    @has_allowed_role()
-    async def save_roles(self, interaction: discord.Interaction, member: discord.Member):
-        # Defer immediately
-        await interaction.response.defer(ephemeral=True)
-
-        tracked_ids = Config.TRACKED_ROLE_IDS
-        matched_roles = [r for r in member.roles if r.id in tracked_ids]
-        role_ids = [r.id for r in matched_roles]
-
-        try:
-            success = await self.bot.db.save_user_roles(
-                user_id=str(member.id),
-                username=member.display_name,
-                role_ids=role_ids
-            )
-        except Exception as e:
-            embed = discord.Embed(
-                title="❌ Error Saving Roles",
-                description=f"Failed to save roles for {member.mention}.\n{e}",
-                color=discord.Color.red()
-            )
-            await interaction.followup.send(embed=embed, ephemeral=True)
-            return
-
-        # Build status embed
-        embed = discord.Embed(
-            title="✅ Roles Saved" if success else "❌ Error Saving Roles",
-            description=(
-                f"Saved **{len(role_ids)}** tracked roles for {member.mention}.\n"
-                f"**Roles:** {', '.join([r.name for r in matched_roles]) or 'None'}"
-            ) if success else f"Failed to save roles for {member.mention}.",
-            color=discord.Color.green() if success else discord.Color.red()
-        )
-
-        # Log to default channel
-        log_channel = interaction.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
-        if log_channel:
-            await log_channel.send(embed=embed)
-
-        # Send ephemeral follow-up to the user
-        await interaction.followup.send(embed=embed, ephemeral=True)
-
-    #Restore Roles Command
-    @app_commands.command(name="restore-roles", description="Restore saved roles for a user.")
-    async def restore_roles(self, interaction: discord.Interaction, member: discord.Member):
-        # Defer the interaction immediately with error handling
-        try:
-            await interaction.response.defer(ephemeral=True)
-            deferred = True
-        except discord.NotFound:
-            # If deferral fails, the interaction might have timed out
-            deferred = False
-        except Exception as e:
-            print(f"Error deferring interaction: {e}")
-            deferred = False
-
-        # Fetch saved roles from Supabase
-        try:
-            saved_roles = await self.bot.db.get_user_roles(str(member.id))
-        except Exception as e:
-            error_msg = f"❌ Failed to fetch saved roles: {e}"
-            if deferred:
-                await interaction.followup.send(error_msg, ephemeral=True)
-            else:
-                try:
-                    await interaction.response.send_message(error_msg, ephemeral=True)
-                except discord.InteractionResponded:
-                    await interaction.followup.send(error_msg, ephemeral=True)
-            return
-
-        if not saved_roles:
-            msg = f"⚠️ No saved roles found for {member.mention}."
-            if deferred:
-                await interaction.followup.send(msg, ephemeral=True)
-            else:
-                try:
-                    await interaction.response.send_message(msg, ephemeral=True)
-                except discord.InteractionResponded:
-                    await interaction.followup.send(msg, ephemeral=True)
-            return
-
-        # Format for Dyno command: ?role <user_id> <role id 1>, <role id 2>, <role id 3>
-        roles_string = ", ".join([str(role_id) for role_id in saved_roles])
-        dyno_command = f"?role {member.id} {roles_string}"
-
-        # Create embed with Dyno command
-        embed = discord.Embed(
-            title=f"✅ Roles restored for {member.display_name}",
-            description=f"Use the following command in chat to reassign roles:\n`{dyno_command}`",
-            color=discord.Color.green()
-        )
-        
-        if deferred:
-            await interaction.followup.send(embed=embed, ephemeral=True)
-        else:
-            try:
-                await interaction.response.send_message(embed=embed, ephemeral=True)
-            except discord.InteractionResponded:
-                await interaction.followup.send(embed=embed, ephemeral=True)
+            logger.exception(f"reset_db failed: {e}")
+            return await ctx.send("```❌ Error resetting database.```")
 
 async def setup(bot):
     await bot.add_cog(AdminCog(bot))
+

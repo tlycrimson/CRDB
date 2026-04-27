@@ -3,10 +3,13 @@ import asyncio
 import aiohttp
 import discord
 import logging
-import random
 from discord.ext import commands
 from dotenv import load_dotenv
 
+from utils import embedBuilder
+from utils.roblox import RobloxClient
+from utils.permissions import PermissionsCache
+from utils.views import restore_approval_views
 from utils.runners import run_bot_forever
 from config import Config
 from utils.database import DatabaseHandler
@@ -17,7 +20,7 @@ from utils.rank_tracker import RankTracker
 load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
-    raise ValueError("DISCORD_TOKEN not found in .env file")
+    raise ValueError("DISCORD TOKEN NOT FOUND!")
 
 
 # Set up logging
@@ -29,6 +32,10 @@ logging.basicConfig(
         logging.FileHandler('bot.log', encoding='utf-8')
     ]
 )
+# Silence Requests
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("supabase").setLevel(logging.WARNING)
+
 logger = logging.getLogger(__name__)
 
 
@@ -45,7 +52,7 @@ class CRDB(commands.Bot):
                     intents.members, intents.message_content, intents.reactions, intents.guilds)
         
         super().__init__(
-            command_prefix="!.",
+            command_prefix="!",
             intents=intents,
             activity=discord.Activity(
                 type=discord.ActivityType.watching,
@@ -65,11 +72,14 @@ class CRDB(commands.Bot):
         self.rank_tracker = None
         self.shared_session = None
         self.reaction_logger = None  
-        
+        self.roblox = None
+        self.permissions = None
+
     async def setup_hook(self):
         logger.info("Running setup_hook...")
         
         self.db = DatabaseHandler()
+        await self.db.initialise()
         logger.info("DatabaseHandler initialised")
         
         self.rate_limiter = EnhancedRateLimiter(calls_per_minute=Config.GLOBAL_RATE_LIMIT)
@@ -79,6 +89,10 @@ class CRDB(commands.Bot):
         DiscordAPI.initialize(self.rate_limiter)
         logger.info("DiscordAPI with rate limits initalised.")
         
+        self.roblox = RobloxClient()
+        await self.roblox.start()
+        logger.info("Roblox Client initialised.")
+
         connector = aiohttp.TCPConnector(
             limit=15, 
             limit_per_host=4, 
@@ -94,6 +108,10 @@ class CRDB(commands.Bot):
         
         self.rank_tracker = RankTracker(self)
         logger.info("RankTracker initialised")
+
+        self.permissions = PermissionsCache(self)
+        await self.permissions.initialise()
+        logger.info("Permissions intialised")
         
         cogs_to_load = [
             "cogs.xp",
@@ -103,6 +121,7 @@ class CRDB(commands.Bot):
             "cogs.admin",
             "cogs.utility",
             "cogs.sc",  
+            "cogs.messages"
         ]
         
         for cog in cogs_to_load:
@@ -112,12 +131,21 @@ class CRDB(commands.Bot):
             except Exception as e:
                 logger.error(f"Failed to load cog {cog}: {e}")
         
-        self.reaction_logger = self.get_cog("ReactionLoggerCog")
-        if self.reaction_logger:
-            logger.info("Retrieved and stored ReactionLoggerCog reference.")
             
         logger.info("Setup hook completed!")
 
+    async def close(self):
+        logger.info("Bot shutting down, closing connections...")
+
+        if self.roblox:
+            await self.roblox.close()
+            logger.info("RobloxClient session closed")
+
+        if self.shared_session and not self.shared_session.closed:
+            await self.shared_session.close()
+            logger.info("Shared aiohttp session closed")
+
+        await super().close()
 
 # --- Create bot instance ---
 bot = CRDB()
@@ -129,91 +157,104 @@ async def on_ready():
     logger.info("=" * 50)
     logger.info(f"Logged in as {bot.user} (ID: {bot.user.id})")
     logger.info(f"Connected to {len(bot.guilds)} guild(s)")
-    
-    loaded_cogs = list(bot.cogs.keys())
-    logger.info(f"Loaded cogs: {', '.join(loaded_cogs)}")
-    
+
+    try:
+        await restore_approval_views(bot)
+    except Exception as e:
+        logger.exception("restore_approval_views failed: %s", e)
+   
     try:
         await asyncio.wait_for(bot.tree.sync(), timeout=15.0)
         logger.info("Commands synced successfully")
     except asyncio.TimeoutError:
         logger.warning("Command sync timed out (continuing)")
     except Exception as e:
-        logger.error(f"Failed to sync commands: {e}")
+        logger.exception(f"Failed to sync commands: %s", e)
+   
     
+    if bot.db:
+        try:
+            await bot.db.welcome_initialise()
+        except Exception as e:
+            logger.exception("welcome_initialise failed: %s", e)
+
     if bot.reaction_logger and hasattr(bot.reaction_logger, 'start_cleanup_task'):
         try:
             await bot.reaction_logger.start_cleanup_task()
             logger.info("Started reaction logger cleanup task")
         except Exception as e:
-            logger.error(f"Failed to start cleanup task: {e}")
+            logger.exception(f"Failed to start cleanup task: %s", e)
     
+    send = await bot.db.send_change_log()
+    if send:
+        channel_ids = [Config.MAIN_COMMS_CHANNEL_ID, Config.LD_CHANNEL_ID]
+        embeds = embedBuilder.build_change_log(bot.command_prefix) 
+     
+        for channel_id in channel_ids:
+            channel = bot.get_channel(channel_id)
+            if channel:
+                try:
+                    await channel.send(embeds=embeds)
+                except Exception as e:
+                    logger.error(f"Could not send to {channel_id}: {e}")   
+
     logger.info("=" * 50)
 
 
+# --- Event Handlers ---
 @bot.event
 async def on_disconnect():
     logger.warning("Bot disconnected from Discord")
     
-    # Close shared session
-    if bot.shared_session and not bot.shared_session.closed:
-        await bot.shared_session.close()
-        bot.shared_session = None
-        logger.info("Closed shared aiohttp session")
-
 
 @bot.event
 async def on_resumed():
     """Called when bot resumes connection"""
     logger.info("Bot successfully resumed")
     
-    # Recreate HTTP session if needed
-    if not bot.shared_session or bot.shared_session.closed:
-        connector = aiohttp.TCPConnector(limit=15, limit_per_host=4, enable_cleanup_closed=True)
-        bot.shared_session = aiohttp.ClientSession(
-            headers={"User-Agent": Config.USER_AGENT},
-            timeout=aiohttp.ClientTimeout(total=12, connect=5, sock_connect=3, sock_read=6),
-            connector=connector,
-            trust_env=True,
-        )
-        logger.info("Recreated shared aiohttp session after resume")
-
-# --- Event Handlers ---
 
 # --- Global Command Error Handler ---
-@bot.tree.error
-async def on_app_command_error(interaction: discord.Interaction, error: discord.app_commands.AppCommandError):
+@bot.event
+async def on_command_error(ctx: commands.Context, error: commands.CommandError):
     """Global error handler for slash commands"""
     try:
-        if isinstance(error, discord.app_commands.CommandOnCooldown):
-            await interaction.response.send_message(
-                f"⏳ Command on cooldown. Try again in {error.retry_after:.1f}s",
+        if isinstance(error, commands.CommandOnCooldown):
+            await ctx.send(
+                f"```⏳ Command on cooldown. Try again in {error.retry_after:.1f}s```",
                 ephemeral=True
             )
-        elif isinstance(error, discord.app_commands.MissingPermissions):
-            await interaction.response.send_message(
-                "🔒 You don't have permission to use this command.",
-                ephemeral=True
-            )
-        elif isinstance(error, discord.app_commands.CheckFailure):
-            # This handles our custom permission checks
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    "⛔ You don't have permission to use this command.",
+        elif isinstance(error, commands.MissingPermissions):
+            if ctx.interaction:
+                await ctx.send(
+                    "```⛔ You don't have permission to use this command.```",
                     ephemeral=True
                 )
+        elif isinstance(error, commands.CheckFailure):
+            if ctx.interaction:
+                await ctx.send(
+                    "```⛔ You don't have permission to use this command.```",
+                    ephemeral=True
+                )
+        elif isinstance(error, (commands.BadLiteralArgument, commands.BadArgument, commands.MissingRequiredArgument)):
+                    command = ctx.command
+                    command_structure = command.usage if command.usage else command.signature
+                    
+                    error_msg = (
+                        f"```❌ Invalid Command Usage```\n"
+                        f"**Structure:**\n```{ctx.clean_prefix}{ctx.invoked_with} {command_structure}```\n"
+                    )
+
+                    if isinstance(error, commands.BadLiteralArgument):
+                        options = ", ".join(f"`{l}`" for l in error.literals)
+                        error_msg += f"**Valid Choices:** {options}"
+                    
+                    await ctx.send(error_msg, ephemeral=True)
         else:
             logger.error(f"Unhandled command error: {type(error).__name__}: {error}", exc_info=True)
-            if not interaction.response.is_done():
-                await interaction.response.send_message(
-                    "❌ An error occurred while processing your command.",
-                    ephemeral=True
-                )
-            else:
-                await interaction.followup.send(
-                    "❌ An error occurred while processing your command.",
-                    ephemeral=True
-                )
+            await ctx.send(
+                "```❌ An error occurred while processing your command.```",
+                ephemeral=True
+            )
     except Exception as e:
         logger.error(f"Error in error handler: {e}")
 

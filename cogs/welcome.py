@@ -8,10 +8,10 @@ from discord.ext import commands
 from datetime import datetime, timezone, timedelta
 
 from config import Config
-from utils.decorators import min_rank_required
-from utils.views import ConfirmView
-from utils.roblox import RobloxAPI
-from utils.helpers import clean_nickname, dict_to_embed 
+from utils import embedBuilder
+from utils.decorators import has_modular_permission, is_admin_or_dev
+from utils.views import ConfirmView, AoDView, save_pending_blacklist
+from utils.helpers import clean_nickname, dict_to_embed, in_regiment, BlacklistData
 
 
 logger = logging.getLogger(__name__)
@@ -37,17 +37,16 @@ class WelcomeMessageCache:
                     if data:
                         self._cache[msg_type] = data
                 
-                logger.info(f"✅ Loaded {len(self._cache)} welcome messages into cache")
+                logger.info(f"Loaded {len(self._cache)} welcome messages into cache")
                 self._initialized = True
                 
             except Exception as e:
-                logger.error(f"Failed to initialize welcome message cache: {e}")
-                # Initialize with empty cache, will use original functions as fallback
+                logger.error(f"Failed to initialise welcome message cache: {e}")
     
     async def _load_from_database(self, message_type: str):
         """Load a specific message type from database"""
-        def _work():
-            result = self.bot.db.supabase.table('welcome_messages') \
+        try:
+            result = await self.bot.db.supabase.table(self.bot.db.wm_table) \
                 .select('*') \
                 .eq('message_type', message_type) \
                 .eq('is_active', True) \
@@ -64,9 +63,6 @@ class WelcomeMessageCache:
                     'version': result.data[0].get('version', 1)
                 }
             return None
-        
-        try:
-            return await self.bot.db._run_sync(_work)
         except Exception as e:
             logger.error(f"Error loading {message_type} from database: {e}")
             return None
@@ -91,48 +87,38 @@ class WelcomeMessageCache:
         async with self._lock:
             try:
                 # 1. Mark old message as inactive
-                def _deactivate_old():
-                    self.bot.db.supabase.table('welcome_messages') \
-                        .update({'is_active': False}) \
-                        .eq('message_type', message_type) \
-                        .eq('is_active', True) \
-                        .execute()
-                
-                await self.bot.db._run_sync(_deactivate_old)
+                await self.bot.db.supabase.table(self.bot.db.wm_table) \
+                    .update({'is_active': False}) \
+                    .eq('message_type', message_type) \
+                    .eq('is_active', True) \
+                    .execute()
                 
                 # 2. Get next version number
-                def _get_next_version():
-                    result = self.bot.db.supabase.table('welcome_messages') \
-                        .select('version') \
-                        .eq('message_type', message_type) \
-                        .order('version', desc=True) \
-                        .limit(1) \
-                        .execute()
+                result = await self.bot.db.supabase.table(self.bot.db.wm_table) \
+                    .select('version') \
+                    .eq('message_type', message_type) \
+                    .order('version', desc=True) \
+                    .limit(1) \
+                    .execute()
                     
-                    if result.data and len(result.data) > 0:
-                        return result.data[0]['version'] + 1
-                    return 1
-                
-                next_version = await self.bot.db._run_sync(_get_next_version)
+                if result.data and len(result.data) > 0:
+                    next_version = result.data[0]['version'] + 1
                 
                 # 3. Insert new active message
-                def _insert_new():
-                    new_message = {
-                        'message_type': message_type,
-                        'version': next_version,
-                        'embeds': embeds_data,
-                        'updated_by': updated_by,
-                        'is_active': True
-                    }
-                    
-                    result = self.bot.db.supabase.table('welcome_messages') \
-                        .insert(new_message) \
-                        .execute()
-                    
-                    return result.data[0] if result.data else None
+                new_message = {
+                    'message_type': message_type,
+                    'version': next_version,
+                    'embeds': embeds_data,
+                    'updated_by': updated_by,
+                    'is_active': True
+                }
                 
-                new_message = await self.bot.db._run_sync(_insert_new)
+                result = await self.bot.db.supabase.table(self.bot.db.wm_table) \
+                    .insert(new_message) \
+                    .execute()
                 
+                new_message = result.data[0] if result.data else None
+            
                 if new_message:
                     # 4. Update cache
                     self._cache[message_type] = {
@@ -144,7 +130,7 @@ class WelcomeMessageCache:
                         'version': new_message['version']
                     }
                     
-                    logger.info(f"✅ Updated {message_type} welcome message with {len(embeds_data)} embeds")
+                    logger.info(f"Updated {message_type} welcome message with {len(embeds_data)} embeds")
                     return True, self._cache[message_type]
                 else:
                     logger.error(f"Failed to insert new {message_type} message")
@@ -164,6 +150,7 @@ class WelcomeCog(commands.Cog):
                 callback=self.preview_welcome_context
         )
         self.bot.tree.add_command(self.ctx_menu)
+    
 
     # HR Welcome Message
     async def send_hr_welcome(self, member: discord.Member):
@@ -187,9 +174,15 @@ class WelcomeCog(commands.Cog):
                 embed = dict_to_embed(embed_data)
                 discord_embeds.append(embed)
             
-            await welcome_channel.send(content=member.mention, embeds=discord_embeds)
-            logger.info(f"✅ Sent HR welcome with {len(discord_embeds)} embeds to {member.display_name}")
+            discord_embeds[0].set_thumbnail(url=Config.RMP_URL)
+            discord_embeds[0].set_author(name="Welcome to the High Rank Team!", icon_url=Config.CELEBRATE_ICON)
+
+            log_embed = embedBuilder.build_welcome_log(clean_nickname(member.display_name), "HR")
+            log_channel = self.bot.get_channel(Config.DEFAULT_LOG_CHANNEL)
             
+            await welcome_channel.send(content=member.mention, embeds=discord_embeds)
+            logger.info(f"Sent HR welcome with {len(discord_embeds)} embeds to {member.display_name}")
+            await log_channel.send(embed=log_embed) 
         except Exception as e:
             logger.error(f"Failed to send HR welcome: {e}")
             await self._send_fallback_hr_welcome(member, welcome_channel)
@@ -199,7 +192,6 @@ class WelcomeCog(commands.Cog):
         embed = discord.Embed(
             title="🎉 Welcome to the HR Team!",
             description=(
-                f"{member.mention}\n\n"
                 "**Please note the following:**\n"
                 "• Request for document access in [HR Documents](https://discord.com/channels/1165368311085809717/1165368317532438646).\n"
                 "• You are exempted from quota this week only - you start next week ([Quota Info](https://discord.com/channels/1165368311085809717/1206998095552978974)).\n"
@@ -236,15 +228,20 @@ class WelcomeCog(commands.Cog):
                 embed = dict_to_embed(embed_data)
                 discord_embeds.append(embed)
             
+            discord_embeds[0].set_thumbnail(url=Config.RMP_URL)
+
+            log_embed = embedBuilder.build_welcome_log(clean_nickname(member.display_name), "RMP")
+            log_channel = self.bot.get_channel(Config.DEFAULT_LOG_CHANNEL)
             # Send all embeds
             try:
                 await member.send(embeds=discord_embeds)
-                logger.info(f"✅ Sent {len(discord_embeds)} RMP welcome embeds to {member.display_name}")
+                logger.info(f"Sent {len(discord_embeds)} RMP welcome embeds to {member.display_name}")
+                await log_channel.send(embed=log_embed)
             except discord.Forbidden:
                 # Try public channel as fallback
-                if welcome_channel := member.guild.get_channel(722002957738180620):
+                if welcome_channel := member.guild.get_channel(Config.PUBLIC_CHAT_CHANNEL_ID):
                     await welcome_channel.send(content=member.mention, embeds=discord_embeds)
-                    logger.info(f"✅ Sent RMP welcome to {member.display_name} in public channel")
+                    logger.info(f" Sent RMP welcome to {member.display_name} in main-comms.")
             
         except Exception as e:
             logger.error(f"Failed to send RMP welcome: {e}")
@@ -316,52 +313,41 @@ class WelcomeCog(commands.Cog):
         try:
             await member.send(embeds=[embed1, special_embed, embed2])
         except discord.Forbidden:
-            if welcome_channel := member.guild.get_channel(722002957738180620):
+            if welcome_channel := member.guild.get_channel(Config.MAIN_COMMS_CHANNEL_ID):
                 await welcome_channel.send(f"{member.mention}", embeds=[embed1, special_embed, embed2])
-                logger.info(f"Sending welcome message to {member.display_name} ({member.id})")
+                logger.info(f"Sending welcome message to {member.display_name} ({member_id})")
         except discord.HTTPException as e:
             logger.error(f"Failed to send welcome message: {e}")
-
-    async def load_test_messages(self):
-        """Fetches test messages (like HR welcome) from Supabase for configurable templates."""
-        if not self.bot.db.supabase:
-            return
-
-        try:
-            result = self.bot.db.supabase.table("Messages_Test").select("*").execute()
-            self.bot.test_messages = {item["key"]: item["content"] for item in result.data}
-            logger.info(f"✅ Loaded {len(self.bot.test_messages)} test messages from Supabase.")
-        except Exception as e:
-            logger.error(f"❌ Failed to load test messages: {e}")
 
 
     @commands.Cog.listener()
     async def on_member_update(self, before: discord.Member, after: discord.Member):
         async with self.bot.global_rate_limiter:
-            # ===== CHECK FOR RMP ROLE REMOVAL (DESERTION/REMOVAL) =====
+            if set(before.roles) == set(after.roles):
+                return  
+
             rmp_role = after.guild.get_role(Config.RMP_ROLE_ID)
-            
+            hr_role =  after.guild.get_role(Config.HR_ROLE_ID) 
+            cleaned_nickname = clean_nickname(after.display_name)
+
             if rmp_role and rmp_role in before.roles and rmp_role not in after.roles:
-                # Member had RMP role but lost it - handle desertion/removal
-                cleaned_nickname = re.sub(r'\[.*?\]', '', after.display_name).strip() or after.name
-                
                 try:
                     await self.bot.db.discharge_user(str(after.id), cleaned_nickname, after.guild)
                     logger.info(f"Removed {cleaned_nickname} ({after.id}) from database due to RMP role removal")
                 except Exception as e:
                     logger.error(f"Error removing {cleaned_nickname} ({after.id}) from DB: {e}")
                 
-                # Optionally send alert about role removal
                 try:
                     alert_channel = after.guild.get_channel(Config.HR_CHAT_CHANNEL_ID)
                     if alert_channel:
                         embed = discord.Embed(
-                            title="⚠️ RMP Role Removed",
-                            description=f"{after.mention} no longer has the RMP role.",
+                            description=f"{cleaned_nickname} no longer has the RMP role. Please check if this not a desertion.",
                             color=discord.Color.orange(),
                             timestamp=datetime.now(timezone.utc)
                         )
-                        embed.add_field(name="User", value=f"{cleaned_nickname} ({after.id})", inline=True)
+    
+                        embed.set_author(name="RMP Role Removed", icon_url=Config.ALERTING_NOTIF_ICON)
+                        embed.add_field(name="User", value=f"{cleaned_nickname} | {after.mention} ({after.id})", inline=True)
                         embed.add_field(name="Action", value="Database record removed", inline=True)
                         await alert_channel.send(embed=embed)
                 except Exception as e:
@@ -370,74 +356,62 @@ class WelcomeCog(commands.Cog):
             # ===== WELCOME MESSAGES =====
 
             #HR Welcome
-            hr_role = after.guild.get_role(Config.HR_ROLE_ID)
             if hr_role and hr_role not in before.roles and hr_role in after.roles:
-                cleaned_nickname = re.sub(r'\[.*?\]', '', after.display_name).strip() or after.name
-            
                 try:
                     await self.bot.db.remove_from_lr(str(after.id))
-             
                     await self.bot.db.add_to_hr(
                         user_id=str(after.id),
                         username=cleaned_nickname,
-                        guild=after.guild
                     )
             
                     logger.info(
-                        f"🔁 {cleaned_nickname} ({after.id}) moved from LRs → HRs in database"
+                        f"{cleaned_nickname} ({after.id}) moved from LRs → HRs in database"
                     )
             
                 except Exception as e:
-                    logger.error(f"❌ Failed HR DB transfer for {after.id}: {e}")
+                    logger.error(f"Failed HR DB transfer for {after.id}: {e}")
             
                 await self.send_hr_welcome(after)
-            
+
+            elif hr_role and hr_role in before.roles and hr_role not in after.roles:
+                try:
+                    await self.bot.db.remove_from_hr(str(after.id))
+                    await self.bot.db.add_to_lr(
+                        user_id=str(after.id),
+                        username=cleaned_nickname,
+                    )
+                except Exception as e:
+                    logger.error(f"Failed LR DB transfer for {after.id}: {e}")
+
             
             # Check for RMP role addition
             if rmp_role and rmp_role not in before.roles and rmp_role in after.roles:
-                # Look up Roblox ID before passing to DB
-                roblox_api = RobloxAPI(self.bot)
-                cleaned_name = clean_nickname(after.display_name)
-                roblox_id = await roblox_api.get_roblox_id_from_username(cleaned_name)
+                roblox_id = await self.bot.roblox.get_user_id(cleaned_nickname)
                 
                 await self.bot.db.create_or_update_user_in_db(str(after.id), after.display_name, after.guild, roblox_id)
                 await self.send_rmp_welcome(after)
 
-
             # ===== RANK TRACKING =====
-            #Check if roles changed
-            if set(before.roles) == set(after.roles):
-                return  # No role changes, exit early
             
-            # Get role IDs for comparison
             before_role_ids = [role.id for role in before.roles]
             after_role_ids = [role.id for role in after.roles]
             
-            # Check if rank-related roles changed (only update if they did)
             if hasattr(self.bot, 'rank_tracker') and self.bot.rank_tracker:
                 if not self.bot.rank_tracker._roles_changed_affect_rank(before_role_ids, after_role_ids):
                     return  # Role changes don't affect rank, exit early
             
-            # Only update rank if member has RMP or HR role
-            rmp_role = after.guild.get_role(Config.RMP_ROLE_ID)  # Re-fetch in case we need it
-            hr_role = after.guild.get_role(Config.HR_ROLE_ID)
-            
-            if not ((rmp_role and rmp_role in after.roles) or (hr_role and hr_role in after.roles)):
+            if not (Config.RMP_ROLE_ID in after_role_ids or Config.HR_ROLE_ID in after_role_ids):
                 return  # Not an RMP or HR member, exit early
             
             # Update rank in database (with slight delay to prevent rapid updates)
             try:
-                await asyncio.sleep(0.5)  # Small delay
+                await asyncio.sleep(0.5) 
                 
                 if hasattr(self.bot, 'rank_tracker') and self.bot.rank_tracker:
                     success = await self.bot.rank_tracker.update_member_in_database(after)
                     
                     if success:
-                        member_info = await self.bot.rank_tracker.get_member_info(after)
-                        logger.info(
-                            f"🔄 Auto-updated rank for {after.display_name}: "
-                            f"Division={member_info['division']}, Rank={member_info['rank']}"
-                        )
+                        await self.bot.rank_tracker.get_member_info(after)
                     else:
                         logger.warning(f"Failed to auto-update rank for {after.display_name}")
                 else:
@@ -445,7 +419,7 @@ class WelcomeCog(commands.Cog):
                     
             except Exception as e:
                 logger.error(f"Error in on_member_update for {after.display_name}: {e}")
-                
+    
     @commands.Cog.listener()
     async def on_member_remove(self, member: discord.Member):
         async with self.bot.global_rate_limiter:
@@ -459,135 +433,161 @@ class WelcomeCog(commands.Cog):
             if not (alert_channel := guild.get_channel(Config.HR_CHAT_CHANNEL_ID)):
                 return
 
-            # Clean nickname for logs + DB
             cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
-            
-            # 🔍 FIRST: Get Roblox ID from database BEFORE removing user
-            roblox_id = None
-            try:
-                def _get_roblox_id():
-                    sup = self.bot.db.supabase
-                    res = sup.table('users').select('roblox_id').eq('user_id', str(member.id)).execute()
-                    if getattr(res, 'data', None) and len(res.data) > 0:
-                        return res.data[0].get('roblox_id')
-                    return None
-                
-                roblox_id = await self.bot.db.run_query(_get_roblox_id)
-                logger.info(f"Retrieved Roblox ID for deserter {cleaned_nickname}: {roblox_id}")
-            except Exception as e:
-                logger.error(f"Error getting Roblox ID for {cleaned_nickname}: {e}")
-
-            # 🚨 Alert embed (send immediately)
+           
             embed = discord.Embed(
-                title="🚨 Deserter Alert",
-                description=f"{member.mention} just deserted! Please log this in BA.",
+                description=f"I suspect {cleaned_nickname} has just deserted!\n**Permission to blacklist?**",
                 color=discord.Color.red()
             )
+
+
+            embed.set_author(name="Deserter Alert", icon_url=Config.ALERTING_NOTIF_ICON)
             embed.set_thumbnail(url=member.display_avatar.url)
             
-            await alert_channel.send(
-                content=f"<@&{Config.HIGH_COMMAND_ROLE_ID}>",
-                embed=embed
-            )
-
-            # Current date for blacklist calculation
-            current_date = datetime.now(timezone.utc)    
             hr_role = guild.get_role(Config.HR_ROLE_ID)  
             
             if hr_role and hr_role in member.roles:
-                ending_date = current_date + timedelta(days=180)  
+                duration_amount = 60
+                blacklist_duration = "1 month"
             else:
-                ending_date = current_date + timedelta(days=90)
+                duration_amount = 14
+                blacklist_duration = "2 weeks"
 
-            # 🔧 Dishonourable discharge embed WITH Roblox ID
-            dishonourable_embed = discord.Embed(
-                title="Discharge Log",
-                color=discord.Color.red(),
-                timestamp=current_date
+            interaction_data = BlacklistData([member.id], "Desertion.", blacklist_duration, duration_amount, None, member)
+            
+            requestView = AoDView(interaction_data, self, self.bot)
+           
+            msg = await alert_channel.send(
+                content=f"<@&{Config.HIGH_COMMAND_ROLE_ID}>",
+                embed=embed,
+                view=requestView
             )
-            dishonourable_embed.add_field(name="Type", value="🚨 Dishonourable Discharge", inline=False)
-            dishonourable_embed.add_field(name="Reason", value="```Desertion.```", inline=False)
             
-            # Build member info with Roblox ID if available [Discontinued| will probably readd later on"
-            member_info = f"{member.mention} | {cleaned_nickname}"
-            
-            dishonourable_embed.add_field(name="Discharged Members", value=member_info, inline=False)
-            dishonourable_embed.add_field(name="Discharged By", value="None - Unauthorised", inline=True)
-            dishonourable_embed.set_footer(text="Desertion Monitor System")
+            await save_pending_blacklist(self.bot, msg.id, alert_channel.id, interaction_data)
 
-            # ⛔ Blacklist embed
-            blacklist_embed = discord.Embed(
-                title="⛔ Blacklist",
-                color=discord.Color.red(),
-                timestamp=current_date
-            )
-            blacklist_embed.add_field(name="Issuer:", value="MP Assistant", inline=False)
-            blacklist_embed.add_field(name="Name:", value=cleaned_nickname, inline=False)
-            
-            # Add Roblox ID to blacklist embed if available
-            if roblox_id:
-                blacklist_embed.add_field(name="Roblox ID:", value=str(roblox_id), inline=False)
-            
-            blacklist_embed.add_field(name="Starting date", value=f"<t:{int(current_date.timestamp())}:D>", inline=False)
-            blacklist_embed.add_field(name="Ending date", value=f"<t:{int(ending_date.timestamp())}:D>", inline=False)
-            blacklist_embed.add_field(name="Reason:", value="Desertion.", inline=False)
-            blacklist_embed.set_footer(text="Desertion Monitor System")
+    class UserNotFoundError(Exception):
+         pass 
 
-            # 📝 SECOND: Now send the embeds to the logs
-            try:
-                d_log = self.bot.get_channel(Config.D_LOG_CHANNEL_ID)
-                b_log = self.bot.get_channel(Config.B_LOG_CHANNEL_ID)
+    async def register_deserter(self, interaction_data, interaction):
+        member_id = interaction_data.members[0]
+        reason = interaction_data.reason
+        blacklist_duration = interaction_data.unit
+        duration_amount = interaction_data.duration
+        approver = interaction.user
+        guild = interaction.guild
+       
+        await interaction.followup.send(
+                "```⚙️ Processing desertion...```",
+                ephemeral=True,
+                wait=True
+        )
+
+        try:
+            res = await self.bot.db.supabase.table(self.bot.db.users_table).select("*").eq("user_id", str(member_id)).execute()
+            data = res.data 
+
+            if not data:
+                logger.warning(f"User {member_id} not found in database.")
+                raise self.UserNotFoundError(f"Member ID {member_id} does not exist in the 'users' table.")
+            else:
+                user_row = data[0]
                 
-                if d_log and b_log:
-                    await d_log.send(embed=dishonourable_embed)
-                    await b_log.send(embed=blacklist_embed)
-                    logger.info(f"Logged deserted member, {cleaned_nickname}. Roblox ID: {roblox_id}")
-                else:
-                    alt_channel = self.bot.get_channel(1165368316970405917)
-                    if alt_channel:
-                        await alt_channel.send(f"⚠️ Failed to log deserter discharge for {cleaned_nickname}")
-                        logger.error(f"Failed to log deserted member {cleaned_nickname} - main channel not found")
-            except Exception as e:
-                logger.error(f"Error logging deserter discharge: {str(e)}")
+                cleaned_nickname = user_row.get("username")
+                roblox_id = user_row.get("roblox_id")
+
+                logger.info(f"Retrieved user information for {cleaned_nickname}: {roblox_id}")
+
+        except Exception as e:
+            logger.error(f"Error getting user information for {member_id}: {e}")
+            return await interaction.followup.send("```❌ An error occurred while processing the blacklist.```", ephemeral=True)
+        
+        member_info = f" {cleaned_nickname} | {member_id} (<@{member_id}>)"
+        if roblox_id:
+            member_info += f" | {roblox_id}"
+        
+
+        current_date = datetime.now(timezone.utc)    
+        ending_date = current_date + timedelta(days=duration_amount)  
+        
+        approver_username = clean_nickname(approver.display_name)
+        d_embed = embedBuilder.build_discharge_log("Dishonourable", member_info, approver_username, reason, "Blacklist", blacklist_duration, ending_date, None)
+        
+        b_embed = embedBuilder.build_blacklist_log(approver_username, member_info, blacklist_duration, reason, ending_date)
+
+        try:
+            d_log = self.bot.get_channel(Config.D_LOG_CHANNEL_ID)
+            b_log = self.bot.get_channel(Config.B_LOG_CHANNEL_ID)
             
-            # 🗑️ THIRD: Only AFTER sending embeds, remove from database
-            try:
-                await self.bot.db.discharge_user(str(member.id), cleaned_nickname, guild)
-                logger.info(f"Removed {cleaned_nickname} ({member.id}) from database")
-            except Exception as e:
-                logger.error(f"Error removing deserter {cleaned_nickname} ({member.id}) from DB: {e}")
+            if d_log and b_log:
+                await d_log.send(embed=d_embed)
+                await b_log.send(embed=b_embed)
+                logger.info(f"Logged deserted member, %s", member_id)
+            else:
+                logger.error("Failed to log deserted member %s (%s) - main channel not found", member_id)
+        except Exception as e:
+            logger.error("Error logging deserter discharge: %s", e)
+            return await interaction.followup.send("```❌ An error occurred while processing the blacklist.```", ephemeral=True)
+        
+        try:
+            await self.bot.db.discharge_user(str(member_id), cleaned_nickname, guild)
+          
 
+            user_groups = await self.bot.roblox.get_groups(roblox_id) if roblox_id else []
 
+            regiment_list = in_regiment(user_groups)
 
+            other_regiments = regiment_list or "N/A (Double Check this)"
 
+            embed = interaction.message.embeds[0]
+            embed.description = (
+                    f"Successfully blacklisted the deserter. Please log this in BA.\n\n"
+                    f"Name: {cleaned_nickname}\n"
+                    f"Roblox ID: {roblox_id or 'Their Roblox ID'}\n"
+                    f"Regiment deserted: RMP\n"
+                    f"Other regiments: {other_regiments}\n"
+                    f"Ping: <hicom in other regiment>\n"
+            )
 
-        #Edit-Welcome Messages Commands
+            embed.color = discord.Color.green()
+
+            await interaction.message.edit(embed=embed, view=None)
+            await interaction.followup.send("```✅ Completed.```", ephemeral=True)
+
+            logger.info(f"Removed {cleaned_nickname} ({member_id}) from database")
+        except Exception as e:
+            logger.error(f"Error registering deserter: %s", cleaned_nickname, member_id, e)
+            await interaction.followup.send("```❌ An error occurred while processing the blacklist. Please check if I've missed anything.```", ephemeral=True)
+
+       
+
+    #Edit-Welcome Messages Commands
     @app_commands.command(name="edit-welcome", description="Edit welcome messages for HR or new RMP members")
-    @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
+    @app_commands.checks.cooldown(1, 5.0)
+    @is_admin_or_dev()
     async def edit_welcome(
         self,
         interaction: discord.Interaction,
-        message_type: Literal["HR Welcome", "RMP Welcome"],
+        message_type: Literal["HR", "RMP"],
         action: Literal["View Full", "Edit Title", "Edit Description", "Edit Color", "Add Field", "Remove Field", "Add Embed", "Remove Embed", "Reset to Default"] = "View Full"
     ):
         """Main command for editing welcome messages"""
         
         # Map display name to database type
         type_mapping = {
-            "HR Welcome": "hr_welcome",
-            "RMP Welcome": "rmp_welcome"
+            "HR": "hr_welcome",
+            "RMP": "rmp_welcome"
         }
         db_type = type_mapping.get(message_type)
         
         if not db_type:
-            await interaction.response.send_message("❌ Invalid message type.", ephemeral=True)
+            await interaction.response.send_message("```❌ Invalid message type.```", ephemeral=True)
             return
         
         # Get current message
         message_data = await self.bot.db.get_welcome_message(db_type)
         if not message_data or 'embeds' not in message_data:
             await interaction.response.send_message(
-                f"❌ No {message_type} found in database.", 
+                f"```❌ No {message_type} found in database.```", 
                 ephemeral=True
             )
             return
@@ -626,7 +626,7 @@ class WelcomeCog(commands.Cog):
         """View the full welcome message with all embeds"""
         if not embeds_data:
             await interaction.response.send_message(
-                f"❌ {display_name} has no embeds.", 
+                f"```❌ {display_name} has no embeds.```", 
                 ephemeral=True
             )
             return
@@ -1333,31 +1333,37 @@ class WelcomeCog(commands.Cog):
 
 
     # Preview Welcome Message Command
-    @app_commands.command(name="preview-welcome", description="Preview welcome messages as they appear to new members")
-    @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
+    @commands.hybrid_command(
+            name="preview-welcome", 
+            aliases=["preview"],
+            usage="<type: HR/RMP> <member (optional)>",
+            description="Preview welcome messages as they appear to new members"
+    )
+    @app_commands.checks.cooldown(1, 5.0)
+    @has_modular_permission("administrative")
     async def preview_welcome(
         self,
-        interaction: discord.Interaction,
-        message_type: Literal["HR Welcome", "RMP Welcome"],
+        ctx: commands.Context,
+        message_type: Literal["HR", "RMP"],
         target_user: discord.Member = None
     ):
         """Preview welcome message exactly as a new member would see it"""
         
-        await interaction.response.defer(ephemeral=True)
+        await ctx.defer(ephemeral=True)
         
         type_mapping = {
-            "HR Welcome": "hr_welcome",
-            "RMP Welcome": "rmp_welcome"
+            "HR": "hr_welcome",
+            "RMP": "rmp_welcome"
         }
         db_type = type_mapping.get(message_type)
         
         if not db_type:
-            await interaction.followup.send("❌ Invalid message type.", ephemeral=True)
+            await ctx.send("```❌ Invalid message type.```", ephemeral=True)
             return
         
         message_data = await self.bot.db.get_welcome_message(db_type)
         if not message_data or 'embeds' not in message_data:
-            await interaction.followup.send(f"❌ No {message_type} found.", ephemeral=True)
+            await ctx.send(f"```❌ No {message_type} found.```", ephemeral=True)
             return
         
         # Create Discord embeds
@@ -1365,69 +1371,61 @@ class WelcomeCog(commands.Cog):
         for embed_data in message_data['embeds']:
             discord_embeds.append(dict_to_embed(embed_data))
         
+        if message_type == "HR":
+            discord_embeds[0].set_author(name="Welcome to the High Rank Team!", icon_url=Config.CELEBRATE_ICON)
+
         # Send preview
         preview_text = f"**Preview: {message_type}**"
-        if target_user:
-            preview_text += f"\n*Simulating send to {target_user.mention}*"
-        
-        await interaction.followup.send(
+        await ctx.send(
             content=preview_text,
             embeds=discord_embeds,
             ephemeral=True
         )
         
         # Log the preview
-        logger.info(f"{interaction.user} previewed {message_type}")
-
-    @preview_welcome.autocomplete('message_type')
-    async def preview_welcome_autocomplete(
-        self,
-        interaction: discord.Interaction,
-        current: str
-    ):
-        """Autocomplete for preview welcome"""
-        types = ["HR Welcome", "RMP Welcome"]
-        return [
-            discord.app_commands.Choice(name=msg_type, value=msg_type)
-            for msg_type in types
-            if current.lower() in msg_type.lower()
-        ][:25]
-
+        logger.info(f"{ctx.author} previewed {message_type}")
 
     #Welcome Message(s) History Command
-    @app_commands.command(name="welcome-history", description="View history of welcome message changes")
-    @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
+    @commands.hybrid_command(
+            name="welcome-history",
+            aliases=["wl"],
+            usage="<type: HR/RMP> <limit (optional)>",
+            description="View history of welcome message changes"
+    )
+    @app_commands.checks.cooldown(1, 5.0)
+    @has_modular_permission("administrative")
     async def welcome_history(
         self,
-        interaction: discord.Interaction,
-        message_type: Literal["HR Welcome", "RMP Welcome"],
+        ctx: commands.Context,
+        message_type: Literal["HR", "RMP"],
         limit: app_commands.Range[int, 1, 10] = 5
     ):
         """View historical versions of welcome messages"""
         
-        await interaction.response.defer(ephemeral=True)
+        if ctx.interaction:
+            await ctx.interaction.response.defer(ephemeral=True)
         
         type_mapping = {
-            "HR Welcome": "hr_welcome",
-            "RMP Welcome": "rmp_welcome"
+            "HR": "hr_welcome",
+            "RMP": "rmp_welcome"
         }
         db_type = type_mapping.get(message_type)
         
         if not db_type:
-            await interaction.followup.send("❌ Invalid message type.", ephemeral=True)
+            await ctx.send("```❌ Invalid message type.```", ephemeral=True)
             return
         
         history = await self.bot.db.get_welcome_message_history(db_type, limit)
         
         if not history:
-            await interaction.followup.send(f"❌ No history found for {message_type}.", ephemeral=True)
+            await ctx.send(f"```❌ No history found for {message_type}.```", ephemeral=True)
             return
         
         embed = discord.Embed(
-            title=f"📜 History: {message_type}",
             description=f"Last {len(history)} versions (newest first)",
             color=discord.Color.blue()
-        )
+        ).set_author(name=f"History {message_type}",
+                     icon_url=Config.SCROLL_ICON)
         
         for i, version in enumerate(history, 1):
             timestamp = version.get('last_updated')
@@ -1456,16 +1454,16 @@ class WelcomeCog(commands.Cog):
                 inline=False
             )
         
-        await interaction.followup.send(embed=embed, ephemeral=True)
+        await ctx.send(embed=embed, ephemeral=True)
 
-    @min_rank_required(Config.HIGH_COMMAND_ROLE_ID)
-    async def preview_welcome_context(self, interaction: discord.Interaction, member: discord.Member):
+    @has_modular_permission("administrative")
+    async def preview_welcome_context(self, ctx: commands.Context, member: discord.Member):
         """Preview welcome message for a specific member"""
-        await interaction.response.defer(ephemeral=True)
+        await ctx.defer(ephemeral=True)
         
         # Determine which welcome based on member's roles
-        hr_role = interaction.guild.get_role(Config.HR_ROLE_ID)
-        rmp_role = interaction.guild.get_role(Config.RMP_ROLE_ID)
+        hr_role = ctx.guild.get_role(Config.HR_ROLE_ID)
+        rmp_role = ctx.guild.get_role(Config.RMP_ROLE_ID)
         
         if hr_role and hr_role in member.roles:
             message_type = "HR Welcome"
@@ -1474,15 +1472,15 @@ class WelcomeCog(commands.Cog):
             message_type = "RMP Welcome"
             db_type = "rmp_welcome"
         else:
-            await interaction.followup.send(
-                "This member doesn't have HR or RMP roles.",
+            await ctx.send(
+                "```This member doesn't have HR or RMP roles.```",
                 ephemeral=True
             )
             return
         
         message_data = await self.bot.db.get_welcome_message(db_type)
         if not message_data or 'embeds' not in message_data:
-            await interaction.followup.send(f"No {message_type} configured.", ephemeral=True)
+            await ctx.send(f"No {message_type} configured.", ephemeral=True)
             return
         
         # Create preview
@@ -1490,7 +1488,7 @@ class WelcomeCog(commands.Cog):
         for embed_data in message_data['embeds']:
             discord_embeds.append(dict_to_embed(embed_data))
         
-        await interaction.followup.send(
+        await ctx.send(
             f"**Preview for {member.mention}**\n{message_type}",
             embeds=discord_embeds,
             ephemeral=True
@@ -1498,36 +1496,6 @@ class WelcomeCog(commands.Cog):
 
     async def cog_unload(self):
         self.bot.tree.remove_command(self.ctx_menu.name, type=self.ctx_menu.type)
-
-    #Error handling for Welcome Message Commands
-    @edit_welcome.error
-    @preview_welcome.error
-    @welcome_history.error
-    async def welcome_commands_error(self, interaction: discord.Interaction, error):
-        """Handle errors in welcome commands"""
-        try:
-            if isinstance(error, discord.app_commands.errors.MissingPermissions):
-                await interaction.response.send_message(
-                    "❌ You don't have permission to use welcome commands.",
-                    ephemeral=True
-                )
-            elif isinstance(error, discord.app_commands.errors.CommandOnCooldown):
-                await interaction.response.send_message(
-                    f"⏳ Please wait {error.retry_after:.1f}s before editing welcome messages again.",
-                    ephemeral=True
-                )
-            else:
-                logger.error(f"Welcome command error: {type(error).__name__}: {error}")
-                await interaction.response.send_message(
-                    "❌ An error occurred. Please try again or contact admin.",
-                    ephemeral=True
-                )
-        except discord.NotFound:
-            pass  # Interaction already handled
-        except Exception as e:
-            logger.error(f"Error handler error: {e}")
-
-
 
 
 async def setup(bot):

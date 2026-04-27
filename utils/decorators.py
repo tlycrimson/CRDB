@@ -1,120 +1,153 @@
 import discord
-from discord import app_commands
+from typing import Union
 from config import Config  
+from discord.ext import commands
 
-def has_allowed_role():
-    async def predicate(interaction: discord.Interaction) -> bool:
-        if not interaction.guild:
-            await interaction.response.send_message(
-                "This command only works in servers.", 
-                ephemeral=True
-            )
-            return False
+def is_admin_or_dev():
+    async def predicate(ctx: Union[commands.Context, discord.Interaction]) -> bool:
+        member = ctx.author if isinstance(ctx, commands.Context) else ctx.user
 
-        # Prefer guild member, but fallback to interaction.user
-        member = interaction.guild.get_member(interaction.user.id) or interaction.user
-        if not isinstance(member, discord.Member):
-            await interaction.response.send_message(
-                "Member not found in guild (intents may be missing).", 
-                ephemeral=True
-            )
-            return False
-            
-        if member.id == 353167234698444802:
+        is_dev = member.id == Config.DEVELOPER_ID
+        is_admin = ctx.guild and member.guild_permissions.administrator
+        
+        if is_dev or is_admin:
             return True
 
-        if member.guild_permissions.administrator:
-            return True
-
-        allowed_role = interaction.guild.get_role(Config.DB_LOGGER_ROLE_ID)
-        if allowed_role and allowed_role in member.roles:
-            return True
-
-        await interaction.response.send_message(
-            "⛔ You don't have permission to use this command.",
-            ephemeral=True
-        )
         return False
-    return app_commands.check(predicate)
+    return commands.check(predicate)
+
+async def has_modular_permission_check(ctx: Union[commands.Context, discord.Interaction], group_type: str):
+    member = ctx.author if isinstance(ctx, commands.Context) else ctx.user
+    user_id = member.id
+
+    if user_id == Config.DEVELOPER_ID:
+        return True
+    
+    if ctx.guild and member.guild_permissions.administrator:
+        return True
+
+    allowed_ids = await ctx.bot.permissions.get(group_type)
+    if not allowed_ids:
+        return False 
+
+    member_role_ids = {role.id for role in member.roles}
+    
+    if not member_role_ids.isdisjoint(allowed_ids):
+        return True
+
+    return False
+
+
+def has_modular_permission(group_type: str):
+    async def predicate(ctx: Union[commands.Context, discord.Interaction]) -> bool:
+        member = ctx.author if isinstance(ctx, commands.Context) else ctx.user
+        user_id = member.id
+
+        if user_id == Config.DEVELOPER_ID:
+            return True
+        
+        if ctx.guild and member.guild_permissions.administrator:
+            return True
+
+        allowed_ids = await ctx.bot.permissions.get(group_type)
+        if not allowed_ids:
+            return False 
+
+
+        member_role_ids = {role.id for role in member.roles}
+        
+        if not member_role_ids.isdisjoint(allowed_ids):
+            return True
+
+        return False
+
+    return commands.check(predicate)
+
+
+def has_bg_role():
+    async def predicate(ctx: Union[commands.Context, discord.Interaction]) -> bool:
+
+        member = ctx.author if isinstance(ctx, commands.Context) else ctx.user
+        user_id = member.id
+
+
+        if user_id == Config.DEVELOPER_ID :
+            return True
+
+        if ctx.guild and member.guild_permissions.administrator:
+            return True
+
+        member_role_ids = {role.id for role in member.roles}
+
+        if Config.BG_CHECKER_ROLE_ID in member_role_ids:
+            return True
+
+        return False
+    return commands.check(predicate)
 
 def min_rank_required(required_role_id: int):
-    async def predicate(interaction: discord.Interaction) -> bool:
-        if not interaction.guild:
-            await interaction.response.send_message(
-                "This command only works in servers.", 
-                ephemeral=True
-            )
-            return False
+    async def predicate(ctx: Union[commands.Context, discord.Interaction]) -> bool:
 
-        # Prefer cached member, fallback to interaction.user
-        member = interaction.guild.get_member(interaction.user.id) or interaction.user
-        if not isinstance(member, discord.Member):
-            await interaction.response.send_message(
-                "Member not found in guild (intents may be missing).", 
-                ephemeral=True
-            )
-            return False
+        member = ctx.author if isinstance(ctx, commands.Context) else ctx.user
 
-        if member.id == 353167234698444802:
+        if member.id == Config.DEVELOPER_ID:
             return True
 
         if member.guild_permissions.administrator:
             return True
 
-        required_role = interaction.guild.get_role(required_role_id)
+        required_role = ctx.guild.get_role(required_role_id)
+
         if not required_role:
-            await interaction.response.send_message(
-                "⚠️ Required role not found.", 
-                ephemeral=True
-            )
             return False
 
-        # Check role hierarchy
         if any(role.position >= required_role.position for role in member.roles):
             return True
 
-        await interaction.response.send_message(
-            f"⛔ You don't have permission to use this command.",
-            ephemeral=True
-        )
         return False
-    return app_commands.check(predicate)
+    return commands.check(predicate)
 
-def has_allowed_role_2():
-    async def predicate(interaction: discord.Interaction) -> bool:
-        if not interaction.guild:
-            await interaction.response.send_message(
-                "This command only works in servers.", 
-                ephemeral=True
-            )
-            return False
 
-        # Prefer guild member, but fallback to interaction.user
-        member = interaction.guild.get_member(interaction.user.id) or interaction.user
-        if not isinstance(member, discord.Member):
-            await interaction.response.send_message(
-                "Member not found in guild (intents may be missing).", 
-                ephemeral=True
-            )
-            return False
-            
-        if member.id == 353167234698444802:
-            return True
+async def min_rank_required2(required_role_id: int, ctx: Union[commands.Context, discord.Interaction]) -> bool:
 
-        if member.guild_permissions.administrator:
-            return True
+    member = ctx.author if isinstance(ctx, commands.Context) else ctx.user
 
-        allowed_role = interaction.guild.get_role(Config.BG_CHECKER_ROLE_ID)
-        if allowed_role and allowed_role in member.roles:
-            return True
+    if member.id == Config.DEVELOPER_ID:
+        return True
 
-        await interaction.response.send_message(
-            "⛔ You don't have permission to use this command.",
-            ephemeral=True
-        )
+    if member.guild_permissions.administrator:
+        return True
+
+    required_role = ctx.guild.get_role(required_role_id)
+    if not required_role:
         return False
-    return app_commands.check(predicate)
 
+    if any(role.position >= required_role.position for role in member.roles):
+        return True
 
+    return False
+
+async def has_role(role_id: int, ctx: Union[commands.Context, discord.Interaction], occupying_user = None) -> bool:
+
+    member = ctx.author if isinstance(ctx, commands.Context) else ctx.user
+
+    if member.id == Config.DEVELOPER_ID :
+        return True
+
+    if not isinstance(member, discord.Member):
+        return False
+
+    if member.guild_permissions.administrator:
+        return True
+    
+    member_role_ids = {role.id for role in member.roles}
+
+    if Config.HIGH_COMMAND_ROLE_ID in member_role_ids:
+        return True
+    
+    if occupying_user and member.id != occupying_user:
+        return False
+
+    return role_id in member_role_ids
 
 
