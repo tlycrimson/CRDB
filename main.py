@@ -197,19 +197,6 @@ async def on_ready():
     else:
         logger.info("Banner not found at {BANNER_PATH}")
  
-    send = await bot.db.send_change_log()
-    if send:
-        channel_ids = [Config.MAIN_COMMS_CHANNEL_ID, Config.DEFAULT_LOG_CHANNEL]
-        embeds = embedBuilder.build_change_log(bot.command_prefix) 
-     
-        for channel_id in channel_ids:
-            channel = bot.get_channel(channel_id)
-            if channel:
-                try:
-                    await channel.send(embeds=embeds)
-                except Exception as e:
-                    logger.error(f"Could not send to {channel_id}: {e}")   
-
     logger.info("=" * 50)
 
 
