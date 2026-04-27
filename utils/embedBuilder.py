@@ -449,7 +449,7 @@ def build_activity_log(member, message, constable, time, isTimeGuarded: bool, po
             timestamp=datetime.now(timezone.utc)
         )
  
-       name = f"{"Guard Log" if isTimeGuarded else "Activity Log"}"  
+       name = "Guard Log" if isTimeGuarded else "Activity Log"  
        icon_url = Config.TIME_ICON
 
        embed.add_field(name="Constable:", value=clean_nickname(constable.display_name), inline=True)
