@@ -233,6 +233,15 @@ async def on_command_error(ctx: commands.Context, error: commands.CommandError):
                     "```⛔ You don't have permission to use this command.```",
                     ephemeral=True
                 )
+        elif isinstance(error, commands.CommandInvokeError):
+                if isinstance(error.original, discord.Forbidden):
+                    try:
+                        await ctx.send("``❌ I don't have the necessary permissions (like 'Embed Links') in this channel. Try using the `/` version!```")
+                    except discord.Forbidden:
+                        try:
+                            await ctx.author.send(f"```❌ I couldn't respond in {ctx.channel.mention} because I'm missing permissions there.```")
+                        except discord.Forbidden:
+                            pass
         elif isinstance(error, (commands.BadLiteralArgument, commands.BadArgument, commands.MissingRequiredArgument)):
                     command = ctx.command
                     command_structure = command.usage if command.usage else command.signature
