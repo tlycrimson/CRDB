@@ -236,7 +236,7 @@ async def on_command_error(ctx: commands.Context, error: commands.CommandError):
         elif isinstance(error, commands.CommandInvokeError):
                 if isinstance(error.original, discord.Forbidden):
                     try:
-                        await ctx.send("``❌ I don't have the necessary permissions (like 'Embed Links') in this channel. Try using the `/` version!```")
+                        await ctx.send("```❌ I don't have the necessary permissions (such as 'Embed Links') in this channel. Try using the `/` version!```")
                     except discord.Forbidden:
                         try:
                             await ctx.author.send(f"```❌ I couldn't respond in {ctx.channel.mention} because I'm missing permissions there.```")
