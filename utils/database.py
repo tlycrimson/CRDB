@@ -152,10 +152,6 @@ class DatabaseHandler:
             res = await self.supabase.table(self.s_users_table).select("*").eq("user_id", user_id_str).maybe_single().execute()
             user_data = res.data if res and res.data else {}
 
-            if user_data:
-                async with self._user_cache_lock:
-                    self._user_cache[user_id_str] = user_data
-            
             return user_data
 
         except Exception as e:
@@ -873,7 +869,7 @@ class DatabaseHandler:
         username: str,
         guild: discord.Guild | None = None,
         roblox_id: int | None = None,
-        xp: int | None = 0
+        xp: int | None = None
     ) -> bool:
         user_id_str = str(discord_id)
         cleaned_username = clean_nickname(username)
@@ -886,6 +882,9 @@ class DatabaseHandler:
                     "username": cleaned_username,
                     "roblox_id": roblox_id if roblox_id is not None else res.data.get('roblox_id')
                 }
+                if xp is not None:
+                    update_data["xp"] = xp
+
                 await self.supabase.table(self.users_table).update(update_data).eq('user_id', user_id_str).execute()
                 
                 async with self._user_cache_lock:
@@ -896,15 +895,21 @@ class DatabaseHandler:
                         full_data.update(update_data)
                         self._user_cache[user_id_str] = full_data
             else:
+                final_xp = xp if xp is not None else 0
+                old_data = await self.get_stored_user(user_id_str)
+                if old_data:
+                    final_xp = old_data.get("xp", final_xp)
                 new_user = {
                     "user_id": user_id_str,
                     "username": cleaned_username,
                     "roblox_id": roblox_id,
-                    "xp": xp if xp is not None else 0,
+                    "xp": final_xp,
                     "rank": "Unknown",
                     "division": "Unknown"
                 }
-                await self.supabase.table(self.users_table).insert(new_user).execute()
+                res = await self.supabase.table(self.users_table).insert(new_user).execute()
+                if res.data:
+                    await self.delete_stored_user(user_id_str)
                 logger.info("Created New User: %s (%s), Roblox ID: %s", cleaned_username, user_id_str, roblox_id)
 
                 async with self._user_cache_lock:
