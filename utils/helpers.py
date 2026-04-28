@@ -198,8 +198,8 @@ class ViewTrigger(discord.ui.View):
 
 # XP Tier configuration
 TIERS = [
-    (f"<:SRF:1489734622966321202> Immortal", 2000, discord.Color.red()),
-    (f"<a:CoolBooster:1279544082301194322> Grandmaster", 1000, discord.Color.purple()),
+    (f"👑 Immortal", 2000, discord.Color.red()),
+    (f"🥋 Grandmaster", 1000, discord.Color.purple()),
     (f"☄️ Cosmos", 750, discord.Color.dark_red()),
     (f"🛡️ Guardian", 600, discord.Color.blue()),
     (f"🦾 Knight", 490, discord.Color.dark_embed()),
