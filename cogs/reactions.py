@@ -116,7 +116,7 @@ class ReactionLoggerCog(commands.Cog):
         """Mark reaction as processed"""
         try:
             await self.bot.db.supabase.table('processed_reactions')\
-                .insert({
+                .upsert({
                     'message_id': str(message_id),
                     'user_id': str(user_id)
                 })\
@@ -555,13 +555,13 @@ class ReactionLoggerCog(commands.Cog):
             )
             return await self.log_channel.send(content=member.mention, embed=error_embed)
         
-
+    
         try:
             for h in self.REACTION_HANDLERS:
                 if h.channels is None or payload.channel_id in h.channels:
                     try:
                         await getattr(self, h.handler)(payload, guild, member)
-                        logger.info(f"Processed Reaction event | msg={payload.message_id} user={payload.user_id} reaction={payload.emoji}")
+                        logger.info(f"Processed Reaction event | msg={payload.message_id} channel={payload.channel_id} user={payload.user_id} reaction={payload.emoji}")
                         await self.mark_reaction_processed(payload.message_id, payload.user_id)
                     except Exception as e:
                         await self._handle_reaction_error(e, member, h.handler)

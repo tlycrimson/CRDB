@@ -26,10 +26,11 @@ async def has_modular_permission_check(ctx: Union[commands.Context, discord.Inte
     if ctx.guild and member.guild_permissions.administrator:
         return True
 
-    allowed_ids = await ctx.bot.permissions.get(group_type)
-    if not allowed_ids:
+    raw_ids = await ctx.bot.permissions.get(group_type)
+    if not raw_ids:
         return False 
-
+    
+    allowed_ids = {int(i) for i in raw_ids}
     member_role_ids = {role.id for role in member.roles}
     
     if not member_role_ids.isdisjoint(allowed_ids):
@@ -46,14 +47,14 @@ def has_modular_permission(group_type: str):
         if user_id == Config.DEVELOPER_ID:
             return True
         
-        if ctx.guild and member.guild_permissions.administrator:
+        if ctx.guild and ctx.author.guild_permissions.administrator:
             return True
 
-        allowed_ids = await ctx.bot.permissions.get(group_type)
-        if not allowed_ids:
+        raw_ids = await ctx.bot.permissions.get(group_type)
+        if not raw_ids:
             return False 
 
-
+        allowed_ids = {int(i) for i in raw_ids}
         member_role_ids = {role.id for role in member.roles}
         
         if not member_role_ids.isdisjoint(allowed_ids):
@@ -74,7 +75,7 @@ def has_bg_role():
         if user_id == Config.DEVELOPER_ID :
             return True
 
-        if ctx.guild and member.guild_permissions.administrator:
+        if ctx.guild and ctx.author.guild_permissions.administrator:
             return True
 
         member_role_ids = {role.id for role in member.roles}
