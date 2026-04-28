@@ -23,6 +23,7 @@ class DatabaseHandler:
         self._user_cache_lock = asyncio.Lock()
         self._hrs_cache_lock = asyncio.Lock()
         self._lrs_cache_lock = asyncio.Lock()
+        self._processing_users = set()
         self.welcome_cache = {}
         self.welcome_initialised = False
         self._user_cache = {}
@@ -116,7 +117,7 @@ class DatabaseHandler:
             logger.exception("send_change_log failed for: %s", e)
             return False
    
-    async def get_user(self, user_id: str) -> dict:
+    async def get_user(self, user_id: str):
         """Retrieves full user data from cache, falling back to Database if missing."""
         user_id_str = str(user_id)
 
@@ -124,12 +125,12 @@ class DatabaseHandler:
             return self._user_cache[user_id_str]
 
         if not self.supabase:
-            return {}
+            return None
 
         try:
             res = await self.supabase.table(self.users_table).select("*").eq("user_id", user_id_str).maybe_single().execute() 
             
-            user_data = res.data if res and res.data else {}
+            user_data = res.data if res and res.data else None
             
             if user_data:
                 async with self._user_cache_lock:
@@ -139,7 +140,7 @@ class DatabaseHandler:
 
         except Exception as e:
             logger.exception("get_user failed for %s: %s", user_id_str, e)
-            return {}
+            return None
 
     async def get_stored_user(self, user_id: str) -> dict:
         user_id_str = str(user_id)
@@ -463,7 +464,12 @@ class DatabaseHandler:
     async def discharge_user(self, user_id: str, username: str, guild: discord.Guild) -> bool:
         """Removing and Archiving user data to user_store"""
         user_id_str = str(user_id)
-        
+
+        if user_id_str in self._processing_users:
+            return False
+
+        self._processing_users.add(user_id_str)
+
         user_data = await self.get_user(user_id_str)
         if not user_data:
             return False
@@ -479,7 +485,11 @@ class DatabaseHandler:
             store_data.pop("rank", None)
             store_data.pop("division", None)
 
-            await self.supabase.table(self.s_users_table).upsert(store_data).execute()
+            archive_res = await self.supabase.table(self.s_users_table).upsert(store_data).execute()
+            
+            if not archive_res.data:
+                logger.error("Archive failed for %s. Aborting deletion.", username)
+                return False
 
             res = await self.supabase.table(self.users_table).delete().eq("user_id", user_id_str).execute()
             if not res.data:
@@ -505,7 +515,8 @@ class DatabaseHandler:
                 await log_channel.send(embed=embed)
             except Exception as log_error:
                 logger.error("Failed to send log embed: %s", log_error)
-        
+
+        self._processing_users.discard(user_id_str)
         return success
 
 

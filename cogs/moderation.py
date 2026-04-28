@@ -24,75 +24,73 @@ class ModerationCog(commands.Cog):
             usage="<member> <column: tryouts/events/phases/courses(logistics)/inspections/joint_events/activity/time_guarded/events_attended> <value>",
             description="Edit a specific user's record in the HR or LR table."
     )
-    @app_commands.checks.cooldown(1, 60.0)
+    @app_commands.checks.cooldown(1, 5.0)
     @has_modular_permission("moderation")
     async def edit_db(
             self, 
             ctx: commands.Context, 
             user: discord.User, 
-            column: Literal["tryouts", "events", "phases", "courses", "inspections", "joint_events", "activity", "time_guarded", "events_attended"],
+            column: str,
             value: str
     ):
         if ctx.interaction:
             await ctx.interaction.response.defer(ephemeral=False)
+
         guild = ctx.guild
-            
-        member = guild.get_member(user.id)
-        if not member:
-            try:
-                member = await guild.fetch_member(user.id)
-            except discord.NotFound:
-                await ctx.send(f"```❌ User not found in this server.```")
-                return
-                
-        hr_role = guild.get_role(Config.HR_ROLE_ID)
-        is_hr = hr_role and hr_role in member.roles
-        table = self.bot.db.hrs_table if is_hr else self.bot.db.lrs_table
         user_id = str(user.id)
 
-        # Define available columns based on role
+        member = guild.get_member(user.id) or await guild.fetch_member(user.id)
+        if not member:
+            return await ctx.send(f"```❌ User not found in this server.```")
+
+        hr_role = guild.get_role(Config.HR_ROLE_ID)
+        is_hr = hr_role and hr_role in member.roles
+
         hr_columns = ["tryouts", "events", "phases", "courses", "inspections", "joint_events"]
         lr_columns = ["activity", "time_guarded", "events_attended"]
         
-        # Validate column based on role
+        table_name = "HRs" if is_hr else "LRs"
+        db_table = self.bot.db.hrs_table if is_hr else self.bot.db.lrs_table
         available_columns = hr_columns if is_hr else lr_columns
-        if column not in available_columns:
-            await ctx.send(
-                f"```❌ Invalid column {column} for {table} table."
-                f"Available columns for {'HRs' if is_hr else 'LRs'}: {', '.join(available_columns)}```"
-            )
-            return
 
+        if column.lower() not in available_columns:
+            return await ctx.send(
+                f"```❌ Invalid column '{column}' for {table_name}.\n"
+                f"Available: {', '.join(available_columns)}```"
+            )
 
         try:
             if is_hr:
                 res = await self.bot.db.get_hr_info(user_id)
             else:
-                res = await self.bot.db.get_hr_info(user_id)
+                res = await self.bot.db.get_lr_info(user_id) 
 
             if not res:
-                await ctx.send(f"```❌ No record found for {clean_nickname(user.display_name)} in {table} table.```")
-                return
+                return await ctx.send(f"```❌ No record found for {user.display_name} in {table_name} table.```")
 
-            old_value = res.get(column, "N/A")
+            old_value = res.get(column, 0)
+
             try:
-                value_converted = int(value)
+                value_converted = float(value) if '.' in value else int(value)
             except ValueError:
-                try:
-                    value_converted = float(value)
-                except ValueError:
-                    value_converted = value
-            
-            res = await self.bot.db.increment_points_handler(column, table, member, value, replace=True)  
-            cleaned_nickname = clean_nickname(user.display_name)
-            if not res:
-                raise Exception(f"increment_points_handler failed")
-            await ctx.send(
-                f"```✅ Updated {column} for {cleaned_nickname} from {old_value} to {value_converted}.```"
+                value_converted = value
+
+            update_success = await self.bot.db.increment_points_handler(
+                column, db_table, member, value, replace=True
             )
+
+            if not update_success:
+                raise Exception("Database update returned False")
+
+            await ctx.send(
+                f"```✅ Updated {column} for {clean_nickname(user.display_name)}\n"
+                f"Table: {table_name}\n"
+                f"Change: {old_value} ➔ {value_converted}```"
+            )
+
         except Exception as e:
             logger.exception(f"edit_db failed: {e}")
-            await ctx.send(f"```❌ Failed to update data.```")
+            await ctx.send(f"```❌ Failed to update data. Internal error logged.```")
 
 
     # Add autocomplete for the column parameter
