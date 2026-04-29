@@ -193,8 +193,6 @@ async def on_ready():
             logger.info("Bot Banner updated successfully!")
         except discord.HTTPException as e:
             logger.info("Failed to set banner: {e}")
-    else:
-        logger.info("Banner not found at {BANNER_PATH}")
  
     logger.info("=" * 50)
 
