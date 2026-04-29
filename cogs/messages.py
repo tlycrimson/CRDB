@@ -81,7 +81,8 @@ class MessageLoggerCog(commands.Cog):
             "Have a good suggestion to improve me? Use the suggest command.",
             "Use the report command to flag any bugs/mistakes I have.",
             "Type `!commands` to see what I can do.",
-            "Use the change-log command to view recent updates made to me."
+            "Use the change-log command to view recent updates made to me.",
+            "You can use commands using my prefix '!', use !commands to learn more."
         ]
 
         await channel.send(random.choice(PROMPTS))
