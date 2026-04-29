@@ -266,7 +266,10 @@ class ModerationCog(commands.Cog):
                 if handler_entry.channels and channel_id in handler_entry.channels:
                     matched = True
                     method = getattr(rl, handler_entry.handler)
-                    await method(payload, ctx.guild, member)
+                    success = await method(payload, ctx.guild, member)
+                    
+                    if not success:
+                        return await ctx.send("```❌ Failed to forcefully log.```")
 
             if not matched:
                 return await ctx.send(
@@ -285,7 +288,7 @@ class ModerationCog(commands.Cog):
                 logger.error("Failed to react to message: %s", e)
 
             await ctx.send(
-                "```✅ Forcefully logged: Verified for inputted link and reaction.```",
+                "```✅ Forcefully logged.```",
                 ephemeral=True
             )
 
