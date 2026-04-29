@@ -158,10 +158,10 @@ class ReactionLoggerCog(commands.Cog):
             return {'error': str(e)}
 
     
-    async def _log_la_and_examiner_impl(self, payload: discord.RawReactionActionEvent, guild: discord.Guild, member: discord.Member):
+    async def _log_la_and_examiner_impl(self, payload: discord.RawReactionActionEvent, guild: discord.Guild, member: discord.Member) -> bool:
         emoji = str(payload.emoji)
         if emoji == "☑️" or emoji not in Config.TRACKED_REACTIONS:
-            return
+            return False
 
         hicom_role = guild.get_role(Config.HIGH_COMMAND_ROLE_ID)
         inductor_role = guild.get_role(Config.LA_ROLE_ID)
@@ -170,11 +170,11 @@ class ReactionLoggerCog(commands.Cog):
             (hicom_role and hicom_role in member.roles) or
             (inductor_role and inductor_role in member.roles)
         ):
-            return
+            return False
                 
         channel = guild.get_channel(payload.channel_id)
         if not channel:
-            return
+            return False
     
         message = await channel.fetch_message(payload.message_id)
         author = message.author
@@ -193,20 +193,20 @@ class ReactionLoggerCog(commands.Cog):
             embed = embedBuilder.build_examiner_record(author, logger, message, points)
             await self.log_channel.send(embed=embed)
 
-        return
+        return True
     
-    async def _log_security_check_log_reaction_impl(self, payload: discord.RawReactionActionEvent, guild: discord.Guild, member: discord.Member):
+    async def _log_security_check_log_reaction_impl(self, payload: discord.RawReactionActionEvent, guild: discord.Guild, member: discord.Member) -> bool:
         emoji = str(payload.emoji)
         if emoji == "☑️" or emoji not in Config.TRACKED_REACTIONS:
-            return
+            return False
 
         hicom_role = guild.get_role(Config.HIGH_COMMAND_ROLE_ID)
         if not hicom_role or hicom_role not in member.roles:
-            return
+            return False
     
         channel = guild.get_channel(payload.channel_id)
         if not channel:
-            return
+            return False
     
         message = await channel.fetch_message(payload.message_id)
         log_author = message.author
@@ -227,7 +227,7 @@ class ReactionLoggerCog(commands.Cog):
             )
             error_embed.set_author(name="Reaction Logging Error", icon_url=Config.CANCEL_URL)
             await self.log_channel.send(content=member.mention, embed=error_embed)
-            return
+            return False
         
         security_checks = int(match.group(1))
     
@@ -241,23 +241,23 @@ class ReactionLoggerCog(commands.Cog):
             f"Security Check log Approved: ApprovedBy={member.id}, Logger={log_author.id}"
         )
 
-        return
+        return True
 
-    async def _log_dbl_reaction_impl(self, payload: discord.RawReactionActionEvent, guild: discord.Guild, member: discord.Member):
+    async def _log_dbl_reaction_impl(self, payload: discord.RawReactionActionEvent, guild: discord.Guild, member: discord.Member) -> bool:
            
         if str(payload.emoji) not in Config.TRACKED_REACTIONS:
-            return
+            return False
     
     
         if Config.DB_LOGGER_ROLE_ID:
             monitor_role = guild.get_role(Config.DB_LOGGER_ROLE_ID)
             if not monitor_role or monitor_role not in member.roles:
-                return
+                return False
     
         channel = guild.get_channel(payload.channel_id)
     
         if not all((channel, member, self.log_channel)):
-            return
+            return False
         
         try:
             await asyncio.sleep(0.5)
@@ -267,26 +267,26 @@ class ReactionLoggerCog(commands.Cog):
             
             embed = embedBuilder.build_db_logger_record(member, message, Config.POINTS_PER_ACTIVITY, payload.emoji)
             await self.log_channel.send(embed=embed)
-
+            return True
         except discord.NotFound:
-            return
+            return False
         except Exception as e:
             logger.error(f"Reaction log error: {type(e).__name__}: {str(e)}")
             await self._handle_reaction_error(e, member, "_log_dbl_reaction_impl")
-           
+            return False 
    
-    async def _log_event_reaction_impl(self, payload: discord.RawReactionActionEvent, guild: discord.Guild, member: discord.Member):
+    async def _log_event_reaction_impl(self, payload: discord.RawReactionActionEvent, guild: discord.Guild, member: discord.Member)-> bool:
         """Handle event logging without confirmation"""
         if payload.channel_id not in self.event_channel_ids or str(payload.emoji) != "✅":
-            return
+            return False
 
         db_logger_role = guild.get_role(Config.DB_LOGGER_ROLE_ID)
         if not db_logger_role or db_logger_role not in member.roles:
-            return
+            return False
 
         channel = guild.get_channel(payload.channel_id)
         if not channel or not self.log_channel:
-            return
+            return False
 
         try:
             await asyncio.sleep(0.5)  # Prevent bursts
@@ -369,15 +369,16 @@ class ReactionLoggerCog(commands.Cog):
                 f"Logged_By={member} ({member.id}), "
                 f"MessageID={message.id}"
             )
-
+            return True
         except Exception as e:
             await self._handle_reaction_error(e, member, "_log_event_reaction_impl")
+            return False
 
-    async def _log_training_reaction_impl(self, payload: discord.RawReactionActionEvent, guild: discord.Guild, member: discord.Member):
+    async def _log_training_reaction_impl(self, payload: discord.RawReactionActionEvent, guild: discord.Guild, member: discord.Member) -> bool:
         """Handle training logs (phases, tryouts, courses)"""
         db_logger_role = guild.get_role(Config.DB_LOGGER_ROLE_ID)
         if not db_logger_role or db_logger_role not in member.roles:
-            return
+            return False
 
         mapping = {
             self.phase_log_channel_id: "phases",
@@ -388,14 +389,14 @@ class ReactionLoggerCog(commands.Cog):
 
         column_to_update = mapping.get(payload.channel_id)
         if not column_to_update or str(payload.emoji) != "✅":
-            return
+            return False
 
         try:
             await asyncio.sleep(0.5)
             
             channel =  guild.get_channel(payload.channel_id)
             if not channel:
-                return
+                return False
 
             message = await channel.fetch_message(payload.message_id)
 
@@ -421,23 +422,25 @@ class ReactionLoggerCog(commands.Cog):
                     f"Host={host_member} ({host_member.id}), "
                     f"Logged_By={member} ({member.id}), "
             )
-
+            
+            return True
         except Exception as e:
             await self._handle_reaction_error(e, member, "_log_training_reaction_impl")
+            return False
 
 
-    async def _log_activity_reaction_impl(self, payload: discord.RawReactionActionEvent, guild: discord.Guild, member: discord.Member):
+    async def _log_activity_reaction_impl(self, payload: discord.RawReactionActionEvent, guild: discord.Guild, member: discord.Member)-> bool:
         """Handle activity logs (time guarded and activity)"""
         if str(payload.emoji) != "✅":
-            return
+            return False
 
         db_logger_role = guild.get_role(Config.DB_LOGGER_ROLE_ID)
         if not db_logger_role or db_logger_role not in member.roles:
-            return
+            return False
 
         channel = guild.get_channel(payload.channel_id)
         if not channel:
-            return
+            return False
 
         exempt_role_ids = {Config.HR_ROLE_ID, Config.HQ_ROLE_ID, Config.HIGH_COMMAND_ROLE_ID}
         exempt_roles = {guild.get_role(rid) for rid in exempt_role_ids} - {None}
@@ -489,8 +492,10 @@ class ReactionLoggerCog(commands.Cog):
             embed = embedBuilder.build_activity_log(member, message, user_member, total_minutes, is_time_guarded, xp_to_award)  
             await self.log_channel.send(embed=embed)
             
+            return True
         except Exception as e:
             await self._handle_reaction_error(e, member, "_log_activity_reaction_impl")
+            return False
 
 
     # Won't Combine these Functions In Case I require new logic for LRs and HRs
@@ -562,9 +567,10 @@ class ReactionLoggerCog(commands.Cog):
             for h in self.REACTION_HANDLERS:
                 if h.channels is None or payload.channel_id in h.channels:
                     try:
-                        await getattr(self, h.handler)(payload, guild, member)
-                        logger.info(f"Processed Reaction event | msg={payload.message_id} channel={payload.channel_id} user={payload.user_id} reaction={payload.emoji}")
-                        await self.mark_reaction_processed(payload.message_id, payload.user_id)
+                        success = await getattr(self, h.handler)(payload, guild, member)
+                        if success:
+                            logger.info(f"Processed Reaction event | msg={payload.message_id} channel={payload.channel_id} user={payload.user_id} reaction={payload.emoji}")
+                            await self.mark_reaction_processed(payload.message_id, payload.user_id)
                     except Exception as e:
                         await self._handle_reaction_error(e, member, h.handler)
 
