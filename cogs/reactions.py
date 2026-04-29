@@ -65,7 +65,6 @@ class ReactionLoggerCog(commands.Cog):
     async def configure(self, interaction=None, log_channel=None, monitor_channels=None):
         """Setup reaction logger with optional parameters"""
         if interaction and log_channel and monitor_channels:
-            # Setup from command
             channel_ids = [int(cid.strip()) for cid in monitor_channels.split(',')]
             self.monitor_channel_ids = set(channel_ids)
             await interaction.followup.send("Reaction tracking setup complete", ephemeral=True)
@@ -546,7 +545,7 @@ class ReactionLoggerCog(commands.Cog):
         if await self.is_reaction_processed(payload.message_id, member):
             logger.error(
                 f"Duplicate reaction ignored | "
-                f"msg={payload.message_id} user={member.id}"
+                f"msg={payload.message_id}, channel={payload.message_id} user={member.id}"
             )
             error_embed = discord.Embed(
                     description="That log has already been processed recently. If you wish to still log try /force-log.",

@@ -1,9 +1,10 @@
 import re
+import random
 import asyncio
 import discord
 import logging
 from config import Config
-from discord.ext import commands
+from discord.ext import commands, tasks
 from utils.helpers import clean_nickname
 from utils.views import RequestView, DischargeView, save_pending_checks, PENDING_CHECK_TABLE, PENDING_BL_TABLE
 from datetime import datetime, timedelta, timezone
@@ -14,6 +15,7 @@ class MessageLoggerCog(commands.Cog):
     def __init__(self, bot):
         self.bot = bot
         self.cr_table = self.bot.db.crs_table
+        self.prompt_users.start()
  
     # Clean old processed records in db
     async def start_cleanup_task(self):
@@ -56,6 +58,44 @@ class MessageLoggerCog(commands.Cog):
     async def on_ready(self):
         if not hasattr(self, "_cleanup_task"):
             await self.start_cleanup_task()
+
+    @tasks.loop(minutes=30)  
+    async def prompt_users(self):
+        channel = self.bot.get_channel(Config.MAIN_COMMS_CHANNEL_ID)
+        if not channel:
+            return
+
+        result = await self.bot.db.supabase.table('bot_state')\
+            .select('value')\
+            .eq('key', 'last_prompt_time')\
+            .execute()
+
+        if result.data:
+            last_time = datetime.fromisoformat(result.data[0]['value'])
+            if last_time.tzinfo is None:
+                last_time = last_time.replace(tzinfo=timezone.utc)
+            if datetime.now(timezone.utc) - last_time < timedelta(hours=15):
+                return
+
+        PROMPTS = [
+            "Have a good suggestion to improve me? Use the suggest command.",
+            "Use the report command to flag any bugs/mistakes I have.",
+            "Type `!commands` to see what I can do.",
+            "Use the change-log command to view recent updates made to me."
+        ]
+
+        await channel.send(random.choice(PROMPTS))
+
+        await self.bot.db.supabase.table('bot_state')\
+            .upsert(
+                {'key': 'last_prompt_time', 'value': datetime.now(timezone.utc).isoformat()},
+                on_conflict='key'
+            )\
+            .execute()
+    
+    @prompt_users.before_loop
+    async def before_prompt_users(self):
+        await self.bot.wait_until_ready()
 
     async def case_logs(self, message: discord.Message, manual: bool = False, user = None):
         suspect = re.search(r'suspect:\s*([^\s(]+)', message.content, re.IGNORECASE)
