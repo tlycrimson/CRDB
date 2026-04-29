@@ -658,7 +658,9 @@ class DatabaseHandler:
 
         try:
             res = await self.supabase.table(self.u_roles_table).select("roles").eq("user_id", str(user_id)).execute()
-            logger.info("Retrieved saved roles for %s", user_id)
+            if res and res.data:
+                logger.info("Retrieved saved roles for %s", user_id)
+
             return res.data[0].get("roles", []) if res and res.data else []
         except Exception as e:
             logger.exception("get_user_roles failed for %s: %s", user_id, e)
