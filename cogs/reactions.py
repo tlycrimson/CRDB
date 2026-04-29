@@ -116,10 +116,13 @@ class ReactionLoggerCog(commands.Cog):
         """Mark reaction as processed"""
         try:
             await self.bot.db.supabase.table('processed_reactions')\
-                .upsert({
-                    'message_id': str(message_id),
-                    'user_id': str(user_id)
-                })\
+                .upsert(
+                        {
+                            'message_id': str(message_id),
+                            'user_id': str(user_id)
+                        },
+                        on_conflict='message_id,user_id'
+                )\
                 .execute()
         except Exception as e:
             logger.error(f"Error marking reaction processed: {e}")
@@ -210,7 +213,7 @@ class ReactionLoggerCog(commands.Cog):
         log_author = message.author
     
         match = re.search(
-            r"Security\s*Check(?:\(s\)|s)?:\s*(\d+)",
+            r"Security\s*Check(?:/s|\(s\)|s)?:\s*(\d+)",
             message.content,
             re.IGNORECASE
         )
