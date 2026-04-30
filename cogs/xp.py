@@ -553,16 +553,17 @@ class XPCog(commands.Cog):
                                     name="XP DISTRIBUTION",
                                     icon_url=Config.CHECK_URL)
 
-                    await initial_message.edit(content="", embed=embed)
-                    
+                    tasks = [initial_message.edit(content="", embed=embed)]
                     if user_log:
-                        await self.log_xp_to_discord(
-                                ctx.author,
-                                user_log,
-                                xp_amount,
-                                f"[Event]({message.jump_url})", 
-                                ctx.message.id
-                        )
+                        tasks.append(self.log_xp_to_discord(
+                            ctx.author,
+                            user_log,
+                            xp_amount,
+                            f"[Event]({message.jump_url})",
+                            ctx.message.id
+                        ))
+
+                    await asyncio.gather(*tasks)
             except asyncio.TimeoutError:
                 await initial_message.edit(content="⌛ Command timed out. Some XP may have been awarded.")
             except Exception as e:
