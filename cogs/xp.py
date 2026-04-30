@@ -24,10 +24,10 @@ class XPCog(commands.Cog):
     async def log_xp_to_discord(
         self,
         admin: discord.User,
-        user: discord.User,
+        users: list[str],
         xp_change: int,
-        new_total: int,
-        reason: str
+        reason: str,
+        message_id: int
     ):
         log_channel = self.bot.get_channel(Config.DEFAULT_LOG_CHANNEL)  
 
@@ -46,11 +46,15 @@ class XPCog(commands.Cog):
         )
 
         embed.add_field(name="Staff:", value=f"{clean_nickname(admin.display_name)}", inline=True)
-        embed.add_field(name="User:", value=f"{clean_nickname(user.display_name)}", inline=True)
         embed.add_field(name=f"{'Added:' if xp_change>0 else 'Removed:'}", value=f"{abs(xp_change)}", inline=True)
-        embed.add_field(name="Reason:", value=f"```{reason}```", inline=False)
-
-        embed.set_footer(text=f"Staff ID: {admin.id} • User ID: {user.id}")
+        embed.add_field(name="Reason:", value=f"{reason}", inline=True)
+        
+        embed.add_field(
+                name=f"User{'s' if len(users)>1 else ''}:", 
+                value=(f"```{"\n".join(users)}```"),
+                inline=False
+        )
+        embed.set_footer(text=f"Staff ID: {admin.id} • Trigger ID: {message_id}")
         
         try:
             await log_channel.send(embed=embed)
@@ -98,13 +102,14 @@ class XPCog(commands.Cog):
                 return
             
             success, new_total = await self.bot.db.add_xp(user.id, cleaned_name, xp)
-            
+             
             if success:
                 await ctx.send(
                     f"```✅ Added {xp} XP to {cleaned_name}. New total: {new_total} XP```"
                 )
+                user_log = [f"{cleaned_name} | {user.id}: {current_xp} ↠ {new_total}"]
                 # Log the XP change
-                await self.log_xp_to_discord(ctx.author, user, xp, new_total, "Manual Addition")
+                await self.log_xp_to_discord(ctx.author, user_log, xp, "Manual Addition", ctx.message.id)
                  
             else:
                 await ctx.send(
@@ -152,7 +157,8 @@ class XPCog(commands.Cog):
             if success:
                 message = f"```✅ Removed {xp} XP from {cleaned_name}. New total: {new_total} XP```"
                 await ctx.send(message)
-                await self.log_xp_to_discord(ctx.author, user, -xp, new_total, "Manual Removal")
+                user_log = [f"{cleaned_name} | {user.id}: {current_xp} ↠ {new_total}"]
+                await self.log_xp_to_discord(ctx.author, user_log, -xp, "Manual Removal", ctx.message.id)
                 
             else:
                 await ctx.send(
@@ -467,16 +473,18 @@ class XPCog(commands.Cog):
                     await initial_message.edit(content=f"```🎯Processing XP for {len(unique_mentions)} users...```")
                     
                     successful_users = []
+                    user_log = []
                     failed_users = []
                     
                     for i, user_id in enumerate(unique_mentions, 1):
                         try:
-                            await initial_message.edit(
-                                content=f"```⏳ Processing {i}/{len(unique_mentions)} users...```"
-                            )
-                            
+                            if i< len(unique_mentions):
+                                await initial_message.edit(
+                                    content=f"```⏳ Processing {i}/{len(unique_mentions)} users...```"
+                                )
+                                
                             if i > 1:
-                                await asyncio.sleep(0.3) 
+                                await asyncio.sleep(0.2) 
                                 
                             member = ctx.guild.get_member(int(user_id))
                             if not member:
@@ -513,7 +521,7 @@ class XPCog(commands.Cog):
                                     await initial_message.edit(
                                         content=f"```✨ Gave {xp_amount} XP to {cleaned_nickname} (New total: {new_total} XP)```"
                                     )
-                                    await self.log_xp_to_discord(ctx.author, member, xp_amount, new_total, f"Event: {message.jump_url}")
+                                    user_log.append(f"{cleaned_nickname} | {member.id}: {current_xp} ↠ {new_total}")
                 
                                 else:
                                     failed_users.append(f"• {cleaned_nickname}")
@@ -526,11 +534,13 @@ class XPCog(commands.Cog):
                             logger.error(f"Error processing user {user_id}: {str(e)}")
                             failed_users.append(f"User {user_id} (error)")
                             continue
-                            
+
                     # Final summary
+
+                    successful_users_str = "\n".join(successful_users) if successful_users else "None"
                     result_message = [
                         f"**Given by:** {ctx.author.mention}",
-                        f"**Successfully distributed {xp_amount} XP to:**\n{ "\n".join(successful_users)}"
+                        f"**Successfully distributed {xp_amount} XP to:**\n{ successful_users_str}"
                     ]
                     
                     if failed_users:
@@ -544,7 +554,15 @@ class XPCog(commands.Cog):
                                     icon_url=Config.CHECK_URL)
 
                     await initial_message.edit(content="", embed=embed)
-
+                    
+                    if user_log:
+                        await self.log_xp_to_discord(
+                                ctx.author,
+                                user_log,
+                                xp_amount,
+                                f"[Event]({message.jump_url})", 
+                                ctx.message.id
+                        )
             except asyncio.TimeoutError:
                 await initial_message.edit(content="⌛ Command timed out. Some XP may have been awarded.")
             except Exception as e:
