@@ -487,7 +487,7 @@ def build_db_logger_record(member, message, points, emoji) -> discord.Embed:
              icon_url=icon_url 
         )
         
-        embed.add_field(name="Logger:", value=clean_nickname(member.display_name), inline=False)
+        embed.add_field(name="Logger:", value=clean_nickname(member.display_name), inline=True)
         embed.add_field(name="Message:", value=f"[Jump to Message]({message.jump_url})", inline=True)
         embed.add_field(name="Action:", value=str(emoji), inline=True)
         embed.add_field(name="Points Awarded:", value=points, inline=True)
