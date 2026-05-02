@@ -49,11 +49,9 @@ class RankTracker:
         if Config.HQ_ROLE_ID in member_role_ids:
             return "HQ", "Headquarters"
     
-        if Config.PW_ROLE_ID in member_role_ids:
-            rank = await self._determine_rank(member_role_ids, is_hr)
-            return division, rank
+        rank = await self._determine_rank(member_role_ids, is_hr)
+        return division, rank
    
-        return "Unknown", "Unknown"
 
     
     async def _determine_rank(self, member_role_ids: list, is_hr: bool) -> str:

@@ -177,8 +177,8 @@ class Config:
    
     PW_HR_RANKS = {
         PM_ROLE_ID: "Provost Marshal",
-        PW_COMMANDER_ROLE_ID: "PW Commander",
-        PW_EXECUTIVE_ROLE_ID: "PW Executive",
+        PW_COMMANDER_ROLE_ID: "Commander",
+        PW_EXECUTIVE_ROLE_ID: "Executive",
         LIEUTENANT_COLONEL_ROLE_ID: "Lieutenant Colonel",
         MAJOR_ROLE_ID: "Major",
         SUPERINTENDENT_ROLE_ID: "Superintendent",
