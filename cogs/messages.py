@@ -74,7 +74,7 @@ class MessageLoggerCog(commands.Cog):
             last_time = datetime.fromisoformat(result.data[0]['value'])
             if last_time.tzinfo is None:
                 last_time = last_time.replace(tzinfo=timezone.utc)
-            if datetime.now(timezone.utc) - last_time < timedelta(hours=15):
+            if datetime.now(timezone.utc) - last_time < timedelta(hours=24):
                 return
 
         PROMPTS = [
@@ -150,15 +150,35 @@ class MessageLoggerCog(commands.Cog):
             logger.error(f"MessageLogger.case_logs failed: {e}", exc_info=True)
     
     async def security_check(self, message: discord.Message):
+        content = message.content
+
         sc_pattern = r"Roblox\s+profile\s+link:\s*https?://(?:www\.)?roblox\.com/users/(\d+)"
-
-        link_match = re.search(sc_pattern, message.content, re.IGNORECASE)
+        link_match = re.search(sc_pattern, content, re.IGNORECASE)
         
-        if not link_match:
-            return 
-        
-        user_id = int(link_match.group(1))
+        user_id = -2
+        if link_match:
+            user_id = int(link_match.group(1))
+        else:
+            user_match = re.search(r'Username:\s*(\w+)', content, re.IGNORECASE)
+            if user_match:
+                username = user_match.group(1)
+                try:
+                    user_id = await self.bot.roblox.get_user_id(username)
+                except Exception:
+                    pass
 
+        has_format = any(re.search(p, content, re.IGNORECASE) for p in [
+            r'Username:',
+            r"Host's Username:",
+            r'Tryout Date:',
+            r'Roblox Profile Link:',
+            r'Division:',
+            r'Ping:',
+        ])
+
+        if not has_format:
+            return
+        
         cleaned_nickname = clean_nickname(message.author.display_name)
 
         sc_msg = None

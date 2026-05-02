@@ -174,7 +174,7 @@ class DischargeView(discord.ui.View):
 
 class ReasonModal(discord.ui.Modal, title='Response'):
     def __init__(self, req_msg: discord.Message, button_interaction: discord.Interaction, _return: bool = False):
-        super().__init__()
+        super().__init__(timeout=600)
         self.msg = req_msg
         self.interaction = button_interaction
         self._return = _return
@@ -222,7 +222,7 @@ class ReasonModal(discord.ui.Modal, title='Response'):
 
 class BlacklistReasonModal(discord.ui.Modal, title='Response'):
     def __init__(self, interaction_data, view, button_interaction):
-        super().__init__()
+        super().__init__(timeout=600)
         self.interaction_data = interaction_data
         self.view = view
         self.interaction = button_interaction
@@ -264,10 +264,13 @@ class BlacklistReasonModal(discord.ui.Modal, title='Response'):
 
         await self.interaction.message.delete()
 
-        # Clean up the DB row now that the request is resolved
         await delete_pending_blacklist(self.view.bot, self.interaction.message.id)
 
         self.view.stop()
+
+    async def on_error(self, interaction: discord.Interaction, error: Exception):
+        self.view._processing = False
+        return await super().on_error(interaction, error)
 
 class HaltReasonModal(discord.ui.Modal, title='Reason for Halt'):
     HALT_MESSAGES = {
@@ -284,7 +287,7 @@ class HaltReasonModal(discord.ui.Modal, title='Reason for Halt'):
     TIMEOUT_BASE = 3600
 
     def __init__(self, original_msg, bot, checker_type):
-        super().__init__()
+        super().__init__(timeout=60)
         self.original_msg = original_msg
         self.bot = bot
         self.checker_type = checker_type
@@ -372,7 +375,9 @@ class HaltReasonModal(discord.ui.Modal, title='Reason for Halt'):
             )
         except Exception as e:
             logger.error(f"DB Update failed: {e}")
-
+    
+    async def on_timeout(self):
+        return self.stop()
 # ---------------------------------------------------------------------------
 # Supabase helpers
 # ---------------------------------------------------------------------------
@@ -448,16 +453,25 @@ class ApprovalView(discord.ui.View):
     @discord.ui.button(label="Approve", style=discord.ButtonStyle.green, custom_id="blacklist_approve")
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
         self._processing = True
-        await interaction.response.defer(ephemeral=True)
-        await delete_pending_blacklist(self.bot, interaction.message.id)
-        await interaction.message.delete()
-        await self.adminCog.blacklist_members(self.interaction_data, interaction)
+        try:
+            await interaction.response.defer(ephemeral=True)
+            await delete_pending_blacklist(self.bot, interaction.message.id)
+            await interaction.message.delete()
+            await self.adminCog.blacklist_members(self.interaction_data, interaction)
+        except Exception:
+            self._processing = False
+            return
+
+        self.stop()
 
 
     @discord.ui.button(label="Deny", style=discord.ButtonStyle.red, custom_id="blacklist_deny")
     async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
         self._processing = True
-        await interaction.response.send_modal(BlacklistReasonModal(self.interaction_data, self, interaction))
+        try:
+            await interaction.response.send_modal(BlacklistReasonModal(self.interaction_data, self, interaction))
+        except Exception:
+            pass
     
 
 # ---------------------------------------------------------------------------
@@ -485,16 +499,26 @@ class AoDView(discord.ui.View):
     @discord.ui.button(label="Approve", style=discord.ButtonStyle.green, custom_id="approve_blacklist")
     async def approve(self, interaction: discord.Interaction, button: discord.ui.Button):
         self._processing = True
-        await interaction.response.defer(ephemeral=True)
-        await delete_pending_blacklist(self.bot, interaction.message.id)
-        await self.wCog.register_deserter(self.interaction_data, interaction)
+        try:
+            await interaction.response.defer(ephemeral=True)
+            await delete_pending_blacklist(self.bot, interaction.message.id)
+            await self.wCog.register_deserter(self.interaction_data, interaction)
+        except Exception:
+            self._processing = False
+            return 
+
         self.stop()
 
     @discord.ui.button(label="Deny", style=discord.ButtonStyle.red, custom_id="deny_blacklist")
     async def deny(self, interaction: discord.Interaction, button: discord.ui.Button):
         self._processing = True
-        await interaction.response.defer(ephemeral=True)
-        await interaction.message.delete()
+        try:
+            await interaction.response.defer(ephemeral=True)
+            await interaction.message.delete()
+        except Exception:
+            self._processing = False
+            return
+
         self.stop()
 
 # ---------------------------------------------------------------------------
@@ -528,23 +552,24 @@ class RequestView(discord.ui.View):
     async def approve_sc(self, interaction: discord.Interaction, button: discord.ui.Button):
         self._processing = True
         await interaction.response.defer(ephemeral=True)
-        
-        embed = embedBuilder.build_request_respsone(True, interaction.user.display_name, self.checker_type)
-       
-        await delete_pending_checks(self.bot, interaction.message.id)
+        try: 
+            embed = embedBuilder.build_request_respsone(True, interaction.user.display_name, self.checker_type)
+           
+            await delete_pending_checks(self.bot, interaction.message.id)
 
-        await interaction.message.delete()
-        try:
-            await self.original_msg.remove_reaction("⌛", self.bot.user)
-            await asyncio.sleep(0.3)
-            await self.original_msg.remove_reaction("🟡", self.bot.user)
-            await asyncio.sleep(0.5)
-            await self.original_msg.add_reaction("🟢")
+            await interaction.message.delete()
+            try:
+                await self.original_msg.remove_reaction("⌛", self.bot.user)
+                await asyncio.sleep(0.3)
+                await self.original_msg.remove_reaction("🟡", self.bot.user)
+                await asyncio.sleep(0.5)
+                await self.original_msg.add_reaction("🟢")
+            except Exception:
+                pass
+
+            await self.original_msg.reply(embed=embed)
         except Exception:
             pass
-
-        await self.original_msg.reply(embed=embed)
-
        
         if self.checker_type == Config.LA_ROLE_ID:
             emoji = discord.PartialEmoji.from_str("🟢")
@@ -610,10 +635,12 @@ class RequestView(discord.ui.View):
     @discord.ui.button(label="Halt", style=discord.ButtonStyle.grey, custom_id="halt_req")
     async def halt_sc(self, interaction: discord.Interaction, button: discord.ui.Button):
         self._processing = True
-        modal = HaltReasonModal(self.original_msg, self.bot, self.checker_type)
-        await interaction.response.send_modal(modal)
-        await modal.wait()
-        self._processing = False 
+        try:
+            modal = HaltReasonModal(self.original_msg, self.bot, self.checker_type)
+            await interaction.response.send_modal(modal)
+            await modal.wait()
+        finally:
+            self._processing = False 
         
 
 
