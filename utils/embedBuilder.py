@@ -248,7 +248,7 @@ def build_request_respsone(accepted: bool, username: str, check_type:int, halted
         title = "ACCEPTED" if accepted else "DENIED"
         icon_url = Config.CHECK_URL if accepted else Config.CANCEL_URL
         denied_msg = ("To submit another background check, you"
-                 " must pass another tryout or submit a High Rank application.\n **We are not"
+                 " must pass another tryout or submit a High Rank application.\n**We are not"
                  " permitted to disclose any reason for the denial of your security check. Apologies for the"
                  " inconvenience.**" 
         )
