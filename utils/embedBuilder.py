@@ -518,7 +518,7 @@ def build_inductor_record(inductor, logger, message, points, emoji) -> discord.E
         embed.add_field(name="Points Awarded:", value=points, inline=True)
 
 
-        embed.set_footer(text=f"Logger:{logger.id} • Inductor: {inductor.id}")
+        embed.set_footer(text=f"Logger: {logger.id} • Inductor: {inductor.id}")
         
         return embed
 
@@ -535,10 +535,16 @@ def build_examiner_record(examiner, logger, message, points) -> discord.Embed:
              name=name,
              icon_url=icon_url 
         )
+        mapping = {
+                Config.COURSE_GRADES_CHANNEL_ID: "Course",
+                Config.DEGREE_GRADES_CHANNEL_ID: "Degree",
+                Config.DSPG_GRADES_CHANNEL_ID: "DSPG" 
+        }
 
+        exam_type = mapping.get(message.channel.id, message.channel.name)
         embed.add_field(name="Examiner:", value=clean_nickname(examiner.display_name), inline=True)
         embed.add_field(name="Logger:", value=clean_nickname(logger.display_name), inline=True)
-        embed.add_field(name="Type:", value=message.channel.name, inline=True)
+        embed.add_field(name="Type:", value=exam_type, inline=True)
         embed.add_field(name="Exam Report:", value=f"[Jump to Report]({message.jump_url})", inline=True)
         embed.add_field(name="Points Awarded:", value=points, inline=True)
 
@@ -551,7 +557,7 @@ def build_sc_check_log(approver, member, checks, points, message) -> discord.Emb
                 timestamp=datetime.now(timezone.utc)
         )
 
-        name = "Security Check Log Approved"
+        name = "Security Checker Record"
         icon_url = Config.ID_CHECKED_ICON
         embed.set_author(
              name=name,
@@ -560,9 +566,9 @@ def build_sc_check_log(approver, member, checks, points, message) -> discord.Emb
 
 
         embed.add_field(name="Logger:", value=f"{clean_nickname(member.display_name)}", inline=True)
+        embed.add_field(name="Log:", value=f"[Jump to Log]({message.jump_url})", inline=True)
         embed.add_field(name="Amount of Checks:", value=checks, inline=True)
         embed.add_field(name="Points Awarded:", value=points, inline=True)
-        embed.add_field(name="Log:", value=f"[Jump to Log]({message.jump_url})", inline=True)
         embed.add_field(name="Approved by:", value=f"{clean_nickname(approver.display_name)} ", inline=True)
 
         embed.set_footer(text=f"Logger: {member.id} • Approver: {approver.id}")
