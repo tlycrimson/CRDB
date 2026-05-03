@@ -279,11 +279,11 @@ class HaltReasonModal(discord.ui.Modal, title='Reason for Halt'):
     HALT_MESSAGES = {
         "security": (
             "Your Royal Military Police background check has been halted for the following reasons:\n{reason}"
-            "\n\n**You have {hours} hours to comply. Once you have, use the button to let the checker know.**"
+            "\n\n**You have {hours} hour{plural} to comply. Once you have, use the button to let the checker know.**"
         ),
         "induction": (
             "Your Royal Military Police induction check has been halted for the following reasons:\n{reason}"
-            "\n\n**You have {hours} hours to comply. Once you have, use the button to let the checker know.**"
+            "\n\n**You have {hours} hour{plural} to comply. Once you have, use the button to let the checker know.**"
         ),
     }
 
@@ -313,9 +313,9 @@ class HaltReasonModal(discord.ui.Modal, title='Reason for Halt'):
 
     def _get_default_message(self, hours, reason) -> str:
         if self.checker_type == Config.BG_CHECKER_ROLE_ID:
-            return self.HALT_MESSAGES["security"].format(hours=hours, reason=reason)
+            return self.HALT_MESSAGES["security"].format(hours=hours, reason=reason, plural="s" if hours>1 else "")
         elif self.checker_type == Config.LA_ROLE_ID:
-            return self.HALT_MESSAGES["induction"].format(hours=hours, reason=reason)
+            return self.HALT_MESSAGES["induction"].format(hours=hours, reason=reason, plural="s" if hours>1 else "")
         return ""
 
     async def on_submit(self, interaction: discord.Interaction):
