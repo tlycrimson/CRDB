@@ -294,24 +294,45 @@ class MessageLoggerCog(commands.Cog):
  
 
     async def induct_request(self, message: discord.Message):
-        pattern = r'username:\s*([^\s(]+)'
+        content = message.content
+        guild = message.guild
 
-        link_match = re.search(pattern, message.content, re.IGNORECASE)
+        link_match = re.search(r'Username:\s*([^\s(]+)', content, re.IGNORECASE)
+        user_match = not link_match and re.search(r'Inductee\(s\):\s*(\w+)', content, re.IGNORECASE)
+        match = link_match or user_match
         
-        if not link_match:
-            return 
-        
-        inductee = link_match.group(1)
+        if not match:
+            has_format = any(re.search(p, content, re.IGNORECASE) for p in [
+                r'Course Selected:',
+                r'Ping:',
+            ])
 
+            if not has_format:
+                return
+     
+        inductor = clean_nickname(message.author.display_name)
+        raw_inductee = match.group(1).strip("<@>") if match else None
+        
+        if raw_inductee and raw_inductee.isnumeric():
+            member = guild.get_member(int(raw_inductee))
+            inductee_name = clean_nickname(member.display_name) if member else raw_inductee
+        elif raw_inductee:
+            inductee_name = raw_inductee
+        else:
+            inductee_name = inductor
+        
         try: 
-            cleaned_nickname = clean_nickname(message.author.display_name)
-            description = f"**{cleaned_nickname}** is requesting an induction on behalf of **{inductee}**.\n Accept Or Deny Their Induction Request."
+            description = (
+                    f"**{inductor}** is requesting an induction on behalf of" 
+                    f" **{inductee_name if inductor != inductee_name else "themself"}**."
+                    f"\n\n**Accept Or Deny Their Induction Request.**"
+            )
 
             view = RequestView(message, self.bot, Config.LA_ROLE_ID) 
             embed = discord.Embed(
                 description=description,
                 color=discord.Color.pink()
-            ).set_author(name=f"INDUCTION REQUESTED PANEL FOR {inductee.upper()}", icon_url=Config.ID_ICON)
+            ).set_author(name=f"INDUCTION REQUESTED PANEL FOR {inductee_name.upper()}", icon_url=Config.ID_ICON)
             
             induct_panel = await message.reply(embed=embed, view=view, allowed_mentions=discord.AllowedMentions.none())
             await message.add_reaction("⌛")
