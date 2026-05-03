@@ -232,28 +232,30 @@ async def on_command_error(ctx: commands.Context, error: commands.CommandError):
                     ephemeral=True
                 )
         elif isinstance(error, commands.CommandInvokeError):
-                if isinstance(error.original, discord.Forbidden):
+            if isinstance(error.original, discord.Forbidden):
+                try:
+                    await ctx.send("```❌ I don't have the necessary permissions (such as 'Embed Links') in this channel. Try using the `/` version!```")
+                except discord.Forbidden:
                     try:
-                        await ctx.send("```❌ I don't have the necessary permissions (such as 'Embed Links') in this channel. Try using the `/` version!```")
+                        await ctx.author.send(f"```❌ I couldn't respond in {ctx.channel.mention} because I'm missing permissions there.```")
                     except discord.Forbidden:
-                        try:
-                            await ctx.author.send(f"```❌ I couldn't respond in {ctx.channel.mention} because I'm missing permissions there.```")
-                        except discord.Forbidden:
-                            pass
+                        pass
+        elif isinstance(error, commands.CommandNotFound):
+            await ctx.send("```❌ That command does not exist. Use !commands to see the available commands.```") 
         elif isinstance(error, (commands.BadLiteralArgument, commands.BadArgument, commands.MissingRequiredArgument)):
-                    command = ctx.command
-                    command_structure = command.usage if command.usage else command.signature
-                    
-                    error_msg = (
-                        f"```❌ Invalid Command Usage```\n"
-                        f"**Structure:**\n```{ctx.clean_prefix}{ctx.invoked_with} {command_structure}```\n"
-                    )
+            command = ctx.command
+            command_structure = command.usage if command.usage else command.signature
+            
+            error_msg = (
+                f"```❌ Invalid Command Usage```\n"
+                f"**Structure:**\n```{ctx.clean_prefix}{ctx.invoked_with} {command_structure}```\n"
+            )
 
-                    if isinstance(error, commands.BadLiteralArgument):
-                        options = ", ".join(f"`{l}`" for l in error.literals)
-                        error_msg += f"**Valid Choices:** {options}"
-                    
-                    await ctx.send(error_msg, ephemeral=True)
+            if isinstance(error, commands.BadLiteralArgument):
+                options = ", ".join(f"`{l}`" for l in error.literals)
+                error_msg += f"**Valid Choices:** {options}"
+            
+            await ctx.send(error_msg, ephemeral=True)
         else:
             logger.error(f"Unhandled command error: {type(error).__name__}: {error}", exc_info=True)
             await ctx.send(
