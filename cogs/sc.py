@@ -58,7 +58,6 @@ class ScCog(commands.Cog):
     @app_commands.checks.cooldown(rate=1, per=5.0)
     @has_bg_role()
     async def sc(self, ctx: commands.Context, user: str):
-
         try:
             if ctx.interaction:
                 await ctx.interaction.response.defer()
@@ -122,8 +121,121 @@ class ScCog(commands.Cog):
             logger.exception("Unexpected error in /sc command: %s", e)
             await ctx.send("```❌ An unexpected error occurred.```", ephemeral=True)
 
-    async def fetch_data (self, user_id: int):
-        return await self.bot.roblox.fetch_sc_data(user_id, group_id=Config.BRITISH_ARMY_GROUP_ID)
+    @commands.hybrid_command(
+            name="get-badge-history", 
+            aliases=["gbh"],
+            usage="<rbx username/id>",
+            description="Get the badge history of a Roblox user"
+    )
+    @app_commands.describe(user="The Roblox username or user ID to check")
+    @app_commands.checks.cooldown(rate=1, per=10.0)
+    @has_bg_role()
+    async def get_badge_history(self, ctx: commands.Context, user: str):
+        try:
+            if ctx.interaction:
+                await ctx.interaction.response.defer()
+
+            initial_embed = discord.Embed(
+                description="⠋ Fetching Roblox data, please wait...",
+                color=discord.Color.blurple()
+            )
+            initial_embed.set_author(
+                name="Badge history",
+                icon_url=Config.USER_ICON
+            )
+            initial_embed.set_footer(text="This may take a few seconds.")
+
+            loading_message = await  ctx.send(embed=initial_embed)
+            
+            animation_task = asyncio.create_task(self.animate_loading(loading_message))
+
+            def error_embed(title: str, description: str) -> discord.Embed:
+                embed = discord.Embed(description=description, color=discord.Color.red())
+                embed.set_author(name=title, icon_url=Config.CANCEL_URL)
+                return embed
+
+            try:
+                user_id = None
+                if user.isdigit():
+                    user_id = int(user)
+                    user_info = await self.bot.roblox.get_user_info(user_id)
+                    username = user_info.get("name", user)
+                else:
+                    user_id = await asyncio.wait_for(
+                        self.bot.roblox.get_user_id(user),
+                        timeout=15.0
+                    )
+                    username = user
+
+                    if not user_id:
+                        animation_task.cancel()
+                        await asyncio.sleep(0.1)
+                        return await loading_message.edit(
+                            embed=error_embed("User Not Found", f"Could not find a Roblox user for **{user}**.")
+                        )
+
+                embed, file = await self.compile_badge_history_embed(user_id, username)
+                animation_task.cancel()
+
+                if file:
+                    await loading_message.edit(embed=embed, attachments=[file])
+                else:
+                    await loading_message.edit(embed=embed)
+
+            except asyncio.TimeoutError:
+                animation_task.cancel()
+                await asyncio.sleep(0.1)
+                return await loading_message.edit(
+                    embed=error_embed(
+                        "Request Timed Out",
+                        "Roblox data took too long to load. Please try again in a moment."
+                    )
+                )
+
+        except Exception as e:
+            logger.exception("Unexpected error in get badge history command: %s", e)
+            await ctx.send("```❌ An unexpected error occurred.```", ephemeral=True)
+
+    async def compile_badge_history_embed(self, user_id: int, username: str = "User", data = None):
+        if data is None:
+            status, badges = await self.bot.roblox.get_badges(user_id)
+        else:
+            status, badges = data
+
+        if status != 200 or not badges:
+            if data:
+                return None, None
+            return discord.Embed(
+                    description="No Badge history found or inventory is private.",
+                    color=discord.Color.red()
+                        ).set_author(name="Badge History", icon_url=Config.CANCEL_URL), None
+
+        dates = self.bot.roblox.extract_award_dates(badges)
+
+        if not dates:
+            if data:
+                return None, None
+            return discord.Embed(
+                    description="User has badges, but no award dates were found.", 
+                    color=discord.Color.red()
+                    ).set_author(name="Badge History", icon_url=Config.CANCEL_URL), None
+        
+        image_binary = self.bot.roblox.plot_cumulative_badges(username, user_id, dates)
+         
+        file = discord.File(fp=image_binary, filename="graph.png")
+        
+        embed = discord.Embed(
+                title=f"{username}'s Badge Progression",
+                description=f"Total badges Tracked: **{len(dates)}**",
+                color=discord.Color.blurple()
+        ).set_author(name=f"Badge History", icon_url=Config.SCROLL_ICON)
+
+        embed.set_image(url="attachment://graph.png")
+
+        return embed, file
+
+    async def fetch_data (self, user_id: int, include_badges: bool = False):
+        return await self.bot.roblox.fetch_sc_data(user_id, Config.BRITISH_ARMY_GROUP_ID, include_badges)
         
     async def compile_sc_embed(self, user_id: int, data = None):
         if not data:

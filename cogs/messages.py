@@ -215,10 +215,22 @@ class MessageLoggerCog(commands.Cog):
         try:
             sc_request = await message.reply(embed=panel_embed, view=view, allowed_mentions=discord.AllowedMentions.none())
 
+            await save_pending_checks(
+                    self.bot, 
+                    str(sc_request.id), 
+                    str(Config.BG_CHECKER_ROLE_ID), 
+                    str(message.id), 
+                    str(message.channel.id)
+            )
+
             sc_cog = self.bot.get_cog("ScCog")
-            data = await sc_cog.fetch_data(user_id)
-            check = data['badge_count']
-    
+            data = await sc_cog.fetch_data(user_id, include_badges=True)
+
+            check = data.get('badge_count')
+
+            if check is None:
+                check = len(data.get('badges') or [])
+
             if check == -1:
                 await message.reply("```Inventory is private, please publicise it before someone conducts a security check on you.```")
             if check == -2:
@@ -228,9 +240,12 @@ class MessageLoggerCog(commands.Cog):
             if sc_cog and check != -2:
                 field1 = f"[Jump to Request]({message.jump_url})\n"
                 field2 = f"[Jump to Panel]({sc_request.jump_url})"
+                
+                try:
+                    link_id = await self.bot.roblox.get_user_id(cleaned_nickname)
+                except Exception:
+                    link_id = None
 
-                link_id = await self.bot.roblox.get_user_id(cleaned_nickname)
-                    
                 if link_id != user_id:
                    caution = "**Caution:** Roblox Profile provided does not match their Discord's display name."
 
@@ -242,33 +257,40 @@ class MessageLoggerCog(commands.Cog):
                                        icon_url=Config.NOTIF_URL)
 
                 sc_embed = await sc_cog.compile_sc_embed(user_id, data)
+                badge_data = (200, data.get("badges") or [])
 
                 ld_channel = self.bot.get_channel(Config.LD_CHANNEL_ID)
                 if ld_channel and sc_embed:
-                    sc_msg = await ld_channel.send(embeds=[title_embed, sc_embed])
-                    await asyncio.sleep(0.1)
+                    embeds_to_send = [title_embed, sc_embed]
 
+                    sc_msg = await ld_channel.send(embeds=embeds_to_send)
                     msg_content = f"[View information]({sc_msg.jump_url}) for {cleaned_nickname}" 
                     panel_embed.description = description + "\n\n" + msg_content
                     panel_embed.set_footer(text="")
-                    
 
+                    await asyncio.sleep(0.3)
                     await sc_request.edit(embed=panel_embed)
 
-            await save_pending_checks(
-                    self.bot, 
-                    str(sc_request.id), 
-                    str(Config.BG_CHECKER_ROLE_ID), 
-                    str(message.id), 
-                    str(message.channel.id)
-            )
+                    username = data["user_info"].get("name")
+                    bh_embed, bh_file = await sc_cog.compile_badge_history_embed(user_id, username, data=badge_data)
+
+                    await asyncio.sleep(0.3)
+
+                    if bh_embed:
+                        embeds_to_send.append(bh_embed)
+                        await sc_msg.edit(
+                                embeds=embeds_to_send,
+                                attachments=[bh_file] if bh_file else []
+                        )
+
             logger.info("Processed Security Check | MsgID={%s}", message.id)
 
         except Exception as e:
             logger.error("Failed to check sc request: %s", e)
             try:
-                embed = sc_request.embeds[0].set_footer(text="Could not fetch data.")
-                await sc_request.edit(embed=embed)
+                if sc_request:
+                    embed = sc_request.embeds[0].set_footer(text="Could not fetch data.")
+                    await sc_request.edit(embed=embed)
             except:
                 pass
 

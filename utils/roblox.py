@@ -1,12 +1,15 @@
 import os
-import aiohttp
-import asyncio
+import io
 import time
 import random
+import aiohttp
+import asyncio
 import logging
+from datetime import datetime
 from dotenv import load_dotenv
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from typing import Optional, Any, Dict, Tuple
-
 
 load_dotenv()
 logger = logging.getLogger(__name__)
@@ -190,6 +193,86 @@ class RobloxClient:
 
     # ── Public Helpers ────────────────────────────────────────
 
+    def extract_award_dates(self, badges: list[dict]) -> list[str]:
+        """
+        The Open Cloud Inventory API already returns the award timestamp as
+        `addTime` on each item, so no second API call is needed.
+        Returns a list of ISO 8601 date strings.
+        """
+        dates = []
+        for item in badges:
+            date_val = item.get("addTime") or item.get("created")
+            if date_val:
+                dates.append(date_val)
+        return dates
+
+    def convert_date_to_datetime(self, date: str) -> datetime:
+        """
+        Convert an ISO 8601 timestamp string to a datetime object.
+        Handles variable fractional-second precision and trailing 'Z'.
+        """
+        return datetime.fromisoformat(date.replace("Z", "+00:00"))
+
+    async def get_badges(self, user_id: int, stop_at: int = 10_000) -> tuple:
+        cache_key = f"badges:{user_id}"
+        hit, val = self._cache.get(cache_key)
+        if hit:
+            return val
+        badges = []
+        cursor = None
+        MAX_PAGES = 50
+        for _ in range(MAX_PAGES):
+            params = {"limit": 100}
+            if cursor:
+                params["cursor"] = cursor
+            data, status = await self._fetch(
+                "GET", "badges", f"/v1/users/{user_id}/badges", params=params
+            )
+            if status == 403:
+                return 403, []
+            if status != 200 or data is None:
+                return status, []
+            badge_list = data.get("data", [])
+            if not badge_list and cursor is None:
+                return 200, []
+            if not badge_list:
+                break
+            badges.extend(badge_list)  
+            if len(badges) >= stop_at:
+                self._cache.set(cache_key, badges)
+                return 200, badges
+            cursor = data.get("nextPageCursor")
+            if not cursor:
+                break
+        self._cache.set(cache_key, badges)
+        return 200, badges
+
+    def plot_cumulative_badges(self, username: str, user_id: str, dates: list[str]):
+        """Graph the cumulative total of badges earned over time."""
+        parsed = sorted(self.convert_date_to_datetime(d) for d in dates)
+
+        cumulative_counts = list(range(1, len(parsed) + 1))
+
+        plt.style.use("dark_background")
+        fig, ax = plt.subplots(figsize=(10, 5))
+
+        ax.scatter(parsed, cumulative_counts, marker="o", alpha=0.4, color="#7289da", s=10)
+        ax.plot(parsed, cumulative_counts, color="#7289da", linewidth=1, alpha=0.6)
+
+        ax.set_xlabel("Badge Earned Date")
+        ax.set_ylabel("Total Badges")
+        ax.set_title(f"Badges Growth: {username} ({user_id})")
+
+        fig.autofmt_xdate()
+        plt.tight_layout()
+
+
+        buf = io.BytesIO()
+        plt.savefig(buf, format='png', bbox_inches='tight')
+        buf.seek(0)
+        plt.close(fig)
+        return buf
+
     async def get_user_id(self, username: str) -> Optional[int]:
         cache_key = f"uid:{username.lower()}"
         hit, val = self._cache.get(cache_key)
@@ -346,11 +429,9 @@ class RobloxClient:
         return bool(result and "id" in result)
 
     # ── Convenience: fetch everything for /sc in parallel ─────────────
-
-    async def fetch_sc_data(self, user_id: int, group_id: int) -> dict:
-        keys = ("user_info", "rank", "groups", "friends_count", "avatar_url", "badge_count")
+    async def fetch_sc_data(self, user_id: int, group_id: int, include_badges: bool = False) -> dict:
+        keys = ("user_info", "rank", "groups", "friends_count", "avatar_url", "badges" if include_badges else "badge_count")
         final_data = {k: None for k in keys}
-
         try:
             results = await asyncio.wait_for(
                 asyncio.gather(
@@ -359,7 +440,7 @@ class RobloxClient:
                     self.get_groups(user_id),
                     self.get_friends_count(user_id),
                     self.get_avatar_url(user_id),
-                    self.get_badge_count(user_id),
+                    self.get_badges(user_id) if include_badges else self.get_badge_count(user_id),
                     return_exceptions=True,
                 ),
                 timeout=30.0,
@@ -373,5 +454,10 @@ class RobloxClient:
                 logger.error("Task [%s] failed: %s", k, v)
             else:
                 final_data[k] = v
+
+        if include_badges and final_data.get("badges") is not None:
+            status, badge_list = final_data["badges"]  
+            final_data["badges"] = badge_list
+            final_data["badge_count"] = len(badge_list)
 
         return final_data
