@@ -479,7 +479,7 @@ def build_db_logger_record(member, message, points, emoji) -> discord.Embed:
             timestamp=datetime.now(timezone.utc)
         )
 
-        name = "Database Logger Activity Record"
+        name = "Database Logger Record"
         icon_url = Config.LOG_ICON 
 
         embed.set_author(
@@ -503,7 +503,7 @@ def build_inductor_record(inductor, logger, message, points, emoji) -> discord.E
             timestamp=datetime.now(timezone.utc)
         )
 
-        name = "Inductor Activity Record"
+        name = "Induction Record"
         icon_url = Config.ID_ICON
 
         embed.set_author(
@@ -529,7 +529,7 @@ def build_examiner_record(examiner, logger, message, points) -> discord.Embed:
         )
 
 
-        name = "Examiner Activity Record"
+        name = "Examiner Record"
         icon_url = Config.WRITE_ICON
         embed.set_author(
              name=name,
