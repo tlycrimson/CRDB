@@ -35,10 +35,13 @@ class MessageLoggerCog(commands.Cog):
                             .lt('created_at', cutoff.isoformat())\
                             .execute()
  
-                    await self.bot.db.supabase.table(PENDING_CHECK_TABLE)\
+                    res = await self.bot.db.supabase.table(PENDING_CHECK_TABLE)\
                             .delete()\
                             .lt('created_at', cutoff.isoformat())\
                             .execute()
+
+                    if res.data:
+                        await self.cleanup_pending_checks(res.data)
 
                     cutoff = datetime.now(timezone.utc) - timedelta(days=28)
                     await self.bot.db.supabase.table(self.bot.db.s_users_table)\
@@ -54,10 +57,22 @@ class MessageLoggerCog(commands.Cog):
 
         self._cleanup_task = asyncio.create_task(cleanup_loop())
 
+    async def cleanup_pending_checks(self, panels):
+        for panel in panels:
+            channel = self.bot.get_channel(int(panel["channel_id"]))
+
+            if channel:
+                try:
+                    panel_msg = await channel.fetch_message(int(panel['panel_id']))
+                    await panel_msg.delete()
+                except Exception:
+                    pass 
+
     @commands.Cog.listener()
     async def on_ready(self):
         if not hasattr(self, "_cleanup_task"):
             await self.start_cleanup_task()
+
 
     @tasks.loop(minutes=30)  
     async def prompt_users(self):
@@ -97,6 +112,7 @@ class MessageLoggerCog(commands.Cog):
     @prompt_users.before_loop
     async def before_prompt_users(self):
         await self.bot.wait_until_ready()
+
 
     async def case_logs(self, message: discord.Message, manual: bool = False, user = None):
         suspect = re.search(r'suspect:\s*([^\s(]+)', message.content, re.IGNORECASE)
@@ -363,7 +379,7 @@ class MessageLoggerCog(commands.Cog):
         if message.channel.id == Config.LA_INDUCTION_CHANNEL_ID:
             return await self.induct_request(message)
  
-   
+            
     @commands.Cog.listener()
     async def on_message_delete(self, message: discord.Message):
 
@@ -380,7 +396,7 @@ class MessageLoggerCog(commands.Cog):
                 channel = message.channel
                 if channel:
                     try:
-                        msg = await channel.fetch_message(int(data['message_id']))
+                        msg = await channel.fetch_message(int(data['panel_id']))
                         await msg.delete()
                     except Exception:
                         pass # Message might already be gone
