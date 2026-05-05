@@ -1,0 +1,186 @@
+2026-05-04 21:25:54,374 - __main__ - INFO - Bot initializing with intents: members=True, message_content=True, reactions=True, guilds=True
+2026-05-04 21:25:54,375 - discord.client - WARNING - PyNaCl is not installed, voice will NOT be supported
+2026-05-04 21:25:54,375 - discord.client - WARNING - davey is not installed, voice will NOT be supported
+2026-05-04 21:25:54,376 - utils.runners - INFO - Starting bot (attempt 1)...
+2026-05-04 21:25:54,376 - discord.client - INFO - logging in using static token
+2026-05-04 21:25:54,962 - __main__ - INFO - Running setup_hook...
+2026-05-04 21:25:55,310 - utils.database - INFO - Synchronized 51 users into memory.
+2026-05-04 21:25:55,370 - utils.database - INFO - Synchronized 23 hrs into memory.
+2026-05-04 21:25:55,415 - utils.database - INFO - Synchronized 22 lrs into memory.
+2026-05-04 21:25:55,416 - __main__ - INFO - DatabaseHandler initialised
+2026-05-04 21:25:55,416 - __main__ - INFO - Rate limiters initialised
+2026-05-04 21:25:55,416 - __main__ - INFO - DiscordAPI with rate limits initalised.
+2026-05-04 21:25:55,416 - __main__ - INFO - Roblox Client initialised.
+2026-05-04 21:25:55,416 - __main__ - INFO - Shared HTTP session initialised
+2026-05-04 21:25:55,416 - __main__ - INFO - RankTracker initialised
+2026-05-04 21:25:55,472 - utils.permissions - INFO - Loaded 5 out of 5 category permissions into cache.
+2026-05-04 21:25:55,472 - __main__ - INFO - Permissions intialised
+2026-05-04 21:25:55,479 - __main__ - INFO - Loaded cog: cogs.xp
+2026-05-04 21:25:55,483 - __main__ - INFO - Loaded cog: cogs.welcome
+2026-05-04 21:25:55,488 - __main__ - INFO - Loaded cog: cogs.moderation
+2026-05-04 21:25:55,494 - __main__ - INFO - Loaded cog: cogs.reactions
+2026-05-04 21:25:55,499 - __main__ - INFO - Loaded cog: cogs.admin
+2026-05-04 21:25:55,502 - __main__ - INFO - Loaded cog: cogs.utility
+2026-05-04 21:25:55,510 - __main__ - INFO - Loaded cog: cogs.sc
+2026-05-04 21:25:55,511 - __main__ - INFO - Loaded cog: cogs.messages
+2026-05-04 21:25:55,511 - __main__ - INFO - Setup hook completed!
+2026-05-04 21:25:55,916 - discord.gateway - INFO - Shard ID None has connected to Gateway (Session ID: cf7a00a012e4406c454da56abf2a301e).
+2026-05-04 21:25:57,924 - __main__ - INFO - ==================================================
+2026-05-04 21:25:57,924 - __main__ - INFO - Logged in as CRDB Rework#6321 (ID: 1481100375951020052)
+2026-05-04 21:25:57,924 - __main__ - INFO - Connected to 1 guild(s)
+2026-05-04 21:25:57,925 - cogs.reactions - INFO - Default Log channel configured for CRDB Test Area.
+2026-05-04 21:25:58,076 - cogs.reactions - INFO - Cleaned up old processed reactions
+2026-05-04 21:25:58,288 - cogs.messages - INFO - Cleaned up old Criminal Records, Stored Users & Requests
+2026-05-04 21:25:58,370 - utils.views - ERROR - Failed to restore message 1498569479297433652: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:25:58,570 - utils.views - ERROR - Failed to restore message 1498974735185477633: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:25:58,771 - utils.views - ERROR - Failed to restore message 1499392298876932177: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:25:58,972 - utils.views - ERROR - Failed to restore message 1500099310044319864: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:25:59,172 - utils.views - ERROR - Failed to restore message 1500484812547424256: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:25:59,373 - utils.views - ERROR - Failed to restore message 1500792504482795671: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:25:59,574 - utils.views - ERROR - Failed to restore message 1500841707162435605: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:25:59,851 - __main__ - INFO - Commands synced successfully
+2026-05-04 21:25:59,994 - utils.database - INFO - Loaded 2 welcome messages into cache
+2026-05-04 21:25:59,994 - __main__ - INFO - ==================================================
+2026-05-04 21:26:55,860 - __main__ - INFO - Bot shut down by user
+2026-05-04 21:30:35,432 - __main__ - INFO - Bot initializing with intents: members=True, message_content=True, reactions=True, guilds=True
+2026-05-04 21:30:35,433 - discord.client - WARNING - PyNaCl is not installed, voice will NOT be supported
+2026-05-04 21:30:35,433 - discord.client - WARNING - davey is not installed, voice will NOT be supported
+2026-05-04 21:30:35,434 - utils.runners - INFO - Starting bot (attempt 1)...
+2026-05-04 21:30:35,434 - discord.client - INFO - logging in using static token
+2026-05-04 21:30:36,053 - __main__ - INFO - Running setup_hook...
+2026-05-04 21:30:36,252 - utils.database - INFO - Synchronized 51 users into memory.
+2026-05-04 21:30:36,321 - utils.database - INFO - Synchronized 23 hrs into memory.
+2026-05-04 21:30:36,369 - utils.database - INFO - Synchronized 22 lrs into memory.
+2026-05-04 21:30:36,369 - __main__ - INFO - DatabaseHandler initialised
+2026-05-04 21:30:36,369 - __main__ - INFO - Rate limiters initialised
+2026-05-04 21:30:36,369 - __main__ - INFO - DiscordAPI with rate limits initalised.
+2026-05-04 21:30:36,369 - __main__ - INFO - Roblox Client initialised.
+2026-05-04 21:30:36,370 - __main__ - INFO - Shared HTTP session initialised
+2026-05-04 21:30:36,370 - __main__ - INFO - RankTracker initialised
+2026-05-04 21:30:36,419 - utils.permissions - INFO - Loaded 5 out of 5 category permissions into cache.
+2026-05-04 21:30:36,419 - __main__ - INFO - Permissions intialised
+2026-05-04 21:30:36,423 - __main__ - INFO - Loaded cog: cogs.xp
+2026-05-04 21:30:36,425 - __main__ - INFO - Loaded cog: cogs.welcome
+2026-05-04 21:30:36,427 - __main__ - INFO - Loaded cog: cogs.moderation
+2026-05-04 21:30:36,429 - __main__ - INFO - Loaded cog: cogs.reactions
+2026-05-04 21:30:36,431 - __main__ - INFO - Loaded cog: cogs.admin
+2026-05-04 21:30:36,433 - __main__ - INFO - Loaded cog: cogs.utility
+2026-05-04 21:30:36,438 - __main__ - INFO - Loaded cog: cogs.sc
+2026-05-04 21:30:36,439 - __main__ - INFO - Loaded cog: cogs.messages
+2026-05-04 21:30:36,439 - __main__ - INFO - Setup hook completed!
+2026-05-04 21:30:36,887 - discord.gateway - INFO - Shard ID None has connected to Gateway (Session ID: 05c8b744038149befa40077852b83090).
+2026-05-04 21:30:38,903 - __main__ - INFO - ==================================================
+2026-05-04 21:30:38,904 - __main__ - INFO - Logged in as CRDB Rework#6321 (ID: 1481100375951020052)
+2026-05-04 21:30:38,904 - __main__ - INFO - Connected to 1 guild(s)
+2026-05-04 21:30:38,905 - cogs.reactions - INFO - Default Log channel configured for CRDB Test Area.
+2026-05-04 21:30:38,987 - cogs.reactions - INFO - Cleaned up old processed reactions
+2026-05-04 21:30:39,084 - cogs.messages - INFO - Cleaned up old Criminal Records, Stored Users & Requests
+2026-05-04 21:30:39,198 - utils.views - ERROR - Failed to restore message 1498569479297433652: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:30:39,399 - utils.views - ERROR - Failed to restore message 1498974735185477633: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:30:39,599 - utils.views - ERROR - Failed to restore message 1499392298876932177: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:30:39,800 - utils.views - ERROR - Failed to restore message 1500099310044319864: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:30:40,001 - utils.views - ERROR - Failed to restore message 1500484812547424256: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:30:40,201 - utils.views - ERROR - Failed to restore message 1500792504482795671: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:30:40,403 - utils.views - ERROR - Failed to restore message 1500841707162435605: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:30:40,860 - __main__ - INFO - Commands synced successfully
+2026-05-04 21:30:40,957 - utils.database - INFO - Loaded 2 welcome messages into cache
+2026-05-04 21:30:40,957 - __main__ - INFO - ==================================================
+2026-05-04 21:33:05,996 - cogs.sc - ERROR - Unexpected error in get badge history command: too many values to unpack (expected 2)
+Traceback (most recent call last):
+  File "/home/brys/CRDB/cogs/sc.py", line 181, in get_badge_history
+    embed, file = await self.compile_badge_history_embed(user_id, username)
+                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/home/brys/CRDB/cogs/sc.py", line 209, in compile_badge_history_embed
+    status, badges = await self.bot.roblox.get_badges(user_id)
+    ^^^^^^^^^^^^^^
+ValueError: too many values to unpack (expected 2)
+2026-05-04 21:33:20,505 - __main__ - INFO - Bot shut down by user
+2026-05-04 21:42:24,039 - __main__ - INFO - Bot initializing with intents: members=True, message_content=True, reactions=True, guilds=True
+2026-05-04 21:42:24,040 - discord.client - WARNING - PyNaCl is not installed, voice will NOT be supported
+2026-05-04 21:42:24,040 - discord.client - WARNING - davey is not installed, voice will NOT be supported
+2026-05-04 21:42:24,041 - utils.runners - INFO - Starting bot (attempt 1)...
+2026-05-04 21:42:24,041 - discord.client - INFO - logging in using static token
+2026-05-04 21:42:24,695 - __main__ - INFO - Running setup_hook...
+2026-05-04 21:42:24,959 - utils.database - INFO - Synchronized 51 users into memory.
+2026-05-04 21:42:25,000 - utils.database - INFO - Synchronized 23 hrs into memory.
+2026-05-04 21:42:25,034 - utils.database - INFO - Synchronized 22 lrs into memory.
+2026-05-04 21:42:25,034 - __main__ - INFO - DatabaseHandler initialised
+2026-05-04 21:42:25,034 - __main__ - INFO - Rate limiters initialised
+2026-05-04 21:42:25,034 - __main__ - INFO - DiscordAPI with rate limits initalised.
+2026-05-04 21:42:25,035 - __main__ - INFO - Roblox Client initialised.
+2026-05-04 21:42:25,035 - __main__ - INFO - Shared HTTP session initialised
+2026-05-04 21:42:25,035 - __main__ - INFO - RankTracker initialised
+2026-05-04 21:42:25,092 - utils.permissions - INFO - Loaded 5 out of 5 category permissions into cache.
+2026-05-04 21:42:25,093 - __main__ - INFO - Permissions intialised
+2026-05-04 21:42:25,098 - __main__ - INFO - Loaded cog: cogs.xp
+2026-05-04 21:42:25,102 - __main__ - INFO - Loaded cog: cogs.welcome
+2026-05-04 21:42:25,105 - __main__ - INFO - Loaded cog: cogs.moderation
+2026-05-04 21:42:25,110 - __main__ - INFO - Loaded cog: cogs.reactions
+2026-05-04 21:42:25,118 - __main__ - INFO - Loaded cog: cogs.admin
+2026-05-04 21:42:25,124 - __main__ - INFO - Loaded cog: cogs.utility
+2026-05-04 21:42:25,129 - __main__ - INFO - Loaded cog: cogs.sc
+2026-05-04 21:42:25,131 - __main__ - INFO - Loaded cog: cogs.messages
+2026-05-04 21:42:25,132 - __main__ - INFO - Setup hook completed!
+2026-05-04 21:42:25,590 - discord.gateway - INFO - Shard ID None has connected to Gateway (Session ID: f30b085ebf314830e8922eab19df5d9a).
+2026-05-04 21:42:27,604 - __main__ - INFO - ==================================================
+2026-05-04 21:42:27,604 - __main__ - INFO - Logged in as CRDB Rework#6321 (ID: 1481100375951020052)
+2026-05-04 21:42:27,604 - __main__ - INFO - Connected to 1 guild(s)
+2026-05-04 21:42:27,605 - cogs.reactions - INFO - Default Log channel configured for CRDB Test Area.
+2026-05-04 21:42:27,668 - cogs.reactions - INFO - Cleaned up old processed reactions
+2026-05-04 21:42:27,783 - cogs.messages - INFO - Cleaned up old Criminal Records, Stored Users & Requests
+2026-05-04 21:42:27,920 - utils.views - ERROR - Failed to restore message 1498569479297433652: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:42:28,120 - utils.views - ERROR - Failed to restore message 1498974735185477633: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:42:28,321 - utils.views - ERROR - Failed to restore message 1499392298876932177: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:42:28,522 - utils.views - ERROR - Failed to restore message 1500099310044319864: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:42:28,723 - utils.views - ERROR - Failed to restore message 1500484812547424256: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:42:28,924 - utils.views - ERROR - Failed to restore message 1500792504482795671: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:42:29,126 - utils.views - ERROR - Failed to restore message 1500841707162435605: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:42:29,412 - __main__ - INFO - Commands synced successfully
+2026-05-04 21:42:29,504 - utils.database - INFO - Loaded 2 welcome messages into cache
+2026-05-04 21:42:29,504 - __main__ - INFO - ==================================================
+2026-05-04 21:45:16,640 - utils.roblox - WARNING - Rate limited (429) on https://hidden-credit-04a3.papacr1msonn.workers.dev/users/v1/usernames/users. Waiting 1.06s
+2026-05-04 21:48:35,721 - __main__ - INFO - Bot shut down by user
+2026-05-04 21:53:56,449 - __main__ - INFO - Bot initializing with intents: members=True, message_content=True, reactions=True, guilds=True
+2026-05-04 21:53:56,450 - discord.client - WARNING - PyNaCl is not installed, voice will NOT be supported
+2026-05-04 21:53:56,451 - discord.client - WARNING - davey is not installed, voice will NOT be supported
+2026-05-04 21:53:56,452 - utils.runners - INFO - Starting bot (attempt 1)...
+2026-05-04 21:53:56,453 - discord.client - INFO - logging in using static token
+2026-05-04 21:53:56,903 - __main__ - INFO - Running setup_hook...
+2026-05-04 21:53:57,214 - utils.database - INFO - Synchronized 51 users into memory.
+2026-05-04 21:53:57,260 - utils.database - INFO - Synchronized 23 hrs into memory.
+2026-05-04 21:53:57,305 - utils.database - INFO - Synchronized 22 lrs into memory.
+2026-05-04 21:53:57,305 - __main__ - INFO - DatabaseHandler initialised
+2026-05-04 21:53:57,305 - __main__ - INFO - Rate limiters initialised
+2026-05-04 21:53:57,305 - __main__ - INFO - DiscordAPI with rate limits initalised.
+2026-05-04 21:53:57,306 - __main__ - INFO - Roblox Client initialised.
+2026-05-04 21:53:57,306 - __main__ - INFO - Shared HTTP session initialised
+2026-05-04 21:53:57,306 - __main__ - INFO - RankTracker initialised
+2026-05-04 21:53:57,357 - utils.permissions - INFO - Loaded 5 out of 5 category permissions into cache.
+2026-05-04 21:53:57,357 - __main__ - INFO - Permissions intialised
+2026-05-04 21:53:57,363 - __main__ - INFO - Loaded cog: cogs.xp
+2026-05-04 21:53:57,366 - __main__ - INFO - Loaded cog: cogs.welcome
+2026-05-04 21:53:57,370 - __main__ - INFO - Loaded cog: cogs.moderation
+2026-05-04 21:53:57,375 - __main__ - INFO - Loaded cog: cogs.reactions
+2026-05-04 21:53:57,379 - __main__ - INFO - Loaded cog: cogs.admin
+2026-05-04 21:53:57,382 - __main__ - INFO - Loaded cog: cogs.utility
+2026-05-04 21:53:57,390 - __main__ - INFO - Loaded cog: cogs.sc
+2026-05-04 21:53:57,391 - __main__ - INFO - Loaded cog: cogs.messages
+2026-05-04 21:53:57,391 - __main__ - INFO - Setup hook completed!
+2026-05-04 21:53:57,895 - discord.gateway - INFO - Shard ID None has connected to Gateway (Session ID: 8fed41a2d7e889299d68cb12dd3df4de).
+2026-05-04 21:53:59,904 - __main__ - INFO - ==================================================
+2026-05-04 21:53:59,905 - __main__ - INFO - Logged in as CRDB Rework#6321 (ID: 1481100375951020052)
+2026-05-04 21:53:59,905 - __main__ - INFO - Connected to 1 guild(s)
+2026-05-04 21:53:59,906 - cogs.reactions - INFO - Default Log channel configured for CRDB Test Area.
+2026-05-04 21:53:59,983 - cogs.reactions - INFO - Cleaned up old processed reactions
+2026-05-04 21:54:00,086 - cogs.messages - INFO - Cleaned up old Criminal Records, Stored Users & Requests
+2026-05-04 21:54:00,192 - utils.views - ERROR - Failed to restore message 1498569479297433652: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:54:00,392 - utils.views - ERROR - Failed to restore message 1498974735185477633: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:54:00,593 - utils.views - ERROR - Failed to restore message 1499392298876932177: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:54:00,794 - utils.views - ERROR - Failed to restore message 1500099310044319864: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:54:00,994 - utils.views - ERROR - Failed to restore message 1500484812547424256: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:54:01,195 - utils.views - ERROR - Failed to restore message 1500792504482795671: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:54:01,397 - utils.views - ERROR - Failed to restore message 1500841707162435605: 'NoneType' object has no attribute 'fetch_message'
+2026-05-04 21:54:01,742 - __main__ - INFO - Commands synced successfully
+2026-05-04 21:54:01,879 - utils.database - INFO - Loaded 2 welcome messages into cache
+2026-05-04 21:54:01,880 - __main__ - INFO - ==================================================
+2026-05-04 21:57:18,842 - __main__ - INFO - Bot shut down by user

@@ -7,16 +7,6 @@ from discord.ext import commands
 from discord import app_commands
 from utils.decorators import has_bg_role
 
-# Configure root logger
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(),
-        logging.FileHandler('bot.log')
-    ]
-)
-
 logger = logging.getLogger(__name__)
 
 class ScCog(commands.Cog):
@@ -26,7 +16,7 @@ class ScCog(commands.Cog):
         self.REQUIREMENTS = {'age': 90, 'friends': 7, 'groups': 5, 'badges': 120}
         self.DISCORD_RETRY_DELAY = 1.5
 
-    def create_progress_bar(self, percentage: float, meets_req: bool) -> str:
+    def create_progress_bar(self, percentage: float) -> str:
         if percentage == 0:
             return ("▰") + ("▱"*9) # Due to font size on mobile
 
@@ -39,14 +29,16 @@ class ScCog(commands.Cog):
         while True:
             try:
                 embed = discord.Embed(
-                    description=f"{frames[i % len(frames)]} Fetching Roblox data, please wait...",
+                    description=f"{frames[i % len(frames)]} Fetching data, please wait...",
                     color=discord.Color.blurple()
-                ).set_footer(text="Try using their ID if it takes too long.")
+                )
                 await message.edit(embed=embed)
                 i += 1
-                await asyncio.sleep(0.5)
+                await asyncio.sleep(0.75)
             except asyncio.CancelledError:
                 break
+            except Exception:
+                await asyncio.sleep(0.1)
 
     @commands.hybrid_command(
             name="security-check", 
@@ -63,7 +55,7 @@ class ScCog(commands.Cog):
                 await ctx.interaction.response.defer()
 
             initial_embed = discord.Embed(
-                description="⠋ Fetching Roblox data, please wait...",
+                description="⠋ Fetching data, please wait...",
                 color=discord.Color.blurple()
             )
             initial_embed.set_author(
@@ -114,12 +106,23 @@ class ScCog(commands.Cog):
                 )
 
             animation_task.cancel()
-            await asyncio.sleep(0.1)
+            try: 
+                await animation_task
+            except asyncio.CancelledError:
+                pass
+
             await loading_message.edit(embed=embed)
 
         except Exception as e:
+            animation_task.cancel()
+            try:
+                await animation_task
+            except asyncio.CancelledError:
+                pass
             logger.exception("Unexpected error in /sc command: %s", e)
-            await ctx.send("```❌ An unexpected error occurred.```", ephemeral=True)
+            await loading_message.edit(
+                embed=error_embed("Unexpected Error", "An unexpected error occurred. Please try again.")
+            )
 
     @commands.hybrid_command(
             name="get-badge-history", 
@@ -136,7 +139,7 @@ class ScCog(commands.Cog):
                 await ctx.interaction.response.defer()
 
             initial_embed = discord.Embed(
-                description="⠋ Fetching Roblox data, please wait...",
+                description="⠋ Fetching data, please wait...",
                 color=discord.Color.blurple()
             )
             initial_embed.set_author(
@@ -176,6 +179,10 @@ class ScCog(commands.Cog):
 
                 embed, file = await self.compile_badge_history_embed(user_id, username)
                 animation_task.cancel()
+                try: 
+                    await animation_task
+                except asyncio.CancelledError:
+                    pass
 
                 if file:
                     await loading_message.edit(embed=embed, attachments=[file])
@@ -193,8 +200,16 @@ class ScCog(commands.Cog):
                 )
 
         except Exception as e:
+            animation_task.cancel()
+            try:
+                await animation_task
+            except asyncio.CancelledError:
+                pass
+            
             logger.exception("Unexpected error in get badge history command: %s", e)
-            await ctx.send("```❌ An unexpected error occurred.```", ephemeral=True)
+            await loading_message.edit(
+                embed=error_embed("Unexpected Error", "An unexpected error occurred. Please try again.")
+            )
 
     async def compile_badge_history_embed(self, user_id: int, username: str = "User", data = None):
         if data is None:
@@ -206,7 +221,7 @@ class ScCog(commands.Cog):
             if data:
                 return None, None
             return discord.Embed(
-                    description="No Badge history found or inventory is private.",
+                    description=f"No Badge history found or inventory is private for {username}.",
                     color=discord.Color.red()
                         ).set_author(name="Badge History", icon_url=Config.CANCEL_URL), None
 
@@ -216,7 +231,7 @@ class ScCog(commands.Cog):
             if data:
                 return None, None
             return discord.Embed(
-                    description="User has badges, but no award dates were found.", 
+                    description=f"{username} has badges, but no award dates were found.", 
                     color=discord.Color.red()
                     ).set_author(name="Badge History", icon_url=Config.CANCEL_URL), None
         

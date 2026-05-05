@@ -217,7 +217,7 @@ class RobloxClient:
         cache_key = f"badges:{user_id}"
         hit, val = self._cache.get(cache_key)
         if hit:
-            return val
+            return hit, val
         badges = []
         cursor = None
         MAX_PAGES = 50
