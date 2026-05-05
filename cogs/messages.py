@@ -89,7 +89,7 @@ class MessageLoggerCog(commands.Cog):
             last_time = datetime.fromisoformat(result.data[0]['value'])
             if last_time.tzinfo is None:
                 last_time = last_time.replace(tzinfo=timezone.utc)
-            if datetime.now(timezone.utc) - last_time < timedelta(hours=36):
+            if datetime.now(timezone.utc) - last_time < timedelta(hours=72):
                 return
 
         PROMPTS = [
