@@ -230,82 +230,83 @@ class RobloxClient:
         """
         return datetime.fromisoformat(date.replace("Z", "+00:00"))
 
-    async def get_badges(self, user_id: int, stop_at: int = 10_000) -> tuple:
+    async def get_badges(self, user_id: int, stop_at: int = 10_000) -> tuple[int, list[dict]]:
         cache_key = f"badges:{user_id}"
+        
         hit, val = self._cache.get(cache_key)
         if hit:
             return 200, val
 
-        api_key = os.getenv("RBX_API_KEY")
-        if not api_key:
-            logger.error("RBX_API_KEY is not set in environment")
-            return 500, []
+        async def _fetch_all_badges():
+            api_key = os.getenv("RBX_API_KEY")
+            if not api_key:
+                logger.error("RBX_API_KEY is not set in environment")
+                return 500, []
 
-        await self.start()
+            await self.start()
 
-        url = f"https://apis.roblox.com/cloud/v2/users/{user_id}/inventory-items"
-        headers = {"x-api-key": api_key}
-        timeout = aiohttp.ClientTimeout(total=10, sock_connect=4, sock_read=8)
+            url = f"https://apis.roblox.com/cloud/v2/users/{user_id}/inventory-items"
+            headers = {"x-api-key": api_key}
+            timeout = aiohttp.ClientTimeout(total=10, sock_connect=4, sock_read=8)
+            semaphore = asyncio.Semaphore(5)  # Limit concurrent page fetches
 
-        async def fetch_page(page_token: str | None) -> tuple[dict | None, int]:
-            params: dict = {"filter": "badges=true", "maxPageSize": 100}
-            if page_token:
-                params["pageToken"] = page_token
+            async def fetch_page(page_token: str | None) -> tuple[dict | None, int]:
+                params: dict = {"filter": "badges=true", "maxPageSize": 100}
+                if page_token:
+                    params["pageToken"] = page_token
 
-            for attempt in range(self.MAX_RETRIES):
-                try:
-                    async with self._oc_session.request(
-                        "GET", url, params=params, headers=headers, timeout=timeout
-                    ) as resp:
-                        if resp.status == 200:
-                            return await resp.json(), 200
-                        if resp.status == 429:
-                            retry_after = float(resp.headers.get("Retry-After", self.BASE_DELAY * (2 ** attempt)))
-                            await asyncio.sleep(retry_after)
-                            continue
-                        return None, resp.status
-                except asyncio.TimeoutError:
-                    await asyncio.sleep(self.BASE_DELAY * (2 ** attempt) + random.uniform(0, 1))
-                except aiohttp.ClientError:
-                    await asyncio.sleep(self.BASE_DELAY * (2 ** attempt))
+                async with semaphore:
+                    for attempt in range(self.MAX_RETRIES):
+                        try:
+                            async with self._oc_session.request(
+                                "GET", url, params=params, headers=headers, timeout=timeout
+                            ) as resp:
+                                if resp.status == 200:
+                                    return await resp.json(), 200
+                                if resp.status == 429:
+                                    retry_after = float(resp.headers.get("Retry-After", self.BASE_DELAY * (2 ** attempt)))
+                                    await asyncio.sleep(retry_after)
+                                    continue
+                                return None, resp.status
+                        except (asyncio.TimeoutError, aiohttp.ClientError):
+                            await asyncio.sleep(self.BASE_DELAY * (2 ** attempt) + random.uniform(0, 1))
 
-            logger.warning(f"get_badges gave up after {self.MAX_RETRIES} attempts for user {user_id}")
-            return None, 500
+                return None, 500
 
-        first_data, first_status = await fetch_page(None)
-        if first_status in (401, 403):
-            return first_status, []
-        if first_status != 200 or first_data is None:
-            return first_status, []
+            first_data, first_status = await fetch_page(None)
+            if first_status != 200 or not first_data:
+                return first_status, []
 
-        badges: list[dict] = first_data.get("inventoryItems", [])
-        pending_tokens: list[str] = []
-        if token := first_data.get("nextPageToken"):
-            pending_tokens.append(token)
+            badges = first_data.get("inventoryItems", [])
+            pending_tokens = []
+            if token := first_data.get("nextPageToken"):
+                pending_tokens.append(token)
 
-        while pending_tokens and len(badges) < stop_at:
-            batch, pending_tokens = pending_tokens[:5], pending_tokens[5:]
-            results = await asyncio.gather(*[fetch_page(t) for t in batch], return_exceptions=True)
+            while pending_tokens and len(badges) < stop_at:
+                current_batch = pending_tokens[:10]
+                pending_tokens = pending_tokens[10:]
+                
+                results = await asyncio.gather(*[fetch_page(t) for t in current_batch], return_exceptions=True)
 
-            for result in results:
-                if isinstance(result, BaseException):
-                    logger.error(f"get_badges batch failed for user {user_id}: {result}")
-                    continue
-                data, status = result
-                if status == 403:
-                    return 403, []
-                if status != 200 or data is None:
-                    continue
-                badges.extend(data.get("inventoryItems", []))
-                if token := data.get("nextPageToken"):
-                    pending_tokens.append(token)
+                for result in results:
+                    if isinstance(result, Exception) or result[0] is None:
+                        continue
+                    
+                    data, status = result
+                    if status == 200:
+                        new_items = data.get("inventoryItems", [])
+                        badges.extend(new_items)
+                        if next_t := data.get("nextPageToken"):
+                            pending_tokens.append(next_t)
+                
+                if len(badges) >= stop_at:
+                    break
 
-            if len(badges) >= stop_at:
-                break
+            processed_badges = badges[:stop_at]
+            self._cache.set(cache_key, processed_badges)
+            return 200, processed_badges
 
-        badges = badges[:stop_at]
-        self._cache.set(cache_key, badges)
-        return 200, badges
+        return await self._dedup.get_or_fetch(cache_key, _fetch_all_badges)
 
     def plot_cumulative_badges(self, username: str, user_id: str, dates: list[str]):
         """Graph the cumulative total of badges earned over time."""
