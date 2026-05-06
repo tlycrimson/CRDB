@@ -239,13 +239,16 @@ class AdminCog(commands.Cog):
                     try:
                         await member.send(embed=embed)
                     except discord.Forbidden:
-                        if channel := ctx.guild.get_channel(Config.PUBLIC_CHAT_CHANNEL_ID):
-                            await channel.send(f"{member.mention}", embed=embed)
+                        try:
+                            if channel := ctx.guild.get_channel(Config.PUBLIC_CHAT_CHANNEL_ID):
+                                await channel.send(f"{member.mention}", embed=embed)
+                        except:
+                            pass
                     
                     successful_members.append(member_info)
                     success_count += 1
                 except Exception as e:
-                    logger.exception(f"Error discharging %s (%s): $s", cleaned_nickname, member.id, e)
+                    logger.exception(f"Error discharging {cleaned_nickname} ({member.id}): {e}")
                     failed_members.append(member.mention)
 
             result_embed = discord.Embed(
