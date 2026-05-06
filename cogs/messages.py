@@ -169,6 +169,7 @@ class MessageLoggerCog(commands.Cog):
         content = message.content
 
         sc_pattern = r"Roblox\s+profile\s+link:\s*https?://(?:www\.)?roblox\.com/users/(\d+)"
+
         link_match = re.search(sc_pattern, content, re.IGNORECASE)
         
         user_id = -2

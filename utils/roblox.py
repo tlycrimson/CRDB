@@ -1,5 +1,6 @@
 import os
 import io
+import ssl
 import time
 import random
 import aiohttp
@@ -125,14 +126,30 @@ class RobloxClient:
         )
         self._session = aiohttp.ClientSession(
             connector=connector,
-            timeout=aiohttp.ClientTimeout(total=15, sock_connect=5, sock_read=10),
+            headers={"User-Agent": "MPRbxClient"},
+        )
+        
+        ssl_context = ssl.create_default_context()
+        oc_connector = aiohttp.TCPConnector(
+            ssl=ssl_context,
+            limit=10,
+            ttl_dns_cache=300,
+            use_dns_cache=True,
+            keepalive_timeout=60,
+        )
+
+        self._oc_session = aiohttp.ClientSession(
+            connector=oc_connector,
             headers={"User-Agent": "MPRbxClient"},
         )
 
     async def close(self):
-        if self._session:
-            await self._session.close()
-            self._session = None
+        for s in (self._session, self._oc_session):
+               if s:
+                await s.close()
+        
+        self._session = None
+        self._oc_session = None
 
     def _get_url(self, subdomain: str, path: str) -> str:
         domain = self.PROXY_LIST[self._proxy_index]
@@ -217,33 +234,76 @@ class RobloxClient:
         cache_key = f"badges:{user_id}"
         hit, val = self._cache.get(cache_key)
         if hit:
-            return hit, val
-        badges = []
-        cursor = None
-        MAX_PAGES = 50
-        for _ in range(MAX_PAGES):
-            params = {"limit": 100}
-            if cursor:
-                params["cursor"] = cursor
-            data, status = await self._fetch(
-                "GET", "badges", f"/v1/users/{user_id}/badges", params=params
-            )
-            if status == 403:
-                return 403, []
-            if status != 200 or data is None:
-                return status, []
-            badge_list = data.get("data", [])
-            if not badge_list and cursor is None:
-                return 200, []
-            if not badge_list:
-                break
-            badges.extend(badge_list)  
+            return 200, val
+
+        api_key = os.getenv("RBX_API_KEY")
+        if not api_key:
+            logger.error("RBX_API_KEY is not set in environment")
+            return 500, []
+
+        await self.start()
+
+        url = f"https://apis.roblox.com/cloud/v2/users/{user_id}/inventory-items"
+        headers = {"x-api-key": api_key}
+        timeout = aiohttp.ClientTimeout(total=10, sock_connect=4, sock_read=8)
+
+        async def fetch_page(page_token: str | None) -> tuple[dict | None, int]:
+            params: dict = {"filter": "badges=true", "maxPageSize": 100}
+            if page_token:
+                params["pageToken"] = page_token
+
+            for attempt in range(self.MAX_RETRIES):
+                try:
+                    async with self._oc_session.request(
+                        "GET", url, params=params, headers=headers, timeout=timeout
+                    ) as resp:
+                        if resp.status == 200:
+                            return await resp.json(), 200
+                        if resp.status == 429:
+                            retry_after = float(resp.headers.get("Retry-After", self.BASE_DELAY * (2 ** attempt)))
+                            await asyncio.sleep(retry_after)
+                            continue
+                        return None, resp.status
+                except asyncio.TimeoutError:
+                    await asyncio.sleep(self.BASE_DELAY * (2 ** attempt) + random.uniform(0, 1))
+                except aiohttp.ClientError:
+                    await asyncio.sleep(self.BASE_DELAY * (2 ** attempt))
+
+            logger.warning(f"get_badges gave up after {self.MAX_RETRIES} attempts for user {user_id}")
+            return None, 500
+
+        first_data, first_status = await fetch_page(None)
+        if first_status in (401, 403):
+            return first_status, []
+        if first_status != 200 or first_data is None:
+            return first_status, []
+
+        badges: list[dict] = first_data.get("inventoryItems", [])
+        pending_tokens: list[str] = []
+        if token := first_data.get("nextPageToken"):
+            pending_tokens.append(token)
+
+        while pending_tokens and len(badges) < stop_at:
+            batch, pending_tokens = pending_tokens[:5], pending_tokens[5:]
+            results = await asyncio.gather(*[fetch_page(t) for t in batch], return_exceptions=True)
+
+            for result in results:
+                if isinstance(result, BaseException):
+                    logger.error(f"get_badges batch failed for user {user_id}: {result}")
+                    continue
+                data, status = result
+                if status == 403:
+                    return 403, []
+                if status != 200 or data is None:
+                    continue
+                badges.extend(data.get("inventoryItems", []))
+                if token := data.get("nextPageToken"):
+                    pending_tokens.append(token)
+
             if len(badges) >= stop_at:
-                self._cache.set(cache_key, badges)
-                return 200, badges
-            cursor = data.get("nextPageCursor")
-            if not cursor:
                 break
+
+        badges = badges[:stop_at]
         self._cache.set(cache_key, badges)
         return 200, badges
 
@@ -350,51 +410,6 @@ class RobloxClient:
             self._cache.set(cache_key, url)
         return url
 
-    async def get_badge_count(self, user_id: int, stop_at: int = 500) -> int:
-        cache_key = f"badges:{user_id}"
-        hit, val = self._cache.get(cache_key)
-        if hit:
-            return val
-
-        total = 0
-        cursor = None
-        MAX_PAGES = 50  
-
-        for _ in range(MAX_PAGES):
-            params = {"limit": 100}
-            if cursor:
-                params["cursor"] = cursor
-
-            data, status = await self._fetch(
-                "GET", "badges", f"/v1/users/{user_id}/badges", params=params
-            )
-
-            if status == 403:
-                return -1  # Private inventory
-
-            if status != 200 or data is None:
-                return -2  # API error
-
-            badge_list = data.get("data", [])
-
-            if not badge_list and cursor is None:
-                return -1  # Private inventory (secondary detection)
-
-            if not badge_list:
-                break
-
-            total += len(badge_list)
-            if total >= stop_at:
-                self._cache.set(cache_key, total)
-                return total
-
-            cursor = data.get("nextPageCursor")
-            if not cursor:
-                break
-
-        self._cache.set(cache_key, total)
-        return total
-
     async def get_groups(self, user_id: int) -> list:
         cache_key = f"groups:{user_id}"
         hit, val = self._cache.get(cache_key)
@@ -440,10 +455,10 @@ class RobloxClient:
                     self.get_groups(user_id),
                     self.get_friends_count(user_id),
                     self.get_avatar_url(user_id),
-                    self.get_badges(user_id) if include_badges else self.get_badge_count(user_id),
+                    self.get_badges(user_id),
                     return_exceptions=True,
                 ),
-                timeout=30.0,
+                timeout=45.0,
             )
         except asyncio.TimeoutError:
             logger.error(f"fetch_sc_data timed out for user {user_id}")
@@ -455,9 +470,12 @@ class RobloxClient:
             else:
                 final_data[k] = v
 
-        if include_badges and final_data.get("badges") is not None:
-            status, badge_list = final_data["badges"]  
+        if final_data.get("badges") is not None:
+            status, badge_list = final_data["badges"]
             final_data["badges"] = badge_list
+            final_data["badge_count"] = len(badge_list)
+        elif final_data.get("badge_count") is not None:
+            status, badge_list = final_data["badge_count"]
             final_data["badge_count"] = len(badge_list)
 
         return final_data

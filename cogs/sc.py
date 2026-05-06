@@ -38,7 +38,7 @@ class ScCog(commands.Cog):
             except asyncio.CancelledError:
                 break
             except Exception:
-                await asyncio.sleep(0.1)
+                pass
 
     @commands.hybrid_command(
             name="security-check", 
@@ -92,7 +92,7 @@ class ScCog(commands.Cog):
 
                 embed = await asyncio.wait_for(
                     self.compile_sc_embed(user_id),
-                    timeout=30.0
+                    timeout=45.0
                 )
 
             except asyncio.TimeoutError:
@@ -101,7 +101,7 @@ class ScCog(commands.Cog):
                 return await loading_message.edit(
                     embed=error_embed(
                         "Request Timed Out",
-                        "Roblox data took too long to load. Please try again in a moment."
+                        "Data took too long to load. Please try again in a moment."
                     )
                 )
 
@@ -281,7 +281,7 @@ class ScCog(commands.Cog):
         british_army_rank = british_army_rank if british_army_rank else "Unknown"
         groups_count = len(groups) if not isinstance(groups, Exception) else 0
         warning = "Inventory is private" if badge_count == -1 else ""
-        badge_count = 0 if badge_count<0 else badge_count
+        badge_count = 0 if not badge_count or badge_count<0 else badge_count
 
         metrics = {
             'age':{'value': age_days,'percentage': min(100, (age_days/self.REQUIREMENTS['age'])* 100),
@@ -333,7 +333,7 @@ class ScCog(commands.Cog):
 
         for name, metric in metrics.items():
             status_icon = "✅" if metric['meets_req'] else "❌"
-            progress_bar = self.create_progress_bar(metric['percentage'], metric['meets_req'])
+            progress_bar = self.create_progress_bar(metric['percentage'])
             field_value = f"{progress_bar} {round(metric['percentage'])}%"
             if name == 'badges' and warning:
                 field_value += f"\n{warning}"
