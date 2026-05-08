@@ -3,10 +3,11 @@ import asyncio
 import discord
 import mimetypes
 import logging
-from datetime import datetime, timezone
 from config import Config
-from types import SimpleNamespace
 from utils import embedBuilder
+from discord.ext import commands
+from types import SimpleNamespace
+from datetime import datetime, timezone
 from utils.decorators import min_rank_required2, has_role
 from utils.helpers import clean_nickname, MockPayload
 
@@ -146,15 +147,20 @@ class DischargeView(discord.ui.View):
             custom_id="select_discharge"
     )
     async def my_select_callback(self, interaction: discord.Interaction, select):
+        await interaction.response.defer()
         admincog = interaction.client.get_cog("AdminCog")
         requster_user = self.discharge_req_msg.author.id
         success = False
         try:
-            ctx = await interaction.client.get_context(interaction)
-            success = await admincog.discharge.callback(admincog, ctx, f"<@{requster_user}>", select.values[0], self.reason)
+            success = await admincog.discharge_user(
+                    interaction_ctx=interaction,
+                    members=f"<@{requster_user}>",
+                    charge_type=select.values[0],
+                    reason=self.reason
+            )
         except Exception as e:
             logger.error(f"Error occured while trying to discharge {requster_user}: {e}")
-            await interaction.response.send_message("```❌ An error occured while trying to discharge them.```", ephemeral=True)
+            await interaction.followup.send("```❌ An error occured while trying to discharge them.```", ephemeral=True)
         
         if not success:
             return

@@ -2,6 +2,7 @@ import asyncio
 import logging
 import discord
 import mimetypes
+from typing import Union
 from discord import app_commands
 from discord.ext import commands
 from typing import Optional, Literal
@@ -10,6 +11,7 @@ from datetime import datetime, timedelta, timezone
 
 from config import Config
 from utils import embedBuilder
+from utils.helpers import UniversalContext
 from utils.helpers import clean_nickname, BlacklistData
 from utils.views import ConfirmView, ApprovalView, save_pending_blacklist
 from utils.decorators import min_rank_required2, has_modular_permission, is_admin_or_dev
@@ -96,7 +98,6 @@ class AdminCog(commands.Cog):
             logger.error(f"Error updating permissions: {e}")
             await ctx.send("```❌ Failed to update permissions.```", ephemeral=True)
 
-
     # Discharge Command
     @commands.hybrid_command(
             name="discharge",
@@ -121,23 +122,47 @@ class AdminCog(commands.Cog):
     ):
         if ctx.interaction:
             await ctx.interaction.response.defer(ephemeral=True)
-        
+       
         type_map = {
                 "h": "Honourable",
                 "g": "General",
                 "d": "Dishonourable",
         }
 
-        charge_type = db_value = type_map.get(discharge_type.lower(), discharge_type.title())
+        charge_type = type_map.get(discharge_type.lower(), discharge_type.title())
+
+        await self.discharge_user(ctx, members, charge_type, evidence, reason)
+
+
+    async def discharge_user(
+        self,
+        interaction_ctx: Union[discord.Interaction, commands.Context],
+        members: str,  
+        charge_type: str,
+        evidence: discord.Attachment | None = None,
+        reason: str = "No reason provided"
+    ) -> bool:
+        if isinstance(interaction_ctx, discord.Interaction):
+            dctx = UniversalContext(
+                    sender=interaction_ctx.followup,
+                    author=interaction_ctx.user,
+                    guild=interaction_ctx.guild
+            )
+        else:
+            dctx = UniversalContext(
+                    sender=interaction_ctx,
+                    author=interaction_ctx.author,
+                    guild=interaction_ctx.guild,
+            )
 
         try:
             reason = escape_markdown(reason) 
             if len(reason) > 1000:
-                await ctx.send(
+                await dctx.sender.send(
                     "```❌ Reason must be under 1000 characters```",
                     ephemeral=True
                 )
-                return
+                return False
 
             member_ids = []
             for mention in members.split(','):
@@ -150,11 +175,12 @@ class AdminCog(commands.Cog):
 
             member_ids = list(set(member_ids))
 
-            if ctx.author.id in member_ids:
-                return await ctx.send("```❌ You cannot discharge yourself.```", ephemeral=True)
-            
+            if dctx.author.id in member_ids:
+                await dctx.sender.send("```❌ You cannot discharge yourself.```", ephemeral=True)
+                return False
+
             # Confirmation before action
-            view = ConfirmView(author=ctx.author)
+            view = ConfirmView(author=dctx.author)
             confirmation_msg = (
                         f"Their information will be deleted from the database and could result in permanent loss.\n\n"
                         f"**__Discharge Information__**\n"
@@ -172,28 +198,28 @@ class AdminCog(commands.Cog):
             if evidence:
                 embed.set_image(url=evidence.url)
 
-            await ctx.send(embed=embed, view=view, ephemeral=True)
+            await dctx.sender.send(embed=embed, view=view, ephemeral=True)
             await view.wait()
 
             if not view.value:
-                await ctx.send("```❎ Discharge cancelled.```", ephemeral=True)
+                await dctx.sender.send("```❎ Discharge cancelled.```", ephemeral=True)
                 return False
 
-            processing_msg = await ctx.send(
-                "```⚙️ Processing discharge...```",
-                ephemeral=True,
+            processing_msg = await dctx.sender.send(
+                    "```⚙️ Processing discharge...```",
+                    ephemeral=True,
             )
 
             await self.bot.rate_limiter.wait_if_needed(bucket="discharge")
 
             discharged_members = []
             for member_id in member_ids:
-                if member := ctx.guild.get_member(member_id):
+                if member := dctx.guild.get_member(member_id):
                     discharged_members.append(member)
 
             if not discharged_members:
-                await ctx.send("```❌ No valid members found.```", ephemeral=True)
-                return
+                await dctx.sender.send("```❌ No valid members found.```", ephemeral=True)
+                return False
             
             # Embed creation
             color = discord.Color.green() 
@@ -220,7 +246,7 @@ class AdminCog(commands.Cog):
                 if mime and mime.startswith("image/"):
                     embed.set_image(url=evidence.url)
 
-            embed.set_footer(text=f"Discharged by {ctx.author.display_name}")
+            embed.set_footer(text=f"Discharged by {dctx.author.display_name}")
 
             success_count = 0
             successful_members = []
@@ -235,12 +261,12 @@ class AdminCog(commands.Cog):
                     if roblox_id:
                         member_info += f" | {roblox_id}"
 
-                    await self.bot.db.discharge_user(str(member.id), cleaned_nickname, ctx.guild)
+                    await self.bot.db.discharge_user(str(member.id), cleaned_nickname, interaction_ctx.guild)
                     try:
                         await member.send(embed=embed)
                     except discord.Forbidden:
                         try:
-                            if channel := ctx.guild.get_channel(Config.PUBLIC_CHAT_CHANNEL_ID):
+                            if channel := dctx.guild.get_channel(Config.PUBLIC_CHAT_CHANNEL_ID):
                                 await channel.send(f"{member.mention}", embed=embed)
                         except:
                             pass
@@ -272,11 +298,11 @@ class AdminCog(commands.Cog):
             )
 
             # Log to D_LOG_CHANNEL_ID
-            if d_log := ctx.guild.get_channel(Config.D_LOG_CHANNEL_ID):
+            if d_log := dctx.guild.get_channel(Config.D_LOG_CHANNEL_ID):
                 log_embed = embedBuilder.build_discharge_log(
                         charge_type,
                         successful_members,
-                        ctx.author,
+                        dctx.author,
                         reason=reason,
                         evidence=evidence,
                         color=color
@@ -286,9 +312,11 @@ class AdminCog(commands.Cog):
                 return True
         except Exception as e:
             logger.error(f"Discharge command failed: {e}")
-            await ctx.send("```❌ An error occurred while processing the discharge.```", ephemeral=True)
-            return False
-    
+            await dctx.sender.send("```❌ An error occurred while processing the discharge.```", ephemeral=True)
+        
+        return False
+
+
     #Blacklist Command
     @commands.hybrid_command(
             name="blacklist", 

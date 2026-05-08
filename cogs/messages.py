@@ -297,14 +297,16 @@ class MessageLoggerCog(commands.Cog):
 
 
     async def discharge_request(self, message: discord.Message):
-        reason_search = re.search(r'reason for discharge:\s*([^\s(]+)', message.content, re.IGNORECASE)
-        
-        if not reason_search:
-            reason_search = re.search(r'discharge:\s*([^\s(]+)', message.content, re.IGNORECASE)
+        reason_search = re.search(r'reason for discharge:\s*(.+)', message.content, re.IGNORECASE)
 
-            if not reason_search:
-                return
-        
+        if not reason_search:
+            reason_search = re.search(r'discharge:\s*(.+)', message.content, re.IGNORECASE)
+
+        if reason_search:
+            reason = reason_search.group(1).strip()       
+        else: 
+            return
+
         reason = str(reason_search.group(1))
 
         cleaned_nickname = clean_nickname(message.author.display_name)

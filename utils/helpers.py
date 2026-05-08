@@ -2,8 +2,9 @@ import re
 import logging
 import discord
 from config import Config
+from discord.ext import commands
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, Union, Tuple
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,12 @@ class MockPayload:
     user_id: int
     emoji: discord.PartialEmoji
     member: discord.Member
+
+@dataclass
+class UniversalContext:
+    sender: Union[discord.Webhook, commands.Context]
+    author: Union[discord.Member, discord.User]
+    guild: discord.Guild
 
 class ViewModalTrigger(discord.ui.View):
     def __init__(self, author: discord.User, _type: str, timeout: float = 60.0):
