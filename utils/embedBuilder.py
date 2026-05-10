@@ -459,8 +459,11 @@ def build_event_log(member, message, host, event_type: str, attendees=None, excl
        if excluded_attendee_count:
           embed.add_field(name="Excluded Attendees:", value=excluded_attendee_count, inline=True)
         
-       embed.set_footer(text=f"Logger: {member.id} • Host: {host.id}")
-        
+       footer = f"Logger ID: {member.id} • Host ID: {host.id}"
+       if member.id == host.id:
+               footer = f"User ID: {member.id}"
+
+       embed.set_footer(text=footer)
        return embed
 
 
@@ -477,7 +480,7 @@ def build_activity_log(member, message, constable, time, isTimeGuarded: bool, po
        embed.add_field(name="Constable:", value=clean_nickname(constable.display_name), inline=True)
        embed.add_field(name=f"{"Time Guarded:" if isTimeGuarded else "Time Active:"}", value=time, inline=True)
        if points:
-        embed.add_field(name="XP Awarded for Time:", value=points, inline=True)
+        embed.add_field(name="XP Awarded:", value=points, inline=True)
        
        embed.set_author(
              name=name,
@@ -488,8 +491,15 @@ def build_activity_log(member, message, constable, time, isTimeGuarded: bool, po
        embed.add_field(name="Original Log:", value=f"[Jump to Log]({message.jump_url})", inline=True)
        embed.add_field(name="Logged By:", value=clean_nickname(member.display_name), inline=True)
        embed.set_footer(text=f"Logger: {member.id} • Constable: {constable.id}")
-        
+
+
+       footer = f"Logger ID: {member.id} • Host ID: {constable.id}"
+       if member.id == constable.id:
+               footer = f"User ID: {member.id}"
+
+       embed.set_footer(text=footer)
        return embed
+       
 
 
 
@@ -517,7 +527,7 @@ def build_db_logger_record(member, message, points, emoji) -> discord.Embed:
         return embed
 
 
-def build_inductor_record(inductor, logger, message, points, emoji) -> discord.Embed:
+def build_inductor_record(inductor, authenticator, message, points, emoji) -> discord.Embed:
         embed = discord.Embed(
             color=discord.Color.dark_magenta(),
             timestamp=datetime.now(timezone.utc)
@@ -532,17 +542,21 @@ def build_inductor_record(inductor, logger, message, points, emoji) -> discord.E
         )
 
         embed.add_field(name="Inductor:", value=clean_nickname(inductor.display_name), inline=True)
-        embed.add_field(name="Logger:", value=clean_nickname(logger.display_name), inline=True)
+        embed.add_field(name="License Authenticator:", value=clean_nickname(authenticator.display_name), inline=True)
         embed.add_field(name="Message Request:", value=f"[Jump to Request]({message.jump_url})", inline=True)
         embed.add_field(name="Status:", value=str(emoji), inline=True)
         embed.add_field(name="Points Awarded:", value=points, inline=True)
 
 
-        embed.set_footer(text=f"Logger: {logger.id} • Inductor: {inductor.id}")
-        
+        footer = f"Authenticator ID: {authenticator.id} • Inductor: {inductor.id}"
+ 
+        if authenticator.id == inductor.id:
+               footer = f"User ID: {authenticator.id}"
+
+        embed.set_footer(text=footer)
         return embed
 
-def build_examiner_record(examiner, logger, message, points) -> discord.Embed:
+def build_examiner_record(examiner, approver, message, points) -> discord.Embed:
         embed = discord.Embed(
             color=discord.Color.dark_magenta(),
             timestamp=datetime.now(timezone.utc)
@@ -563,12 +577,18 @@ def build_examiner_record(examiner, logger, message, points) -> discord.Embed:
 
         exam_type = mapping.get(message.channel.id, message.channel.name)
         embed.add_field(name="Examiner:", value=clean_nickname(examiner.display_name), inline=True)
-        embed.add_field(name="Logger:", value=clean_nickname(logger.display_name), inline=True)
+        embed.add_field(name="Approver:", value=clean_nickname(approver.display_name), inline=True)
         embed.add_field(name="Type:", value=exam_type, inline=True)
         embed.add_field(name="Exam Report:", value=f"[Jump to Report]({message.jump_url})", inline=True)
         embed.add_field(name="Points Awarded:", value=points, inline=True)
 
-        embed.set_footer(text=f"Logger:{logger.id} • Examiner: {examiner.id}")
+        footer = f"Logger:{approver.id} • Examiner: {examiner.id}"
+ 
+        if approver.id == examiner.id:
+               footer = f"User ID: {approver.id}"
+
+        embed.set_footer(text=footer)
+
         return embed
 
 def build_sc_check_log(approver, member, checks, points, message) -> discord.Embed:
@@ -591,7 +611,13 @@ def build_sc_check_log(approver, member, checks, points, message) -> discord.Emb
         embed.add_field(name="Points Awarded:", value=points, inline=True)
         embed.add_field(name="Approved by:", value=f"{clean_nickname(approver.display_name)} ", inline=True)
 
-        embed.set_footer(text=f"Logger: {member.id} • Approver: {approver.id}")
+        footer = f"Logger: {member.id} • Approver: {approver.id}"
+ 
+        if approver.id == member.id:
+               footer = f"User ID: {approver.id}"
+
+        embed.set_footer(text=footer)
+
         return embed
                 
 

@@ -332,15 +332,26 @@ class ModerationCog(commands.Cog):
             )
             await ctx.send(embed=embed, ephemeral=True)
             return
+        
+        title = "Roles Saved"
+        icon_url = Config.CHECK_URL 
+
+        if not success:
+            title = "Error Saving Roles"
+            icon_url = Config.CANCEL_URL
+        
+        moderator_name = clean_nickname(ctx.author.display_name)
+        member_name = clean_nickname(member.display_name)
 
         embed = discord.Embed(
-            title="✅ Roles Saved" if success else "❌ Error Saving Roles",
             description=(
-                f"Saved **{len(role_ids)}** tracked roles for {member.mention}.\n"
+                f"{moderator_name} saved **{len(role_ids)}** tracked roles for {member_name}.\n\n"
                 f"**Roles:** {', '.join([r.name for r in matched_roles]) or 'None'}"
-            ) if success else f"Failed to save roles for {member.mention}.",
+            ) if success else f"Failed to save roles for {member_name}.",
             color=discord.Color.green() if success else discord.Color.red()
-        )
+        ).set_author(name=title, icon_url=icon_url)
+
+        embed.set_footer(text=f"Moderator ID: {ctx.author.id} • Member ID: {member.id}")
 
         # Log to default channel
         log_channel = ctx.guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
