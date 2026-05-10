@@ -5,7 +5,6 @@ import mimetypes
 import logging
 from config import Config
 from utils import embedBuilder
-from discord.ext import commands
 from types import SimpleNamespace
 from datetime import datetime, timezone
 from utils.decorators import min_rank_required2, has_role
@@ -52,13 +51,14 @@ class ConfirmView(discord.ui.View):
 
 
 class PageButtonView(discord.ui.View):
-    def __init__(self, user: discord.User, current_page, total_page, data = None, timeout: float = 300.0):
+    def __init__(self, user: discord.User, current_page: int, total_page: int, data = None, change_logs: bool = False, timeout: float = 300.0):
         super().__init__(timeout=timeout)
         self.user = user
         self.current_page = current_page
         self.total_page = total_page
         self.data = data
         self.message = None
+        self.cl = change_logs
 
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.user.id:
@@ -69,36 +69,42 @@ class PageButtonView(discord.ui.View):
             return False
         return True
 
+    async def send_next_page(self, interaction: discord.Interaction):
+        prefix = interaction.client.command_prefix
+        if self.data:
+            embed = interaction.message.embeds[0]
+            embed.description = self.data[self.current_page]
+        elif self.cl:
+            embed = embedBuilder.build_change_log(prefix, self.current_page) #returns 2
+        else:
+            embed = embedBuilder.build_commands_page(self.current_page, prefix)
+
+        successful = False
+        try:
+            await interaction.message.edit(embeds=embed)
+            successful = True
+        except Exception:
+            pass
+        
+        if not successful:
+            await interaction.followup.send(
+                    "```❌ An error occurred while trying to get the next page.```",
+                    ephemeral=True
+                )
+
     @discord.ui.button(label="←", style=discord.ButtonStyle.red)
     async def left(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         self.current_page =  (self.current_page - 1) % self.total_page
-        if self.data:
-            embed = interaction.message.embeds[0]
-            embed.description = self.data[self.current_page]
-        else:
-            embed = embedBuilder.build_commands_page(self.current_page, interaction.client.command_prefix)
-
-        try:
-            await interaction.message.edit(embed=embed)
-        except Exception:
-            pass
+        await self.send_next_page(interaction)
+        
 
     @discord.ui.button(label="→", style=discord.ButtonStyle.red)
     async def right(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         self.current_page =  (self.current_page + 1) % self.total_page
-        if self.data:
-            embed = interaction.message.embeds[0]
-            embed.description = self.data[self.current_page]
-        else:
-            embed = embedBuilder.build_commands_page(self.current_page, interaction.client.command_prefix)
+        await self.send_next_page(interaction)
 
-        try:
-            await interaction.message.edit(embed=embed)
-        except Exception:
-            pass
-        
     async def on_timeout(self):
         for child in self.children:
             child.disabled = True
@@ -108,7 +114,6 @@ class PageButtonView(discord.ui.View):
                 await self.message.edit(view=self)
             except Exception:
                 pass
-
 
 class DischargeView(discord.ui.View):
     def __init__(self, discharge_req_msg, reason_for_discharging):
@@ -319,9 +324,9 @@ class HaltReasonModal(discord.ui.Modal, title='Reason for Halt'):
 
     def _get_default_message(self, hours, reason) -> str:
         if self.checker_type == Config.BG_CHECKER_ROLE_ID:
-            return self.HALT_MESSAGES["security"].format(hours=hours, reason=reason, plural="s" if hours>1 else "")
+            return self.HALT_MESSAGES["security"].format(hours=hours, reason=reason, plural="s" if int(hours)>1 else "")
         elif self.checker_type == Config.LA_ROLE_ID:
-            return self.HALT_MESSAGES["induction"].format(hours=hours, reason=reason, plural="s" if hours>1 else "")
+            return self.HALT_MESSAGES["induction"].format(hours=hours, reason=reason, plural="s" if int(hours)>1 else "")
         return ""
 
     async def on_submit(self, interaction: discord.Interaction):

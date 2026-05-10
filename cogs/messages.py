@@ -74,7 +74,7 @@ class MessageLoggerCog(commands.Cog):
             await self.start_cleanup_task()
 
 
-    @tasks.loop(minutes=30)  
+    @tasks.loop(hours=24)  
     async def prompt_users(self):
         channel = self.bot.get_channel(Config.MAIN_COMMS_CHANNEL_ID)
         if not channel:
@@ -89,7 +89,7 @@ class MessageLoggerCog(commands.Cog):
             last_time = datetime.fromisoformat(result.data[0]['value'])
             if last_time.tzinfo is None:
                 last_time = last_time.replace(tzinfo=timezone.utc)
-            if datetime.now(timezone.utc) - last_time < timedelta(hours=72):
+            if datetime.now(timezone.utc) - last_time < timedelta(days=5):
                 return
 
         PROMPTS = [

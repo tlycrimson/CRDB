@@ -45,11 +45,18 @@ def build_regiment_info(data: dict):
 
         return info_embed
 
-def build_change_log(prefix):
-        title = "MP Assistant v1.3 Change Logs"
+def build_change_log(prefix, page):
+        title = "MP Assistant v1.3.1 Change Logs"
         description = "Below features the recent changes made to the bot. If you wish to make a suggestion to improve the bot, use the suggest command. As well, if you spot a mistake or an error, use the report command.\n\n"
-        footer = "Last Updated: April 2026"
-        updates = (
+        footer = "Last Updated: May 2026"
+        
+        may_updates = (
+                        "- Bug fixes for v1.3.\n"
+                        "- Moved from Roblox's decpreacted batch fetch api to their Open Cloud.\n"
+                        "- Added badge graph history command (!gbh).\n"
+                        "- Security Check information now includes the user's badge history (may be removed later on to improve speed).\n"
+        )
+        april_updates = (
                           f"- **Commands can now be executed with the bot's prefix ({prefix}) and name or their shorthand: !leaderboard ↠ !lb**\n"
                           "- Set-permissions introduces granular control over who can run specific categories of commands.\n"
                           "- Improved automation for security checks, discharge requests and induction requests.\n"
@@ -68,7 +75,7 @@ def build_change_log(prefix):
                           "- The bot now has a privacy policy to explain how user data is handled and stored."
                         
         )
-        new_commands = (
+        april_new_commands = (
                         "- /set-permissions\n"
                         "- /restore-user\n"
                         "- /remove-user\n"
@@ -79,6 +86,13 @@ def build_change_log(prefix):
                         "- /suggest\n"
                         "- /change-logs"
         )
+        
+        # Will be used when there are more change logs and I completely refactor the codebase
+        #change_logs ={
+        #                1 : {
+        #
+        #                }
+        #}
 
         acknowledgements = "- Most icons used by the bot are from [icons8](https://icons8.com/icons).\n- AI was used in the production of the bot."
 
@@ -87,10 +101,16 @@ def build_change_log(prefix):
         top_embed.set_image(url=Config.BOT_BANNER_CROPPED)
         top_embed.set_thumbnail(url=Config.BOT_ICON)
 
-        embed = discord.Embed(description=updates,color=discord.Color.dark_red())
-        embed.add_field(name="New Commands", value=new_commands,inline=False)
+        embed = discord.Embed(color=discord.Color.dark_red())
+        if (page == 0):
+                embed.set_author(name="May 2026 Change Logs",icon_url=Config.BOT_ICON)
+                embed.description=may_updates
+        else:
+                embed.set_author(name="April Change Logs",icon_url=Config.BOT_ICON)
+                embed.description=april_updates
+                embed.add_field(name="New Commands", value=april_new_commands,inline=False)
+
         embed.add_field(name="Acknowledgements", value=acknowledgements, inline=False)
-        embed.set_author(name="Change Logs",icon_url=Config.BOT_ICON)
         embed.set_footer(text=footer)
 
         return [top_embed, embed]
@@ -435,7 +455,7 @@ def build_event_log(member, message, host, event_type: str, attendees=None, excl
        embed.add_field(name="Original Log:", value=f"[Jump to Log]({message.jump_url})", inline=True)
        embed.add_field(name="Logged By:", value=clean_nickname(member.display_name), inline=True)
        if attendees:
-          embed.add_field(name="Attendees Logged:", value=attendees, inline=True)
+          embed.add_field(name="Attendees Logged:", value=f"```{attendees}```", inline=True)
        if excluded_attendee_count:
           embed.add_field(name="Excluded Attendees:", value=excluded_attendee_count, inline=True)
         

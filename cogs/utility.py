@@ -165,8 +165,9 @@ class UtilityCog(commands.Cog):
     )
     @app_commands.checks.cooldown(1, 5.0)
     async def change_logs(self, ctx: commands.Context):
-        embeds = embedBuilder.build_change_log(self.bot.command_prefix)
-        await ctx.send(embeds=embeds, ephemeral=True)
+        view = PageButtonView(ctx.author, 0, 2,change_logs=True)
+        embeds = embedBuilder.build_change_log(self.bot.command_prefix, page=0)
+        await ctx.send(embeds=embeds, view=view, ephemeral=True)
 
     @commands.hybrid_command(
             name="rmp-info", 
