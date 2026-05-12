@@ -81,11 +81,10 @@ class ModerationCog(commands.Cog):
 
             if not update_success:
                 raise Exception("Database update returned False")
-
+            
+            user_name = clean_nickname(user.display_name)
             await ctx.send(
-                f"```✅ Updated {column} for {clean_nickname(user.display_name)}\n"
-                f"Table: {table_name}\n"
-                f"Change: {old_value} ➔ {value_converted}```"
+                f"```✅ Updated {column} from {old_value} ➔ {value_converted} for {user_name}"
             )
 
         except Exception as e:
