@@ -334,12 +334,18 @@ class XPCog(commands.Cog):
                     page = "\n".join(leaderboard_lines)
                     leaderboard_pages.append(page)
            
+                total_pages = len(leaderboard_pages)
+
                 embed = discord.Embed(
                     description=leaderboard_pages[0] or "No data available",
                     color=discord.Color.red()
                 ).set_author(name=f"{category_type} Leaderboard", icon_url=Config.TROPHY_ICON)
-               
-                view = PageButtonView(ctx.author, 0, len(leaderboard_pages), leaderboard_pages)
+
+                view = None
+
+                if total_pages>1:
+                    embed.set_footer(text=f"page 0/{total_pages-1}")
+                    view = PageButtonView(ctx.author, 0, total_pages, leaderboard_pages)
                 
                 await ctx.send(embed=embed, view=view)
             

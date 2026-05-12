@@ -51,11 +51,11 @@ class ConfirmView(discord.ui.View):
 
 
 class PageButtonView(discord.ui.View):
-    def __init__(self, user: discord.User, current_page: int, total_page: int, data = None, change_logs: bool = False, timeout: float = 300.0):
+    def __init__(self, user: discord.User, current_page: int, total_pages: int, data = None, change_logs: bool = False, timeout: float = 300.0):
         super().__init__(timeout=timeout)
         self.user = user
         self.current_page = current_page
-        self.total_page = total_page
+        self.total_pages = total_pages
         self.data = data
         self.message = None
         self.cl = change_logs
@@ -78,12 +78,15 @@ class PageButtonView(discord.ui.View):
             embed = embedBuilder.build_change_log(prefix, self.current_page) #returns 2
         else:
             embed = embedBuilder.build_commands_page(self.current_page, prefix)
+        
+        embed.set_footer(text=f"page {self.current_page}/{self.total_pages-1}")
 
         successful = False
         try:
-            await interaction.message.edit(embeds=embed)
+            await interaction.message.edit(embeds=[embed])
             successful = True
-        except Exception:
+        except Exception as e:
+            logger.error(e)
             pass
         
         if not successful:
@@ -95,14 +98,14 @@ class PageButtonView(discord.ui.View):
     @discord.ui.button(label="←", style=discord.ButtonStyle.red)
     async def left(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        self.current_page =  (self.current_page - 1) % self.total_page
+        self.current_page =  (self.current_page - 1) % self.total_pages
         await self.send_next_page(interaction)
         
 
     @discord.ui.button(label="→", style=discord.ButtonStyle.red)
     async def right(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
-        self.current_page =  (self.current_page + 1) % self.total_page
+        self.current_page =  (self.current_page + 1) % self.total_pages
         await self.send_next_page(interaction)
 
     async def on_timeout(self):
