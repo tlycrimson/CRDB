@@ -406,7 +406,7 @@ class MessageLoggerCog(commands.Cog):
  
             
     @commands.Cog.listener()
-    async def on_message_delete(self, message: discord.Message):
+    async def on_raw_message_delete(self, message: discord.Message):
 
         await self.bot.rate_limiter.wait_if_needed(bucket="message_log")
         
