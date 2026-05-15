@@ -341,7 +341,7 @@ class ScCog(commands.Cog):
             embed.add_field(name=f"{name.upper()}: {status_icon}", value=field_value, inline=True)
         
         if flagged_groups:
-            embed.add_field(name="FLAGGED GROUP LISTS:", value="\n".join(flagged_groups), inline=False)
+            embed.add_field(name="FLAGGED GROUPS LIST:", value="\n".join(flagged_groups), inline=False)
         embed.set_author(
             name=username,
             url=f"https://www.roblox.com/users/{user_id}/profile",

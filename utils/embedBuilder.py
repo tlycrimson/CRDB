@@ -493,7 +493,7 @@ def build_activity_log(member, message, constable, time, isTimeGuarded: bool, po
        embed.set_footer(text=f"Logger: {member.id} • Constable: {constable.id}")
 
 
-       footer = f"Logger ID: {member.id} • Host ID: {constable.id}"
+       footer = f"Logger ID: {member.id} • Constable ID: {constable.id}"
        if member.id == constable.id:
                footer = f"User ID: {member.id}"
 

@@ -406,19 +406,22 @@ class MessageLoggerCog(commands.Cog):
  
             
     @commands.Cog.listener()
-    async def on_raw_message_delete(self, message: discord.Message):
+    async def on_raw_message_delete(self, payload: discord.RawMessageDeleteEvent):
 
         await self.bot.rate_limiter.wait_if_needed(bucket="message_log")
-        
+
+        message_id = payload.message_id
+        channel_id = payload.channel_id
+
         monitored_channels = [Config.SC_CHANNEL_ID, Config.DISCHARGE_REQUEST_CHANNEL_ID, Config.LA_INDUCTION_CHANNEL_ID]
         bl_req =[Config.B_LOG_CHANNEL_ID, Config.HR_CHAT_CHANNEL_ID] 
 
-        if message.channel.id in monitored_channels:
-            res = await self.bot.db.supabase.table(PENDING_CHECK_TABLE).select("*").eq("request_id", str(message.id)).maybe_single().execute()
+        if channel_id in monitored_channels:
+            res = await self.bot.db.supabase.table(PENDING_CHECK_TABLE).select("*").eq("request_id", str(message_id)).maybe_single().execute()
             
             if res and res.data:
                 data = res.data
-                channel = message.channel
+                channel = self.bot.get_channel(channel_id)
                 if channel:
                     try:
                         msg = await channel.fetch_message(int(data['panel_id']))
@@ -426,22 +429,24 @@ class MessageLoggerCog(commands.Cog):
                     except Exception:
                         pass # Message might already be gone
                 
-                logger.info("Deleting a pending_check as a result of a deleted message=%s.", message.id)
-                await self.bot.db.supabase.table(PENDING_CHECK_TABLE).delete().eq("request_id", str(message.id)).execute()
+                logger.info("Deleting a pending_check as a result of a deleted message=%s.", message_id)
+                await self.bot.db.supabase.table(PENDING_CHECK_TABLE).delete().eq("request_id", str(message_id)).execute()
             
             else:
-                res = await self.bot.db.supabase.table(PENDING_CHECK_TABLE).select("*").eq("panel_id", str(message.id)).maybe_single().execute()
+                res = await self.bot.db.supabase.table(PENDING_CHECK_TABLE).select("*").eq("panel_id", str(message_id)).maybe_single().execute()
                 if res and res.data:
-                    logger.info("Deleting a pending_check as a result of a deleted message=%s.", message.id)
-                    await self.bot.db.supabase.table(PENDING_CHECK_TABLE).delete().eq("panel_id", str(message.id)).execute()
+                    logger.info("Deleting a pending_check as a result of a deleted message=%s.", message_id)
+                    await self.bot.db.supabase.table(PENDING_CHECK_TABLE).delete().eq("panel_id", str(message_id)).execute()
 
             return
         
-        if message.channel.id in bl_req and message.author.bot:
-                await self.bot.db.supabase.table(PENDING_BL_TABLE).delete().eq("message_id", str(message.id)).execute()
+        if channel_id in bl_req:
+            if payload.cached_message and (payload.cached_message.author.bot != False):
+                return
+            await self.bot.db.supabase.table(PENDING_BL_TABLE).delete().eq("message_id", str(message_id)).execute()
 
-        if message.channel.id == Config.CASE_LOGS_CHANNEL_ID:
-            return await self.bot.db.remove_criminal_record(message.id)
+        if channel_id == Config.CASE_LOGS_CHANNEL_ID:
+            return await self.bot.db.remove_criminal_record(message_id)
             
 
 async def setup(bot):
