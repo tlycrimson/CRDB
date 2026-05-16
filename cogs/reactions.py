@@ -181,7 +181,7 @@ class ReactionLoggerCog(commands.Cog):
         logger = member 
 
         if payload.channel_id == Config.LA_INDUCTION_CHANNEL_ID: 
-            await self._update_hr_record(author, {"courses": Config.POINTS_PER_ACTIVITY})
+            await self._update_hr_record(logger, {"courses": Config.POINTS_PER_ACTIVITY})
 
             embed = embedBuilder.build_inductor_record(author, logger, message, Config.POINTS_PER_ACTIVITY, emoji)
             await self.log_channel.send(embed=embed)

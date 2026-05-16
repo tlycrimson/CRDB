@@ -351,6 +351,21 @@ class HaltReasonModal(discord.ui.Modal, title='Reason for Halt'):
             username=interaction.user.display_name,
             check_type=self.checker_type
         )
+        
+        view = ConfirmView(interaction.user)
+
+        await interaction.response.send_message(
+                "# Please confirm the details you've put or cancel to redo.",
+                embed=embed,
+                view=view,
+                ephemeral=True
+        )
+
+        await view.wait()
+
+        if not view.value:
+            await interaction.followup.send("```❎ Cancelled.```", ephemeral=True)
+            return
 
         halt_response_msg = await self.original_msg.reply(embed=embed)
         notif_channel = interaction.guild.get_channel(Config.MAIN_COMMS_CHANNEL_ID)
