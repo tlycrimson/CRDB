@@ -447,8 +447,8 @@ class WelcomeCog(commands.Cog):
             hr_role = guild.get_role(Config.HR_ROLE_ID)  
             
             if hr_role and hr_role in member.roles:
-                duration_amount = 60
-                blacklist_duration = "1 month"
+                duration_amount = 183
+                blacklist_duration = "6 months"
             else:
                 duration_amount = 14
                 blacklist_duration = "2 weeks"
