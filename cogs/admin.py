@@ -339,6 +339,7 @@ class AdminCog(commands.Cog):
         duration_unit: Literal["Permanent", "Years", "Months", "Days", "perm", "y", "m", "d"],
         duration_amount: int = 1,
         evidence: Optional[discord.Attachment] = None,
+        desertion: Optional[bool] = False,
         *, # Puts any left over into last arg
         reason: str = "No reason provided.",
     ):
@@ -354,18 +355,23 @@ class AdminCog(commands.Cog):
         view = ConfirmView(author=ctx.author)
         
         member = ctx.guild.get_member(ctx.author.id)
-    
-        isPMorHigher = await min_rank_required2(Config.PM_ROLE_ID, ctx)
         
-                
         reason = escape_markdown(reason) 
 
-        if len(reason) > 1000:
-            await ctx.followup.send(
-                "❌ Reason must be under 1000 characters",
-                ephemeral=True
-            )
-            return
+        isPMorHigher = False
+        if desertion:
+            reason = "Desertion."
+            isPMorHigher = True
+        else:
+            isPMorHigher = await min_rank_required2(Config.PM_ROLE_ID, ctx)
+            if len(reason) > 1000:
+                await ctx.followup.send(
+                    "❌ Reason must be under 1000 characters",
+                    ephemeral=True
+                )
+                return
+               
+
 
         member_ids = []
         for mention in members.split(','):
