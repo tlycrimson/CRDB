@@ -118,7 +118,7 @@ def build_change_log(prefix, page):
 
 def build_privacy_policy():
         title = "MP Assistant Privacy Policy"
-        footer = "Last Updated: April 2026"
+        footer = "Last Updated: May 2026"
         member_records = (
                           "Once assigned the role that designates you an official regimental member in the server, the following pieces of information will be stored: your Discord ID, Roblox ID, Roblox username, your XP, and your regiment's rank and division. The information will be used to manage and track your membership, rank progression, and other server statistics. This data will be removed upon removal of the role or manually removed by permitted members. A backup copy of your data will be stored for a thirty-day period in case of a reinstatement, after which it will be deleted permanently."
         )
@@ -126,12 +126,8 @@ def build_privacy_policy():
                         " When an official member provides an arrest log related to a particular Roblox user, the information on their Roblox ID, Roblox username, and the link to their log message will be stored. This data can be used as part of a background check conducted by official members. The information will be automatically and permanently deleted after two days or manually removed by the members."
         )
         data_usage = (
-                        f" Your information is used exclusivelys for the running of the regiment system and upholding the integrity of the roleplay on this server. Your information will not be shared, sold, or used for advertising purposes.\n"
-                        f"In accordance with your rights under GDPR and other data protection laws, you are entitled to:\n"
-                        f"- Request a copy of the data we hold about you (for members you can view most by /profile)\n"
-                        f"- Request correction of inaccurate data\n"
-                        f"- Request deletion of your data (subject to our legitimate moderation interests)\n"
-                        f"To exercise any of these rights, please contact the Developer ({Config.DEVELOPER_ID})."
+                        f" Your information is used exclusively for the running of the regiment system and upholding the integrity of the roleplay on this server. Your information will not be shared, sold, or used for advertising purposes.\n"
+                        f"To enquire more, please contact the Developer ({Config.DEVELOPER_ID})."
         )
         data_retention_summary = (
                         f"Member records (active) - Duration of membership\n"

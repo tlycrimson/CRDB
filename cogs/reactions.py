@@ -316,6 +316,7 @@ class ReactionLoggerCog(commands.Cog):
 
             # --- Update host HR record ---
             await self._update_hr_record(host_member, {hr_update_field: 1})
+            await self.bot.db.add_xp(str(host_member.id), host_member.display_name, 1)
 
             # --- Parse attendees ---
             attendees_section = re.search(
