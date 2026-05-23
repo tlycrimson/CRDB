@@ -450,7 +450,6 @@ def build_event_log(member, message, host, event_type: str, attendees=None, excl
              name=name,
              icon_url=icon_url 
         )
-       
         
        embed.add_field(name="Original Log:", value=f"[Jump to Log]({message.jump_url})", inline=True)
        embed.add_field(name="Logged By:", value=clean_nickname(member.display_name), inline=True)

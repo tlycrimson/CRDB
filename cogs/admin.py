@@ -316,7 +316,6 @@ class AdminCog(commands.Cog):
         
         return False
 
-
     #Blacklist Command
     @commands.hybrid_command(
             name="blacklist", 
@@ -371,8 +370,6 @@ class AdminCog(commands.Cog):
                 )
                 return
                
-
-
         member_ids = []
         for mention in members.split(','):
             mention = mention.strip()

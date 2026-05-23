@@ -221,7 +221,7 @@ class ReasonModal(discord.ui.Modal, title='Response'):
             await interaction.response.send_message(
                     f"```❌ I couldn't notfiy them of their denial."
                     ,ephemeral=True)
-       
+
         try:
             await self.msg.remove_reaction("⌛", interaction.client.user)
             await self.msg.add_reaction("🔴")
