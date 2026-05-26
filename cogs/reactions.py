@@ -273,7 +273,7 @@ class ReactionLoggerCog(commands.Cog):
         except Exception as e:
             logger.error(f"Reaction log error: {type(e).__name__}: {str(e)}")
             await self._handle_reaction_error(e, member, "_log_dbl_reaction_impl")
-            return False 
+        return False 
    
     async def _log_event_reaction_impl(self, payload: discord.RawReactionActionEvent, guild: discord.Guild, member: discord.Member)-> bool:
         """Handle event logging without confirmation"""
@@ -300,6 +300,25 @@ class ReactionLoggerCog(commands.Cog):
             host_mention = re.search(r'host:\s*<@!?(\d+)>', message.content, re.IGNORECASE)
             host_id = int(host_mention.group(1)) if host_mention else message.author.id
             host_member = guild.get_member(host_id) or await guild.fetch_member(host_id)
+            
+            co_hosts = {}
+            pattern = r'co-host:\s*(.*?)(?=\n(?:host|attendees|passed|failed|ping|proof):|$)'
+            co_host_mentions = re.search(pattern, message.content, re.IGNORECASE)
+            
+            if co_host_mentions:
+                co_host_block = co_host_mentions.group(1)
+                co_host_ids = re.findall(r'<@!?(\d+)>', co_host_block)
+                for mid in co_host_ids:
+                    co_host_id = int(mid)  
+                    if co_host_id == host_id:
+                        continue
+
+                    co_host = guild.get_member(co_host_id)
+                    
+                    if co_host:
+                        cleaned_name = clean_nickname(co_host.display_name)
+                        co_hosts[cleaned_name] = co_host
+
             cleaned_host_name = clean_nickname(host_member.display_name)
 
             # --- Determine event type ---
@@ -317,6 +336,12 @@ class ReactionLoggerCog(commands.Cog):
             # --- Update host HR record ---
             await self._update_hr_record(host_member, {hr_update_field: 1})
             await self.bot.db.add_xp(str(host_member.id), host_member.display_name, 1)
+            
+            co_host_names = None
+            if co_hosts:
+                co_host_names = "\n".join(co_hosts.keys())
+                for co_host in co_hosts.values():
+                    await self._update_hr_record(co_host, {hr_update_field: 0.5})
 
             # --- Parse attendees ---
             attendees_section = re.search(
@@ -324,8 +349,9 @@ class ReactionLoggerCog(commands.Cog):
                 message.content,
                 re.IGNORECASE
             )
+
             if not attendees_section:
-                return
+                return False
 
             attendee_ids = list({int(uid) for uid in re.findall(r'<@!?(\d+)>', attendees_section.group(1))})
 
@@ -361,7 +387,7 @@ class ReactionLoggerCog(commands.Cog):
                     successful_attendees.append(f"{name_str} (failed to update points)")
                     
             # --- Send log embed ---
-            embed = embedBuilder.build_event_log(member, message, host_member, event_name, "\n".join(successful_attendees), hr_excluded_count)
+            embed = embedBuilder.build_event_log(member, message, host_member, co_host_names, event_name, "\n".join(successful_attendees), hr_excluded_count)
             await self.log_channel.send(embed=embed)
 
             logger.info(
@@ -373,7 +399,8 @@ class ReactionLoggerCog(commands.Cog):
             return True
         except Exception as e:
             await self._handle_reaction_error(e, member, "_log_event_reaction_impl")
-            return False
+
+        return False
 
     async def _log_training_reaction_impl(self, payload: discord.RawReactionActionEvent, guild: discord.Guild, member: discord.Member) -> bool:
         """Handle training logs (phases, tryouts, courses)"""
@@ -427,7 +454,8 @@ class ReactionLoggerCog(commands.Cog):
             return True
         except Exception as e:
             await self._handle_reaction_error(e, member, "_log_training_reaction_impl")
-            return False
+
+        return False
 
 
     async def _log_activity_reaction_impl(self, payload: discord.RawReactionActionEvent, guild: discord.Guild, member: discord.Member)-> bool:
@@ -460,7 +488,7 @@ class ReactionLoggerCog(commands.Cog):
                     color=discord.Color.red()
                 ).set_author(name="Log Prevention", icon_url=Config.SHIELD_WARNING_ICON)
                 await self.log_channel.send(content=member.mention, embed=embed)  
-                return
+                return False
 
             updates = {}
             is_time_guarded = False
@@ -474,7 +502,7 @@ class ReactionLoggerCog(commands.Cog):
                     updates["activity"] = minutes
 
             if not updates:
-                return
+                return False
 
             await self._update_lr_record(user_member, updates)
 
@@ -496,7 +524,8 @@ class ReactionLoggerCog(commands.Cog):
             return True
         except Exception as e:
             await self._handle_reaction_error(e, member, "_log_activity_reaction_impl")
-            return False
+
+        return False
 
 
     # Won't Combine these Functions In Case I require new logic for LRs and HRs
@@ -569,9 +598,11 @@ class ReactionLoggerCog(commands.Cog):
                 if h.channels is None or payload.channel_id in h.channels:
                     try:
                         success = await getattr(self, h.handler)(payload, guild, member)
+
                         if success:
                             logger.info(f"Processed Reaction event | msg={payload.message_id} channel={payload.channel_id} user={payload.user_id} reaction={payload.emoji}")
                             await self.mark_reaction_processed(payload.message_id, payload.user_id)
+
                     except Exception as e:
                         await self._handle_reaction_error(e, member, h.handler)
 

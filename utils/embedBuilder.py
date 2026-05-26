@@ -425,7 +425,7 @@ def build_blacklist_request(members, duration, reason, requester, evidence = Non
 
         return embed
 
-def build_event_log(member, message, host, event_type: str, attendees=None, excluded_attendee_count=None) -> discord.Embed:
+def build_event_log(member, message, host, co_hosts, event_type: str, attendees=None, excluded_attendee_count=None) -> discord.Embed:
 
        embed = discord.Embed(
             color=discord.Color.random(),
@@ -437,10 +437,17 @@ def build_event_log(member, message, host, event_type: str, attendees=None, excl
         
        if event_type == "TC Supervision":
                name_host = "Supervisor:"
+               name_co_host = "Co-Supervisor:"
        else:
                name_host = "Host:"
+               name_co_host = "Co-Host:"
 
        embed.add_field(name=name_host, value=clean_nickname(host.display_name), inline=True)
+
+       if co_hosts:
+         embed.add_field(name=name_co_host, value=co_hosts, inline=True)
+
+
 
        embed.set_author(
              name=name,

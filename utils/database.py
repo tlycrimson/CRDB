@@ -414,8 +414,8 @@ class DatabaseHandler:
             target_cache = self._hrs_cache if table == "HRs" else self._lrs_cache
             user_data = target_cache.get(user_id_str, {})
             
-            points = int(points)
-            current_points = int(user_data.get(column) or 0)
+            points = float(points)
+            current_points = float(user_data.get(column) or 0)
             new_points = points if replace else (current_points + points)
 
             await self.create_or_update_user_in_db(discord_id=user_id_str, username=cleaned_nickname)
