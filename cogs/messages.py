@@ -202,7 +202,7 @@ class MessageLoggerCog(commands.Cog):
 
         sc_msg = None
         sc_embed = None
-        description = f"**Accept Or Deny Their Security Check Request.**"
+        description = f"**Manage their request via the buttons below.**"
 
         view = RequestView(message, self.bot, Config.BG_CHECKER_ROLE_ID) 
         panel_embed = discord.Embed(
@@ -368,7 +368,7 @@ class MessageLoggerCog(commands.Cog):
             description = (
                     f"**{inductor}** is requesting an induction on behalf of" 
                     f" **{inductee_name if inductor != inductee_name else "themself"}**."
-                    f"\n\n**Accept Or Deny Their Induction Request.**"
+                    f"\n\n**Manage their request via the buttons below.**"
             )
 
             view = RequestView(message, self.bot, Config.LA_ROLE_ID) 

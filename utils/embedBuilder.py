@@ -268,7 +268,7 @@ def build_request_respsone(accepted: bool, username: str, check_type:int, halted
         title = "ACCEPTED" if accepted else "DENIED"
         icon_url = Config.CHECK_URL if accepted else Config.CANCEL_URL
         denied_msg = ("To submit another background check, you"
-                 " must pass another tryout or submit a High Rank application.\n**We are not"
+                 " must pass another tryout or submit a High Rank application.\n\n**We are not"
                  " permitted to disclose any reason for the denial of your security check. Apologies for the"
                  " inconvenience.**" 
         )
@@ -277,9 +277,9 @@ def build_request_respsone(accepted: bool, username: str, check_type:int, halted
         
         status_msg = f"{accepted_msg if accepted else denied_msg}"
         if check_type == Config.LA_ROLE_ID:
-                status_msg = f"Induction request {'accepted' if accepted else 'denied'}."
+                status_msg = f"Your induction request has been {'accepted.' if accepted else 'denied'}"
                 if reason:
-                        status_msg += f"\n{reason}"
+                        status_msg += f" for the following:\n- {reason}"
        
         embed = discord.Embed(
                         description=status_msg,
@@ -451,7 +451,7 @@ def build_event_log(member: discord.Member, message: discord.Message, host, co_h
                event_type = event_type[:25] + "..."
 
        embed.add_field(name=name_host, value=clean_nickname(host.display_name), inline=True)
-       embed.add_field(name=name_co_hosts, value=f"{co_hosts if co_hosts else "None"}", inline=True)
+       embed.add_field(name=name_co_host, value=f"{co_hosts if co_hosts else "None"}", inline=True)
        embed.add_field(name="Type:", value=f"{event_type}", inline=True)
 
        embed.set_author(

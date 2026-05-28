@@ -197,7 +197,7 @@ class ReasonModal(discord.ui.Modal, title='Response'):
 
     async def on_submit(self, interaction: discord.Interaction):
         if self._return:
-            await interaction.response.send_message("```✅ Reason recorded.```", ephemeral=True)
+            await interaction.response.send_message("```✅ Your reason has been successfully recorded.```", ephemeral=True)
             return
 
         embed = discord.Embed(
@@ -292,11 +292,11 @@ class BlacklistReasonModal(discord.ui.Modal, title='Response'):
 class HaltReasonModal(discord.ui.Modal, title='Reason for Halt'):
     HALT_MESSAGES = {
         "security": (
-            "Your Royal Military Police background check has been halted for the following reasons:\n{reason}"
+            "Your Royal Military Police background check has been halted for the following reasons:\n- {reason}"
             "\n\n**You have {hours} hour{plural} to comply. Once you have, use the button to let the checker know.**"
         ),
         "induction": (
-            "Your Royal Military Police induction check has been halted for the following reasons:\n{reason}"
+            "Your Royal Military Police induction check has been halted for the following reasons:\n- {reason}"
             "\n\n**You have {hours} hour{plural} to comply. Once you have, use the button to let the checker know.**"
         ),
     }
@@ -355,7 +355,7 @@ class HaltReasonModal(discord.ui.Modal, title='Reason for Halt'):
         view = ConfirmView(interaction.user)
 
         await interaction.response.send_message(
-                "# Please confirm the details you've put or cancel to redo.",
+                "# ``` Please confirm the details you've put. ```",
                 embed=embed,
                 view=view,
                 ephemeral=True
@@ -388,7 +388,11 @@ class HaltReasonModal(discord.ui.Modal, title='Reason for Halt'):
             await self.original_msg.remove_reaction("⌛", self.bot.user)
             await self.original_msg.add_reaction("🟡")
             await asyncio.sleep(0.1)
-            await interaction.response.send_message("```✅ Successfully halted the check.```", ephemeral=True)
+        except Exception:
+            pass
+
+        try:
+            await interaction.followup.send("```✅ Successfully halted the check.```", ephemeral=True)
         except Exception:
             pass
 
