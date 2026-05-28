@@ -56,6 +56,7 @@ def build_change_log(prefix, page):
                         "- Added badge graph history command (!gbh).\n"
                         "- Refreshed logging embeds. Link to original message is now in the title. --> Still experimenting.\n"
                         "- Co-Hosts if any are now included in logging.\n"
+                        "- If an error occurs in logging all operational changes (e.g. giving points) are rolled back.\n"
                         "- Blacklist command now has a desertion field to allow high command to bypass permission request for blacklisting deserters.\n"
                         "- Security Check information now includes the user's badge history (may be removed later on to improve speed).\n"
         )
@@ -450,7 +451,7 @@ def build_event_log(member: discord.Member, message: discord.Message, host, co_h
                event_type = event_type[:25] + "..."
 
        embed.add_field(name=name_host, value=clean_nickname(host.display_name), inline=True)
-       embed.add_field(name=name_co_host, value=f"{co_hosts if co_hosts else "None"}", inline=True)
+       embed.add_field(name=name_co_hosts, value=f"{co_hosts if co_hosts else "None"}", inline=True)
        embed.add_field(name="Type:", value=f"{event_type}", inline=True)
 
        embed.set_author(
