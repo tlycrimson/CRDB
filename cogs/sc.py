@@ -294,10 +294,11 @@ class ScCog(commands.Cog):
         flagged_groups = []
         if groups:
             flagged_groups = [
-                f"• {item['group']['name']}"
+                f"• [{item['group']['name']}](https://www.roblox.com/communities/{item['group'].get('id')})"
                 for item in groups
                 if item.get('group') and item['group'].get('id') in self.BGROUP_IDS
             ]
+
         
         fg_value= "YES" if flagged_groups else "CLEAR"
 

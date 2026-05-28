@@ -187,6 +187,8 @@ class MessageLoggerCog(commands.Cog):
         has_format = any(re.search(p, content, re.IGNORECASE) for p in [
             r'Username:',
             r"Host's Username:",
+            r"Name of Application Reader:",
+            r"Application Result Link:",
             r'Tryout Date:',
             r'Roblox Profile Link:',
             r'Division:',
