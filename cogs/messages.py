@@ -43,7 +43,7 @@ class MessageLoggerCog(commands.Cog):
                     if res.data:
                         await self.cleanup_pending_checks(res.data)
 
-                    cutoff = datetime.now(timezone.utc) - timedelta(days=28)
+                    cutoff = datetime.now(timezone.utc) - timedelta(days=30)
                     await self.bot.db.supabase.table(self.bot.db.s_users_table)\
                             .delete()\
                             .lt('last_updated', cutoff.isoformat())\
@@ -265,7 +265,7 @@ class MessageLoggerCog(commands.Cog):
                     embeds_to_send = [title_embed, sc_embed]
 
                     sc_msg = await ld_channel.send(embeds=embeds_to_send)
-                    msg_content = f"[View information]({sc_msg.jump_url}) for {cleaned_nickname}" 
+                    msg_content = f"[View information for {cleaned_nickname}]({sc_msg.jump_url})" 
                     panel_embed.description = description + "\n\n" + msg_content
                     panel_embed.set_footer(text="")
 

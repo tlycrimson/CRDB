@@ -32,12 +32,12 @@ class ReactionLoggerCog(commands.Cog):
         self.sc_log_channel_id = Config.SC_LOGS_CHANNEL_ID
         self.exam_monitor_channel_ids = Config.EXAM_AND_INDUCTION_MONITOR_CHANNELS
         self.REACTION_HANDLERS = [
-                ReactionHandler("_log_dbl_reaction_impl", channels=set(self.monitor_channel_ids)),
                 ReactionHandler("_log_event_reaction_impl", channels=set(self.event_channel_ids)),
                 ReactionHandler("_log_training_reaction_impl", channels={self.phase_log_channel_id, self.tryout_log_channel_id, self.course_log_channel_id, self.tc_supervision_log_channel_id}),
                 ReactionHandler("_log_activity_reaction_impl", channels={self.activity_log_channel_id}),
                 ReactionHandler("_log_security_check_log_reaction_impl", channels={self.sc_log_channel_id}),
-                ReactionHandler("_log_la_and_examiner_impl", channels=set(self.exam_monitor_channel_ids))
+                ReactionHandler("_log_la_and_examiner_impl", channels=set(self.exam_monitor_channel_ids)),
+                ReactionHandler("_log_dbl_reaction_impl", channels=set(self.monitor_channel_ids))
         ]
         self.cleanup_loop.start()
 
@@ -248,7 +248,6 @@ class ReactionLoggerCog(commands.Cog):
         if str(payload.emoji) not in Config.TRACKED_REACTIONS:
             return False
     
-    
         if Config.DB_LOGGER_ROLE_ID:
             monitor_role = guild.get_role(Config.DB_LOGGER_ROLE_ID)
             if not monitor_role or monitor_role not in member.roles:
@@ -316,7 +315,7 @@ class ReactionLoggerCog(commands.Cog):
                     co_host = guild.get_member(co_host_id)
                     
                     if co_host:
-                        cleaned_name = clean_nickname(co_host.display_name)
+                        cleaned_name = f"{clean_nickname(co_host.display_name)} (`{co_host.id}`)"
                         co_hosts[cleaned_name] = co_host
 
             cleaned_host_name = clean_nickname(host_member.display_name)
@@ -335,8 +334,8 @@ class ReactionLoggerCog(commands.Cog):
 
             # --- Update host HR record ---
             await self._update_hr_record(host_member, {hr_update_field: 1})
-            await self.bot.db.add_xp(str(host_member.id), host_member.display_name, 1)
-            
+            _, new_total = await self.bot.db.add_xp(str(host_member.id), host_member.display_name, 1)
+           
             co_host_names = None
             if co_hosts:
                 co_host_names = "\n".join(co_hosts.keys())
@@ -363,14 +362,14 @@ class ReactionLoggerCog(commands.Cog):
             attendee_members = [m for m in fetched if isinstance(m, discord.Member)]
 
             # --- Process attendees ---
-            hr_excluded_count, successful_attendees = 0, []
+            successful_attendees = []
 
             update_tasks = []
             attendees_to_update = []
 
             for attendee in attendee_members:
                 if exempt_roles & set(attendee.roles):  
-                    hr_excluded_count += 1
+                    successful_attendees.append(f"{clean_nickname(attendee.display_name)} | {attendee.id}")
                     continue
                 
                 update_tasks.append(self._update_lr_record(attendee, {"events_attended": 1}))
@@ -385,11 +384,21 @@ class ReactionLoggerCog(commands.Cog):
                     successful_attendees.append(name_str)
                 else:
                     successful_attendees.append(f"{name_str} (failed to update points)")
-                    
-            # --- Send log embed ---
-            embed = embedBuilder.build_event_log(member, message, host_member, co_host_names, event_name, "\n".join(successful_attendees), hr_excluded_count)
-            await self.log_channel.send(embed=embed)
+            
+            # --- Update Logger and Build log embed ---
+            await self._update_hr_record(member, {"courses": Config.POINTS_PER_ACTIVITY})
+            db_embed = embedBuilder.build_db_logger_record(member, message, Config.POINTS_PER_ACTIVITY, payload.emoji)
 
+            # --- Send log embed ---
+            log_embed = embedBuilder.build_event_log(member, message, host_member, co_host_names, event_name, "\n".join(successful_attendees))
+            await self.log_channel.send(embeds=[db_embed, log_embed])
+            
+            await asyncio.sleep(0.3)
+
+            admin_cog = self.bot.get_cog("XPCog")
+            await admin_cog.log_xp_to_discord(member, [f"{cleaned_host_name} | {host_member.id}: {new_total-1} ↠ {new_total}"], 1, f"[Hosting]({message.jump_url})", message.id)
+ 
+                            
             logger.info(
                 f"Event logged successfully: "
                 f"Host={host_member} ({host_member.id}), "
@@ -442,8 +451,13 @@ class ReactionLoggerCog(commands.Cog):
             } 
             
             title = mapping.get(payload.channel_id)
-            embed = embedBuilder.build_event_log(member, message, host_member, title)
-            await self.log_channel.send(embed=embed)
+            log_embed = embedBuilder.build_event_log(member, message, host_member,event_type=title)
+
+            # --- Update Logger and Build log embed ---
+            await self._update_hr_record(member, {"courses": Config.POINTS_PER_ACTIVITY})
+            db_embed = embedBuilder.build_db_logger_record(member, message, Config.POINTS_PER_ACTIVITY, payload.emoji)
+
+            await self.log_channel.send(embeds=[db_embed, log_embed])
 
             logger.info(
                     f"Training Event Succesfully logged: "
@@ -518,8 +532,13 @@ class ReactionLoggerCog(commands.Cog):
                 if success:
                     logger.info(f"Gave {xp_to_award} XP to {user_member.display_name} ({user_member.id}) for {total_minutes} mins activity")
 
-            embed = embedBuilder.build_activity_log(member, message, user_member, total_minutes, is_time_guarded, xp_to_award)  
-            await self.log_channel.send(embed=embed)
+            log_embed = embedBuilder.build_activity_log(member, message, user_member, total_minutes, is_time_guarded, xp_to_award)  
+
+            # --- Update Logger and Build log embed ---
+            await self._update_hr_record(member, {"courses": Config.POINTS_PER_ACTIVITY})
+            db_embed = embedBuilder.build_db_logger_record(member, message, Config.POINTS_PER_ACTIVITY, payload.emoji)
+
+            await self.log_channel.send(embeds=[db_embed, log_embed])
             
             return True
         except Exception as e:
@@ -602,6 +621,7 @@ class ReactionLoggerCog(commands.Cog):
                         if success:
                             logger.info(f"Processed Reaction event | msg={payload.message_id} channel={payload.channel_id} user={payload.user_id} reaction={payload.emoji}")
                             await self.mark_reaction_processed(payload.message_id, payload.user_id)
+                            break
 
                     except Exception as e:
                         await self._handle_reaction_error(e, member, h.handler)
