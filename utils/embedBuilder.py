@@ -55,7 +55,8 @@ def build_change_log(prefix, page):
                         "- Moved from Roblox's decpreacted batch fetch api to their Open Cloud.\n"
                         "- Added badge graph history command (!gbh).\n"
                         "- Refreshed logging embeds. Link to original message is now in the title. --> Still experimenting.\n"
-                        "- Co-Hosts if any are now included in logging."
+                        "- Co-Hosts if any are now included in logging.\n"
+                        "- Blacklist command now has a desertion field to allow high command to bypass permission request for blacklisting deserters.\n"
                         "- Security Check information now includes the user's badge history (may be removed later on to improve speed).\n"
         )
         april_updates = (
