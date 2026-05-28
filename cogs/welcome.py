@@ -356,32 +356,33 @@ class WelcomeCog(commands.Cog):
             # ===== WELCOME MESSAGES =====
 
             #HR Welcome
-            if hr_role and hr_role not in before.roles and hr_role in after.roles:
-                try:
-                    await self.bot.db.remove_from_lr(str(after.id))
-                    await self.bot.db.add_to_hr(
-                        user_id=str(after.id),
-                        username=cleaned_nickname,
-                    )
-            
-                    logger.info(
-                        f"{cleaned_nickname} ({after.id}) moved from LRs → HRs in database"
-                    )
-            
-                except Exception as e:
-                    logger.error(f"Failed HR DB transfer for {after.id}: {e}")
-            
-                await self.send_hr_welcome(after)
+            if hr_role and rmp_role in after.roles:
+                if hr_role not in before.roles and hr_role in after.roles:
+                    try:
+                        await self.bot.db.remove_from_lr(str(after.id))
+                        await self.bot.db.add_to_hr(
+                            user_id=str(after.id),
+                            username=cleaned_nickname,
+                        )
+                
+                        logger.info(
+                            f"{cleaned_nickname} ({after.id}) moved from LRs → HRs in database"
+                        )
+                
+                    except Exception as e:
+                        logger.error(f"Failed HR DB transfer for {after.id}: {e}")
+                
+                    await self.send_hr_welcome(after)
 
-            elif hr_role and hr_role in before.roles and hr_role not in after.roles:
-                try:
-                    await self.bot.db.remove_from_hr(str(after.id))
-                    await self.bot.db.add_to_lr(
-                        user_id=str(after.id),
-                        username=cleaned_nickname,
-                    )
-                except Exception as e:
-                    logger.error(f"Failed LR DB transfer for {after.id}: {e}")
+                elif hr_role in before.roles and hr_role not in after.roles:
+                    try:
+                        await self.bot.db.remove_from_hr(str(after.id))
+                        await self.bot.db.add_to_lr(
+                            user_id=str(after.id),
+                            username=cleaned_nickname,
+                        )
+                    except Exception as e:
+                        logger.error(f"Failed LR DB transfer for {after.id}: {e}")
 
             
             # Check for RMP role addition
