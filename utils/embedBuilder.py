@@ -216,7 +216,7 @@ def build_commands_page(page: int, prefix):
                                 [
                                         "/reset-db (rdb) - Reset the LR and HR section of the database",
                                         "/discharge - Sends discharge notification to user and logs in discharge logs",
-                                        "/blacklist (bl) - Request or blacklist a user which sends a notification to them and logs the blacklist in discharge logs",
+                                        "/blacklist (bl) - Blacklist a user which sends a notification to them and logs the blacklist in discharge logs",
                                         "/welcome-history (wl) - View history of welcome message changes",
                                         "/preview-welcome (preview) - Preview welcome messages as they appear to members",
                                 ]
