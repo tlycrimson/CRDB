@@ -472,9 +472,9 @@ class DatabaseHandler:
             return False
 
         color = discord.Color.green()
-        title = "Removed from Database"
-        icon_url = Config.CHECK_URL
-        description = f"**{username}** has been successfully removed from the database and arhcived for retrieval within a 30-day period."
+        title = "Database Removal"
+        icon_url = Config.TRASH_ICON
+        description = f"**{username}** has been successfully removed from the database and archived and can be retrieved within a thirty-day period."
         success = False
 
         try:

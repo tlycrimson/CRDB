@@ -70,7 +70,8 @@ class CRDB(commands.Bot):
         self.global_rate_limiter = None
         self.rank_tracker = None
         self.shared_session = None
-        self.reaction_logger = None  
+        self.reaction_logger = None
+        self.messages = None
         self.roblox = None
         self.permissions = None
 
@@ -170,7 +171,9 @@ async def on_ready():
     except Exception as e:
         logger.exception(f"Failed to sync commands: %s", e)
    
-    
+    bot.reaction_logger = bot.get_cog("ReReactionLoggerCog") 
+    bot.messages = bot.get_cog("MessageLoggerCog")
+
     if bot.db:
         try:
             await bot.db.welcome_initialise()
@@ -182,17 +185,13 @@ async def on_ready():
             await bot.reaction_logger.start_cleanup_task()
             logger.info("Started reaction logger cleanup task")
         except Exception as e:
-            logger.exception(f"Failed to start cleanup task: %s", e)
-
-    BANNER_PATH = "banner.gif"
-    if os.path.exists(BANNER_PATH):
+            logger.error(f"Failed to start cleanup task: %s", e)
+    
+    if bot.messages:
         try:
-            with open(BANNER_PATH, "rb") as f:
-                banner_bytes = f.read()
-            await bot.user.edit(banner=banner_bytes)
-            logger.info("Bot Banner updated successfully!")
-        except discord.HTTPException as e:
-            logger.info("Failed to set banner: {e}")
+            await bot.messages.send_change_log()
+        except Exception as e:
+            logger.error(f"An error occured while running send_change_log function: {e}")
  
     logger.info("=" * 50)
 

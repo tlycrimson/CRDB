@@ -5,6 +5,7 @@ import discord
 import logging
 from config import Config
 from discord.ext import commands, tasks
+from utils.embedBuilder import build_change_log
 from utils.helpers import clean_nickname
 from utils.views import RequestView, DischargeView, save_pending_checks, PENDING_CHECK_TABLE, PENDING_BL_TABLE
 from datetime import datetime, timedelta, timezone
@@ -73,7 +74,46 @@ class MessageLoggerCog(commands.Cog):
         if not hasattr(self, "_cleanup_task"):
             await self.start_cleanup_task()
 
+    
+    async def send_change_log(self):
+        key_name = 'send_change_log'
+        main_channel = self.bot.get_channel(Config.MAIN_COMMS_CHANNEL_ID)
+        log_channel = self.bot.get_channel(Config.DEFAULT_LOG_CHANNEL)
+        
+        res = await self.bot.db.supabase.table('bot_state')\
+                .select('value')\
+                .eq('key', key_name)\
+                .execute()
+        
+        if res.data:
+            send = res.data[0]['value']
+            if send == 'F':
+                return
 
+        prefix = self.bot.command_prefix
+        cl_embeds = build_change_log(prefix, 0)
+
+        try: 
+            if main_channel:
+                await main_channel.send(embeds=cl_embeds)
+        except Exception:
+            pass
+        
+        await asyncio.sleep(0.3)
+
+        try:
+            if log_channel:
+                await log_channel.send(embed=cl_embeds)
+        except Exception:
+            pass
+
+        await self.bot.db.supabase.table('bot_state')\
+            .upsert(
+                {'key': key_name, 'value': 'F'},
+                on_conflict='key'
+            )\
+            .execute()
+               
     @tasks.loop(hours=24)  
     async def prompt_users(self):
         channel = self.bot.get_channel(Config.MAIN_COMMS_CHANNEL_ID)
