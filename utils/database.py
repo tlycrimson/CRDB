@@ -474,7 +474,7 @@ class DatabaseHandler:
         color = discord.Color.green()
         title = "Removed from Database"
         icon_url = Config.CHECK_URL
-        description = f"**{username}** (`{user_id}`) has been successfully removed from the database and stored in backup for retrieval."
+        description = f"**{username}** has been successfully removed from the database and arhcived for retrieval within a 30-day period."
         success = False
 
         try:
@@ -507,7 +507,7 @@ class DatabaseHandler:
         log_channel = guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
         if log_channel:
             try:
-                embed = discord.Embed(description=description, color=color).set_footer(text="Will be deleted in a month.")
+                embed = discord.Embed(description=description, color=color).set_footer(text=f"User ID: {user_id}")
                 embed.set_author(name=title, icon_url=icon_url)
                 await log_channel.send(embed=embed)
             except Exception as log_error:
