@@ -518,7 +518,7 @@ def build_db_logger_record(member: discord.Member, message: discord.Message, poi
         embed.add_field(name="Reaction:", value=str(emoji), inline=True)
         embed.add_field(name="Points Awarded:", value=points, inline=True)
 
-        embed.set_footer(text=f"User ID: {member.id}")
+        embed.set_footer(text=f"User ID: {member.id} • Message ID: {message.id}")
        
         return embed
 
