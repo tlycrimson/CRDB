@@ -77,17 +77,18 @@ class MessageLoggerCog(commands.Cog):
     
     async def send_change_log(self):
         key_name = 'send_change_log'
+        column_name =  'send'
         main_channel = self.bot.get_channel(Config.MAIN_COMMS_CHANNEL_ID)
         log_channel = self.bot.get_channel(Config.DEFAULT_LOG_CHANNEL)
         
         res = await self.bot.db.supabase.table('bot_state')\
-                .select('value')\
+                .select(column_name)\
                 .eq('key', key_name)\
                 .execute()
         
         if res.data:
-            send = res.data[0]['value']
-            if send == 'F':
+            send = res.data[0][column_name]
+            if not send:
                 return
 
         prefix = self.bot.command_prefix
@@ -109,7 +110,7 @@ class MessageLoggerCog(commands.Cog):
 
         await self.bot.db.supabase.table('bot_state')\
             .upsert(
-                {'key': key_name, 'value': 'F'},
+                {'key': key_name, column_name: False},
                 on_conflict='key'
             )\
             .execute()
