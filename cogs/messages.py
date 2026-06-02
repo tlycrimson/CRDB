@@ -254,10 +254,14 @@ class MessageLoggerCog(commands.Cog):
         
         await message.add_reaction("⌛")
         await asyncio.sleep(0.1)
-        
+
         try:
             sc_request = await message.reply(embed=panel_embed, view=view, allowed_mentions=discord.AllowedMentions.none())
-
+        except Exception as e:
+            logger.error(f"Failed to send sc panel embed: {e}")
+            return
+            
+        try:
             await save_pending_checks(
                     self.bot, 
                     str(sc_request.id), 
