@@ -466,7 +466,8 @@ def build_event_log(member: discord.Member, message: discord.Message, host, co_h
        footer = f"Host ID: {host.id}"
        if member.id == host.id:
                footer = f"User ID: {member.id}"
-
+       
+       footer += f" • Event ID: {message.id}"
        embed.set_footer(text=footer)
        return embed
 
@@ -578,7 +579,7 @@ def build_examiner_record(examiner: discord.Member, approver: discord.Member, me
         embed.add_field(name="Examiner:", value=clean_nickname(examiner.display_name), inline=True)
         embed.add_field(name="Approver:", value=clean_nickname(approver.display_name), inline=True)
         embed.add_field(name="Type:", value=exam_type, inline=True)
-        embed.add_field(name="Points Awarded to Authenticaor:", value=points, inline=True)
+        embed.add_field(name="Points Awarded to Examiner:", value=points, inline=True)
 
         footer = f"Examiner ID: {examiner.id}"
  

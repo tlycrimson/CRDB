@@ -440,7 +440,6 @@ class ReactionLoggerCog(commands.Cog):
             await tx.update_hr(member, {"courses": Config.POINTS_PER_ACTIVITY})
             db_embed = embedBuilder.build_db_logger_record(member, message, Config.POINTS_PER_ACTIVITY, payload.emoji)
 
-            # Fixed multi-embed return object handling
             msg = await self.log_channel.send(embeds=[db_embed, log_embed])
             tx.track_message(msg)
             
