@@ -124,7 +124,7 @@ def build_privacy_policy():
         title = "MP Assistant Privacy Policy"
         footer = "Last Updated: May 2026"
         member_records = (
-                          "Once assigned the role that designates you an official regimental member in the server, the following pieces of information will be stored: your Discord ID, Roblox ID, Roblox username, your XP, and your regiment's rank and division. The information will be used to manage and track your membership, rank progression, and other server statistics. This data will be removed upon removal of the role or manually removed by permitted members. A backup copy of your data will be stored for a thirty-day period in case of a reinstatement, after which it will be deleted permanently."
+                          "Once assigned the role that designates you an official regimental member in the server, the following pieces of information will be stored: your Discord ID, Roblox OMIx username, your XP, and your regiment's rank and division. The information will be used to manage and track your membership, rank progression, and other server statistics. This data will be removed upon removal of the role or manually removed by permitted members. A backup copy of your data will be stored for a thirty-day period in case of a reinstatement, after which it will be deleted permanently."
         )
         arrest_logs = (
                         " When an official member provides an arrest log related to a particular Roblox user, the information on their Roblox ID, Roblox username, and the link to their log message will be stored. This data can be used as part of a background check conducted by official members. The information will be automatically and permanently deleted after two days or manually removed by the members."
@@ -467,7 +467,7 @@ def build_event_log(member: discord.Member, message: discord.Message, host, co_h
        if member.id == host.id:
                footer = f"User ID: {member.id}"
        
-       footer += f" • Event ID: {message.id}"
+       footer += f" • OMID: {message.id}"
        embed.set_footer(text=footer)
        return embed
 
@@ -518,7 +518,7 @@ def build_db_logger_record(member: discord.Member, message: discord.Message, poi
         embed.add_field(name="Reaction:", value=str(emoji), inline=True)
         embed.add_field(name="Points Awarded:", value=points, inline=True)
 
-        embed.set_footer(text=f"User ID: {member.id} • Message ID: {message.id}")
+        embed.set_footer(text=f"User ID: {member.id} • OMID: {message.id}")
        
         return embed
 
@@ -539,17 +539,12 @@ def build_inductor_record(inductor: discord.Member, authenticator: discord.Membe
              url=url
         )
 
-
         embed.add_field(name="Authenticator:", value=clean_nickname(authenticator.display_name), inline=True)
-        embed.add_field(name="Inductor:", value=clean_nickname(inductor.display_name), inline=True)
         embed.add_field(name="Status:", value=str(emoji), inline=True)
         embed.add_field(name="Points Awarded:", value=points, inline=True)
 
-        footer = f"Authenticator ID: {authenticator.id} • Inductor ID: {inductor.id}"
+        footer = f"User ID: {authenticator.id} • OMID: {message.id}"
  
-        if authenticator.id == inductor.id:
-               footer = f"User ID: {authenticator.id}"
-
         embed.set_footer(text=footer)
         return embed
 
@@ -577,15 +572,12 @@ def build_examiner_record(examiner: discord.Member, approver: discord.Member, me
         exam_type = mapping.get(message.channel.id, message.channel.name)
 
         embed.add_field(name="Examiner:", value=clean_nickname(examiner.display_name), inline=True)
-        embed.add_field(name="Approver:", value=clean_nickname(approver.display_name), inline=True)
+        embed.add_field(name="Approver:", value=f'{clean_nickname(approver.display_name)} (`{approver.id}`)' , inline=True)
         embed.add_field(name="Type:", value=exam_type, inline=True)
         embed.add_field(name="Points Awarded to Examiner:", value=points, inline=True)
 
-        footer = f"Examiner ID: {examiner.id}"
+        footer = f"Examiner ID: {examiner.id} • OMID: {message.id}"
  
-        if approver.id == examiner.id:
-               footer = f"User ID: {approver.id}"
-
         embed.set_footer(text=footer)
 
         return embed
