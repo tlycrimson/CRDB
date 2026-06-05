@@ -45,10 +45,13 @@ class MessageLoggerCog(commands.Cog):
                         await self.cleanup_pending_checks(res.data)
 
                     cutoff = datetime.now(timezone.utc) - timedelta(days=30)
-                    await self.bot.db.supabase.table(self.bot.db.s_users_table)\
+                    res = await self.bot.db.supabase.table(self.bot.db.s_users_table)\
                             .delete()\
                             .lt('last_updated', cutoff.isoformat())\
                             .execute()
+
+                    if res.data:
+                        await self.log_deleted_users(res.data)
 
                     logger.info("Cleaned up old Criminal Records, Stored Users & Requests")
                 except Exception as e:
@@ -57,6 +60,27 @@ class MessageLoggerCog(commands.Cog):
                 await asyncio.sleep(86400) #Daily 
 
         self._cleanup_task = asyncio.create_task(cleanup_loop())
+    
+    async def log_deleted_users(self, users):
+        users_str = "\n".join([f'- {user['username']} ({user['user_id']})' for user in users])
+        logger.info(f"Successfully deleted the following users from archive: {users_str}")
+
+        color = discord.Color.green()
+        title = "Archive Removal"
+        icon_url = Config.TRASH_ICON
+        description = f"**The following users have been removed from the user arhcive and cannot be retrieved anymore:**\n"\
+                f"```{users_str}```"
+
+        log_channel = self.bot.get_channel(Config.DEFAULT_LOG_CHANNEL)
+        if log_channel:
+            try:
+                embed = discord.Embed(description=description, color=color) 
+                embed.set_author(name=title, icon_url=icon_url)
+                await log_channel.send(embed=embed)
+            except Exception as log_error:
+                logger.error("Failed to send archive removal log embed: %s", log_error)
+
+ 
 
     async def cleanup_pending_checks(self, panels):
         for panel in panels:
