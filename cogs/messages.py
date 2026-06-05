@@ -68,7 +68,7 @@ class MessageLoggerCog(commands.Cog):
         color = discord.Color.green()
         title = "Archive Removal"
         icon_url = Config.TRASH_ICON
-        description = f"**The following users have been removed from the user arhcive and cannot be retrieved anymore:**\n"\
+        description = f"The following user(s) have been **removed** from the user archive and cannot be **retrieved** anymore:\n"\
                 f"```{users_str}```"
 
         log_channel = self.bot.get_channel(Config.DEFAULT_LOG_CHANNEL)
