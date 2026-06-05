@@ -318,6 +318,7 @@ class ReactionLoggerCog(commands.Cog):
 
             exempt_role_ids = {Config.HR_ROLE_ID, Config.HQ_ROLE_ID, Config.HIGH_COMMAND_ROLE_ID}
             exempt_roles = {guild.get_role(rid) for rid in exempt_role_ids} - {None}
+            sgm_roles = {guild.get_role(rid) for rid in Config.SERGEANT_MAJOR_IDS} - {None}
 
             host_mention = HOST_PATTERN.search(message.content)
             host_id = int(host_mention.group(1)) if host_mention else message.author.id
@@ -349,13 +350,21 @@ class ReactionLoggerCog(commands.Cog):
 
             event_name_match = EVENT_NAME_PATTERN.search(message.content)
             event_name = event_name_match.group(1).strip() if event_name_match else hr_update_field.replace("_", " ").title()
-
-            await tx.update_hr(host_member, {hr_update_field: 1})
+           
+            async def update_hoster(tx: TransactionTracker, member: discord.Member, update_field: str, points: float = 1.0):
+                update_dict = {update_field: points}
+                if sgm_roles & set(member.roles):
+                    update_dict = {'events_attended': points}
+                    await tx.update_lr(member, update_dict)
+                else:
+                    await tx.update_hr(member, update_dict)
+            
+            await update_hoster(tx, host_member, hr_update_field)
             _, new_total = await tx.add_xp(str(host_member.id), host_member.display_name, 1)
            
             co_host_names = "\n".join(co_hosts.keys()) if co_hosts else None
             for co_host in co_hosts.values():
-                await tx.update_hr(co_host, {hr_update_field: 0.5})
+                await update_hoster(tx, co_host, hr_update_field, 0.5)
 
             attendees_section = ATTENDEES_PATTERN.search(message.content)
             if not attendees_section:
