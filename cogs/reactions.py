@@ -283,6 +283,9 @@ class ReactionLoggerCog(commands.Cog):
         channel = guild.get_channel(payload.channel_id)
         if not all((channel, member, self.log_channel)):
             return False
+
+        if payload.channel_id == Config.INDOC_CHANNEL_ID and payload.emoji != "☑️":
+            return False
         
         tx = TransactionTracker(self)
         try:
