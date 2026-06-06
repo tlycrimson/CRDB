@@ -52,6 +52,7 @@ def build_change_log(prefix, page):
         
         june_updates = (
                         "- Minor bug fixes.\n"
+                        "- New command called msl that uses AI to answer questions based on the MSL.\n"
                         "- Moved from Roblox's decpreacted batch fetch api to their Open Cloud.\n"
                         "- Added badge graph history command (!gbh).\n"
                         "- Updated logging embeds: The title is now a hyperlink that directs you to the original message instead of its own field. Additionally, the footer will display the Original Message ID (OMID) for some entries. The database logger embed will be sent in the same message with other subsequent embeds caused by the logger's reaction. This is still under experimentation and may be subject to future changes.\n"
@@ -59,6 +60,10 @@ def build_change_log(prefix, page):
                         "- If an error occurs in logging all operational changes (e.g. giving points) are rolled back.\n"
                         "- Blacklist command now has a desertion field to allow high command to bypass permission request for blacklisting deserters.\n"
                         "- Security Check information now includes the user's badge history (may be removed later on to improve speed).\n"
+        )
+        june_new_commands = (
+                        "- /get-badge-history (!gbh)\n"
+                        "- /msl (!msl)"
         )
         april_updates = (
                           f"- **Commands can now be executed with the bot's prefix ({prefix}) and name or their shorthand: !leaderboard ↠ !lb**\n"
@@ -109,6 +114,7 @@ def build_change_log(prefix, page):
         if (page == 0):
                 embed.set_author(name="June 2026 Change Logs",icon_url=Config.BOT_ICON)
                 embed.description=june_updates
+                embed.add_field(name="New Commands", value=june_new_commands, inline=False)
         else:
                 embed.set_author(name="April 2026 Change Logs",icon_url=Config.BOT_ICON)
                 embed.description=april_updates
@@ -180,6 +186,7 @@ def build_commands_page(page: int, prefix):
                                         "/xp - Checks amount of xp user has",
                                         "/profile - display a user's profile",
                                         "/leaderboard (lb) - View leaderboard for a category",
+                                        "/msl - Ask a question based on the MSL",
                                 ]
                     },
                     2: {
@@ -207,6 +214,7 @@ def build_commands_page(page: int, prefix):
                                         "/restore-user (restore) - Restore a user's data who has been recently removed from the database",
                                         "/remove-user (remove) - Remove a user from the database",
                                         "/manage-case-logs (mcl) - Manage a user's case-log by viewing their record or adding/deleting a record.",
+                                        "/get-badge-history (gbh) - View a user's badge history",
                                 ]
                     },
                     4: {
