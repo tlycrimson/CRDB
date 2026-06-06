@@ -51,10 +51,10 @@ def build_change_log(prefix, page):
         footer = "Last Updated: May 2026"
         
         may_updates = (
-                        "- Bug fixes for v1.3.\n"
+                        "- Minor bug fixes.\n"
                         "- Moved from Roblox's decpreacted batch fetch api to their Open Cloud.\n"
                         "- Added badge graph history command (!gbh).\n"
-                        "- Refreshed logging embeds. The title is now a hyperlink that takes you directly to the original message. --> Still experimenting.\n"
+                        "- Updated logging embeds: The title is now a hyperlink that directs you to the original message instead of its own field. Additionally, the footer will display the Original Message ID (OMID) for some entries. The database logger embed will be sent in the same message with other subsequent embeds caused by the logger's reaction. This is still under experimentation and may be subject to future changes.\n"
                         "- Co-Hosts if any are now included in logging.\n"
                         "- If an error occurs in logging all operational changes (e.g. giving points) are rolled back.\n"
                         "- Blacklist command now has a desertion field to allow high command to bypass permission request for blacklisting deserters.\n"
