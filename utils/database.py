@@ -418,7 +418,7 @@ class DatabaseHandler:
             current_points = float(user_data.get(column) or 0)
             new_points = points if replace else (current_points + points)
 
-            await self.create_or_update_user_in_db(discord_id=user_id_str, username=cleaned_nickname)
+            await self.create_or_update_user_in_db(discord_id=user_id_str, username=cleaned_nickname, guild=member.guild)
 
             await self.supabase.table(table).upsert({
                 "user_id": str(member.id),
@@ -876,7 +876,7 @@ class DatabaseHandler:
     ) -> bool:
         user_id_str = str(discord_id)
         cleaned_username = clean_nickname(username)
-
+        
         try:
             res = await self.supabase.table(self.users_table).select('*').eq('user_id', user_id_str).maybe_single().execute()
             
@@ -898,9 +898,11 @@ class DatabaseHandler:
                         full_data.update(update_data)
                         self._user_cache[user_id_str] = full_data
             else:
+                action = "added"
                 final_xp = xp if xp is not None else 0
                 old_data = await self.get_stored_user(user_id_str)
                 if old_data:
+                    action = "restored"
                     final_xp = old_data.get("xp", final_xp)
                 new_user = {
                     "user_id": user_id_str,
@@ -913,7 +915,23 @@ class DatabaseHandler:
                 res = await self.supabase.table(self.users_table).insert(new_user).execute()
                 if res.data:
                     await self.delete_stored_user(user_id_str)
+
                 logger.info("Created New User: %s (%s), Roblox ID: %s", cleaned_username, user_id_str, roblox_id)
+
+                if guild:
+                    color = discord.Color.green()
+                    title = f"User {action.capitalize()}"
+                    icon_url = Config.CHECK_URL
+                    description = f"**{username}** has been successfully {action} to the database."
+
+                    log_channel = guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
+                    if log_channel:
+                        try:
+                            embed = discord.Embed(description=description, color=color).set_footer(text=f"User ID: {user_id_str}")
+                            embed.set_author(name=title, icon_url=icon_url)
+                            await log_channel.send(embed=embed)
+                        except Exception as log_error:
+                            logger.error("Failed to send log embed: %s", log_error)
 
                 async with self._user_cache_lock:
                     self._user_cache[user_id_str] = new_user
