@@ -48,9 +48,9 @@ def build_regiment_info(data: dict):
 def build_change_log(prefix, page):
         title = "MP Assistant v1.3.1 Change Logs"
         description = "Below features the recent changes made to the bot. If you wish to make a suggestion to improve the bot, use the suggest command. As well, if you spot a mistake or an error, use the report command.\n\n"
-        footer = "Last Updated: May 2026"
+        footer = "Last Updated: June 2026"
         
-        may_updates = (
+        june_updates = (
                         "- Minor bug fixes.\n"
                         "- Moved from Roblox's decpreacted batch fetch api to their Open Cloud.\n"
                         "- Added badge graph history command (!gbh).\n"
@@ -107,10 +107,10 @@ def build_change_log(prefix, page):
 
         embed = discord.Embed(color=discord.Color.dark_red())
         if (page == 0):
-                embed.set_author(name="May 2026 Change Logs",icon_url=Config.BOT_ICON)
-                embed.description=may_updates
+                embed.set_author(name="June 2026 Change Logs",icon_url=Config.BOT_ICON)
+                embed.description=june_updates
         else:
-                embed.set_author(name="April Change Logs",icon_url=Config.BOT_ICON)
+                embed.set_author(name="April 2026 Change Logs",icon_url=Config.BOT_ICON)
                 embed.description=april_updates
                 embed.add_field(name="New Commands", value=april_new_commands,inline=False)
 

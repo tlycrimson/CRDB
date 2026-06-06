@@ -3,8 +3,8 @@ import asyncio
 import aiohttp
 import discord
 import logging
-from discord.ext import commands
 from dotenv import load_dotenv
+from discord.ext import commands
 
 from utils.roblox import RobloxClient
 from utils.permissions import PermissionsCache
@@ -21,7 +21,6 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 if not TOKEN:
     raise ValueError("DISCORD TOKEN NOT FOUND!")
 
-
 # Set up logging
 logging.basicConfig(
     level=logging.INFO,
@@ -34,6 +33,7 @@ logging.basicConfig(
 # Silence Requests
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("supabase").setLevel(logging.WARNING)
+logging.getLogger("google_genai").setLevel(logging.WARNING)
 
 logger = logging.getLogger(__name__)
 
@@ -74,6 +74,7 @@ class CRDB(commands.Bot):
         self.messages = None
         self.roblox = None
         self.permissions = None
+        self.msl_context = None
 
     async def setup_hook(self):
         logger.info("Running setup_hook...")
@@ -131,6 +132,12 @@ class CRDB(commands.Bot):
             except Exception as e:
                 logger.error(f"Failed to load cog {cog}: {e}")
         
+        try:
+            with open("msl_context.txt", "r", encoding="utf-8") as f:
+                self.msl_context = f.read()
+        except FileNotFoundError:
+            logger.error("Could not find msl_context.txt in dir.")
+            self.msl_context = "Context unavailable."
             
         logger.info("Setup hook completed!")
 
@@ -171,7 +178,7 @@ async def on_ready():
     except Exception as e:
         logger.exception(f"Failed to sync commands: %s", e)
    
-    bot.reaction_logger = bot.get_cog("ReReactionLoggerCog") 
+    bot.reaction_logger = bot.get_cog("ReactionLoggerCog") 
     bot.messages = bot.get_cog("MessageLoggerCog")
 
     if bot.db:
@@ -192,7 +199,7 @@ async def on_ready():
             await bot.messages.send_change_log()
         except Exception as e:
             logger.error(f"An error occured while running send_change_log function: {e}")
- 
+
     logger.info("=" * 50)
 
 

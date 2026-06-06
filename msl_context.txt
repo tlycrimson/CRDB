@@ -1,0 +1,1325 @@
+﻿________________
+
+
+JSP 830 MSLーJUL.4, 2024                       AL33                          1-36-
+
+
+
+
+  
+
+The British Army
+~
+Manual of Service Law
+________________
+
+
+{JSP 830 MSL}
+Volume 1
+Joint Service Publication
+AL33
+Enacted by the Judge Advocate General and the British Army Headquarters,
+As of July 4, 2024
+________________
+
+
+Table of Contents
+(Click a part to view)
+
+
+Part I. Definitions & Scope | Page 1-36-3
+
+
+Part II. Discharges | Page 1-36-8
+* Subpart II-A. Desertions & Blacklists | Page 1-36-9
+
+
+Part III. Academy Policy & Codex | Page 1-36-10
+* Subpart III-A. Uniform Regulations | Page 1-36-17
+* Subpart III-B. Parade Deck Policy | Page 1-36-21
+
+
+Part IV. Individual Rights | Page 1-36-23
+
+
+Part V. The Service Justice System | Page 1-36-26
+
+
+Part VI. MSL Service Offences | Page 1-36-29
+________________
+
+
+
+
+All documentation under the Military Court Service is subject to change. 
+This document serves as an official listing of all regulations within the British Army. 
+Failure to adhere to these regulations may result in severe punishments.
+
+
+________________
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+[PAGE INTENTIONALLY LEFT BLANK]
+
+
+
+
+________________
+
+
+
+
+Part I - ‘§001’
+
+
+Definitions & Scope
+
+
+(a) The Manual of Service Law (referred to as “MSL” or “Manual”) sets out the governing legal framework applicable to all the individuals serving within the British Army. It shall regulate all disciplinary and criminal proceedings, the classification of offences, the operation of military courts, rights and protections for service members, etc. Every part of this Manual applies to everyone in the British Army unless explicitly stated otherwise.
+
+
+(b) The following definitions apply to the entirety of the Manual.ー
+(1) Regiment.ー
+(A) A regiment refers to a formally recognized, organized military unit operating under the command structure of the British Army.
+(B) There are thirteen recognized regiments within the British Army which are:ー
+(i) Household Division (HSD);
+(ii) Royal Military Academy Sandhurst (RMAS);
+(iii) Royal Military Police (RMP);
+(iv) United Kingdom Special Forces (UKSF);
+(v) Army Air Corps (AAC);
+(vi) Royal Army Medical Corps (RAMC);
+(vii) The Parachute Regiment (PARAS);
+(viii) Quartermasters Customs (QMC);
+(ix) Education and Training Services (ETS);
+(x) Military Court Service (MCS);
+(xi) Intelligence Corps (IC).
+(I) The 2nd Military Intelligence Brigade is exempt from all rules, regulations, and punishments stated within this code, yet they remain subject to internal disciplinary action.
+(2) Team.ー
+(A) A team refers to a designated non-combat unit formed within the British Army structure that is tasked with a specific administrative, communicative, or operational function.
+(B) There are two recognized teams within the British Army which are:ー
+(i) PATROL & Moderation (PATROL);
+(ii) Army Media and Communications (AMC).
+(2) Regimental Personnel.ー
+(A) Regimental personnel includes any individuals actively enlisted, assigned, or commissioned under the authority of a British Army regiment.
+(B) This includes all enlisted ranks, commissioned officers, and support staff directly operating under a regiment's jurisdiction.
+(3) Commissioned Officer.ー
+(A) A commissioned officer is an individual who has received an official commission from the British Army to hold a position of command.
+(B) They possess legal authority to issue lawful commands, oversee operations, and enforce discipline.
+(C) Commissioned officer ranks include Second Lieutenant, Lieutenant, Captain, Major, Lieutenant Colonel, Colonel, and Brigadier.
+(4) Enlisted Rank.ー
+(A) Enlisted ranks refer to personnel who are not commissioned officers but are officially part of the regiment.
+(B) These include non-commissioned officer ranks which are Private, Lance Corporal, Corporal, Sergeant, Staff Sergeant and Officer Cadet.
+(5) Regimental High Command.ー
+(A) Regimental High Command are the senior most ranks and officers responsible for the leadership of a regiment.
+(B) The Regimental High Command ranks are Colonel, Brigadier and Major General.
+(6) Rank Classification System.ー
+(A) For the British Army’s Chain of Command reference, ranks within the British Army are categorised as follows:ー
+(i) Senior Army Board:ー
+(I) Head of the Armed Forces; 
+(II) Chief of the General Staff;
+(III) Deputy Chief of the General Staff;
+(IV) Assistant Chief of the General Staff.
+(ii) Lower Army Board:ー
+(I) Lieutenant General:
+(I-A) Commander, Home Command;
+(I-B) Commander, Field Army;
+(I-C) Chief of Material (Land);
+(I-D) Commander, Community Engagement.
+(II) Army Sergeant Major.
+(iii) Chiefs:ー 
+(I) Major General.
+(iv) High Ranks:ー 
+(I) Brigadier;
+(II) Garrison Sergeant Major;
+(III) Colonel;
+(IV) Lieutenant Colonel;
+(V) Major;
+(VI) Captain;
+(VII) Lieutenant;
+(VIII) Second Lieutenant.
+(v) Middle Ranks:
+(I) Regimental Sergeant Major;
+(II) Company Sergeant Major;
+(III) Officer Cadet;
+(IV) Staff Sergeant;
+(V) Sergeant;
+(vi) Low Ranks:
+(I) Corporal;
+(II) Lance Corporal;
+(III) Private;
+(IV) Recruit.
+(7) Overseer.ー
+(A) An overseer is defined as an individual supervising or “overseeing” a regiment/team or a set of regiments/teams. Below are the list of overseers with the regiments/teams they oversee:—
+(i) Chief of the General Staff:
+(I) Intelligence Corps.
+(ii) Deputy Chief of the General Staff:
+(I) Intelligence Corps.
+(iii) Assistant Chief of the General Staff:
+(I) Sunset Insurgency.
+(iv) Commander, Home Command:
+(I) Household Division;
+(II) Royal Military Academy Sandhurst;
+(III) Royal Military Police;
+(IV) United Kingdom Special Forces.
+(v) Commander, Field Army:
+(I) Army Air Corps;
+(II) Royal Army Medical Corps;
+(III) The Parachute Regiment;
+(vi) Chief of Material (Land):
+(I) Quartermasters Customs;
+(II) Education and Training Services;
+(III) Military Court Service.
+(vii) Commander, Community Engagement:
+(I) Army Media & Communications;
+(II) Royal Family;
+(III) PATROL & Moderation;
+(IV) Sunset Insurgency.
+
+
+(8) Incarceration.ー
+(A) Incarceration is defined as having an individual in jail for some time after arrest.
+(i) It may only occur if one commits a jailable offence by violating the codex or, when a lawful order is issued by a court.
+(9) Military Driving License.ー
+(A) A license permit for operating on-ground vehicles.
+(10) Pilot Wings License.ー
+(A) A license permit for operating aircraft authorized by the Aircraft Licensing Agency of the Army Air Corps.
+(11) Academy Events.ー
+(A) Any type of event hosted in the Sandhurst Military Academy,
+(12) Tryout.ー
+(A) A recruitment academy event hosted in Sandhurst to enter a regiment.
+(13) Abusing glitches.ー
+(A) Exploiting an error in-game through any means in-game.
+(14) Exploiting.ー
+(A) Usage of scripts or code to alter with the in-game functions.
+(15) Regimental Indoctrination.ー
+(A) A disciplinary measure issued by a regiment to an individual for violating a rule in the MSL or a punishment guide which warrants it.
+(16) Banishment.ー
+(A) A banishment is defined as a punishment where someone may not join and stay in the British Army discord or Roblox permanently unless appealed.
+(17) Combat regiment.ー
+(A) The following regiments are classified as a “combat regiment”:—
+(i) Household Division;
+(ii) United Kingdom Special Forces;
+(iii) Royal Military Police;
+(iv) The Parachute Regiment;
+(18) Non-combat regiment.ー
+(A) The following regiments are classified as a “non-combat regiment”:—
+(i) Quartermasters Customs;
+(ii) Intelligence Corps;
+(iii) Royal Military Academy Sandhurst;
+(iv) Royal Army Medical Corps;
+(v) Military Court Service;
+(vi) Army Air Corps;
+(vii) Education and Training Services.
+(19) VIP.ー
+(A) A ‘very important person’ who is usually guarded by the respective combat regiments.
+(20) Elimination.ー
+(A) Elimination refers to a punishment where one’s character is reset in-game through the usage of a firearm for violating a rule in the MSL which warrants it.
+(21) Legal Prosecution.ー
+(A) Bringing charges against a British Army service person in a court of law or any of the legal proceedings.
+(22) Barrister.ー
+(A) A barrister is an individual who has been ‘called’ to the bar by the Bar Council.
+(23) Ceremonial Occasions.ー
+(A) Any type of ceremonial event. This includes inspections or any ceremony.
+(24) Consumer.ー
+(A) Any service person who intends to buy a Quartermasters Customs approved uniform.
+(25) Base Clearance.ー
+(A) A clearance for civilians to enter the academy through the Base Clearance Roblox gamepass.
+(26) Codex.ー
+(A) Compilation of the rules enforced in the Sandhurst Military Academy by the Royal Military Police on the ranks from Recruit to Brigadier in correspondence to [TBA].
+(27) Ban Investigation Request.ー
+(A) An investigation request to the Appeals Committee under the Military Court Service to determine if a banishment had sufficient grounds to be issued to an individual. A judge has the final rule on whether the ban is unjust or not.
+(28) Administrator.ー
+(A) Any service person holding an in-game administrative command privilege with the level of Moderator and Administrator.
+(29) Spectator.ー
+(A) An individual watching an academy event or formal occasion without formally taking part in it.
+(30) Judiciary.ー
+(A) All courts under the Service Justice System as well as their judges.
+(31) Accused.ー
+(A) Anyone under reasonable suspicion of committing an MSL service offence.
+(32) Court.ー
+(A) Generally refers to Court Martial unless stated otherwise.
+(33) Service Justice System.ー
+(A) The primary judicial authority for the British Army.
+(34) Service Person.ー
+(A) All British Army Personnel regardless of rank (singular).
+(35) Service Personnel.ー
+(A) All British Army Personnel regardless of rank (plural).
+(36) Commanding Officer.ー
+(A) Any officer in charge of a squad, division, regiment, or who is generally responsible for a group of people under the British Army.
+(37) SPA.ー
+(A) Service Prosecuting Authority.
+(38) DSP.ー
+(A) Director of Service Prosecutions.
+(39) Insurgent.ー
+(A) A member of the Sunset Insurgency.
+~
+________________
+
+
+
+
+
+
+Part II - ‘§002’
+
+
+Discharges
+
+
+(a) A discharge is defined as the vacating of a regiment within the British Army. The following discharge conditions guarantee that each service member is discharged effectively. Should any person not be discharged by the following procedures; the personnel who administered the discharge may be liable to legal prosecution under ‘Unlawful Termination’ in correspondence to MSL AL-33 (§006)(a)(32).
+(1) General discharge.ー
+(A) A general discharge is defined as,ー 
+(i) Vacating a regiment while meeting the required performance and conduct standards whilst not being dishonourably discharged.
+(B) For a Commissioned Officer, of the rank Lieutenant Colonel or higher, to resign, they must provide a resignation notice an established period of time - depending on rank - prior to their official resignation from their regiment. The designated resignation notice time for each rank is,ー
+        (i) Three days for Lieutenant Colonel,
+        (ii) Five days for Colonel & Brigadier.
+(iii) Punishment may still be delivered for neglect of duties during the resignation notice period.
+(iv) The regiment’s Major General and respective overseers may permit a Commissioned Officer to resign early.
+(C) As an outcome .ー
+(i) Commissioned Officers shall be demoted to Officer Cadet.
+(ii) Enlisted Personnel shall keep their current rank.
+(2) Honourable discharge.ー
+(A) An honourable discharge is defined as, ー
+(i) The formal release of a serviceperson from a regiment in recognition of outstanding service following their resignation notice.
+(B) An honourable discharge may be granted to both Commissioned Officers and enlisted ranks.
+(C) Granting of an honourable discharge shall be done so through the mutual agreement of the serviceperson’s chief and overseer.
+(D) Service personnel granted an honourable discharge may be awarded a resignation honour in recognition of their services.
+(E) Service personnel granted an honourable discharge shall follow the same resignation notice times and rank outcomes as a general discharge.
+(3) Punitive discharge.ー
+(A) A punitive discharge may only be issued as the result of a court-martial. Punitive discharges work quite similarly to dishonourable discharges.
+(B) The Military Court Service may issue a punitive discharge if,ー
+(i) The member has been convicted of a criminal conduct offense after due process of the law has occurred. 
+(C) As an outcome.ー
+                        (i) Commissioned Officers shall be demoted to Corporal. 
+                        (ii) Enlisted Personnel shall be demoted to Recruit. 
+(4) Dishonourable discharge.ー
+(A) A dishonourable discharge is defined as one’s dismissal as a result of a criminal or morally unacceptable act. A dishonourable discharge may be administered if,ー
+(i) The member has been convicted of a criminal conduct or disciplinary offence.
+(ii) The member's presence and actions are detrimental to the unit, and said dishonourable discharge has been approved by the regiment's overseer or chief.
+(B) As an outcome.ー
+                        (i) Commissioned Officers shall be demoted to Sergeant.
+(ii) Enlisted Personnel shall be demoted to the rank that they 
+held prior to enlisting in the regiment.
+~
+
+
+________________
+
+
+
+
+Subpart II-A - ‘§002-A’
+Desertions & Blacklists
+
+
+(a) Desertion.ー
+(1) Deserting is.ー 
+(A) When a member of a regiment leaves without being officially removed from said regiment or,ー
+(i) Leaves without filing an official notice in their respective regimental discord server.
+(ii) Attempting to be discharged from a regiment before the seven day period through dishonourable acts is classified as desertion.
+(B) Desertion is not defined as a discharge, but rather a distinct category of regimental dismissal.
+                (C) As an outcome.ー
+(i) Commissioned Officers shall be demoted to Private, blacklisted from said regiment for six months and,ー
+(I) All regiments as a Commissioned Officer for three months.
+(II) All regiments for one month.
+(ii) Enlisted Personnel shall be demoted to Private, blacklisted from said regiment for one month and, ー
+        (I) All regiments for two weeks.
+(iii) After five desertions from the same regiment, the perpetrator is issued a permanent blacklist from said regiment.
+(b) Blacklists.ー
+(1) Blacklists range from regimental blacklists to global and officer blacklists.ー
+(A) A regimental blacklist is where someone may not return to the respective regiment permanently or for a certain period of time.ー
+(i) Regimental blacklists may only be distributed by Regimental High Command, and the Judge Advocate General’s Office members once due process has occurred.
+(B) A global blacklist is where someone may not join any regiment permanently or for a certain period of time.ー
+(i) Global blacklists may only be distributed by the Army Board, and Judge Advocate General’s Office members once due process has occurred.
+(C) An officer blacklist is where someone may not become a commissioned officer for any regiment permanently or for a certain period of time.ー
+(i) Officer blacklists may only be distributed by the British Army Headquarters, Royal Military Academy Sandhurst High Command, and Judge Advocate General’s Office members once due process has occurred.
+(ii) All users who receive an Officer Blacklist will be permanently blacklisted from joining the Education and Training Services regiment and the PATROL & Moderation team unless appealed by a member of British Army Headquarters.
+~
+________________
+
+
+
+
+
+
+
+
+Part III - ‘§003’
+
+
+Academy Policy & Codex
+
+
+(a) The following includes the universal policy that all service personnel must directly adhere to,ー
+        (1) Face guidelines.ー 
+(A) Service Personnel are required to use a Roblox face that must be considered ‘realistic’ through a military perspective.ー
+                        (i) Realistic Faces.ー 
+(I) The Royal Military Police does not have the authority to force you to change your face if it is considered a ‘realistic Roblox face’.
+(II) Recognised realistic faces include (recomm. to use Ctrl+F),ー 
+(II-MSL-RPP)|BA| Manual of Service Law | Registered Personnel Guidelines
+(ii) Unrealistic Faces.ー 
+(I) The Royal Military Police does have the authority to incarcerate you or eliminate you to change your face if it is considered an ‘unrealistic Roblox face’.
+(II) Recognised unrealistic faces include (recomm. to use Ctrl+F),ー 
+(II-MSL-RPP)|BA| Manual of Service Law | Registered Personnel Guidelines
+(2) Unrealistic skin tones.ー
+(A) Service Personnel are required to use a skin tone that directly correlates to that of a realistic, human skin tone.ー
+        (i) Unrealistic Skin Tones.ー
+(I) The Royal Military Police does have the authority to imprison you or force you to change your skin tone if it is considered an ‘unrealistic skin tone’.
+(II) Recognised unrealistic skin tones include,ー
+(II-MSL-RPP)|BA| Manual of Service Law | Registered Personnel Guidelines
+(3) Designated incarceration durations.ー
+(A) Upon incarceration of a given service person or civilian for breaking academy policy and codex, one must wait a specific duration of time before being eligible for release. The only option to leave incarceration prematurely is through bail.ー
+(B) Recognised incarceration reasonings and durations consist of,ー
+(i) Failure to wear a uniform,ー
+(I) two minutes incarceration.
+(ii) Failure to change skintone,ー
+(I) two minutes incarceration.
+(iii) Failure to change a Roblox unrealistic face,ー
+(I) two minutes incarceration.
+(iv) Failure to remove a Roblox t-shirt,ー
+(I) two minutes incarceration.
+(v) Failure to remove Roblox body packages,ー
+(I) two minutes incarceration.
+(vi) Refusing to leave the Parade Deck,ー
+(I) two minutes incarceration.
+(vii) Trespassing,ー
+(I) two minutes incarceration.
+(II) the parade deck stage area is an exception to the incarceration as the individual is to be eliminated by a firearm upon trespassing.
+(viii) Loitering,ー
+(I) two minutes incarceration.
+(ix) Reckless firing using a firearm,ー
+(I) five minutes incarceration.
+(x) Raiding,ー
+(I) two minutes incarceration.
+(II) raiding events subject the individual to ten minutes incarceration.
+(xi) Trolling,ー
+(I) five minutes incarceration.
+(II) if repeated, then the individual is subject to ten minutes incarceration.
+(xii) Disturbing events,ー
+(I) five minutes incarceration.
+(II) if repeated, then the individual is subject to ten minutes incarceration.
+(xiii) Disrespect towards a High Rank,ー
+(I) ten minutes incarceration.
+(xiv) Tool Abuse,ー
+(I) ten minutes incarceration.
+(xv) Attempted Random Killing,ー
+(I) ten minutes incarceration.
+(xvi) Random Killing,ー
+(I) ten minutes incarceration.
+(xvii) Ro-banging,ー
+(I) ten minutes incarceration.
+(xviii) Obstruction of a Peace Officer,ー
+(I) ten minutes incarceration.
+(xix) Operating a vehicle without a valid license,ー
+(I) ten minutes incarceration.
+(xx) Stolen Valour,ー
+(I) ten minutes incarceration.
+(xxi) Disobeying lawful commands,ー
+(I) ten minutes incarceration.
+(xxii) 2-Warning Response rule evasion,ー
+(I) equivalent to the incarceration time of the original offence’s warnings being evaded.
+(C) Royal Military Police personnel must issue two warnings to the individual prior to detaining and incarcerating them for their given violation.
+(4) Vehicle operation policy.ー
+(A) When operating a vehicle within the academy, all service persons must obey the following standard British traffic law.ー
+(i) They must drive and remain on the left-hand side of the road unless overtaking.
+(I) The only exception is if a raider is attacking the vehicle operator.
+(ii) They must pass the Military Driving School under the Royal Anglian Regiment and possess an active, valid military operating license to drive a vehicle within the academy.ー
+(I) Other vehicle operating licenses are relative to the respective regiment that utilises them, such as the Army Air Corps and Royal Anglian Regiment.
+(II) operating a vehicle without a military operating license, or with an expired military operating license, will result in any, if not all, of the following,ー
+        (II-A) Incarceration,
+        (II-B) Regimental indoctrination,
+        (II-C) Legal prosecution.
+(iii) They must obey and follow stoplights and stop signs, as well as pedestrian crossings.ー
+(I) Pedestrians automatically have the right of way over the vehicle operator when utilising a pedestrian crossing.
+(iv) Must adhere to a speed limit of 30 to 50 miles per hour while operating a vehicle within the academy.
+(v) Must always park on the left side of the road, regardless of the situation.
+(vi) Must always leave sufficient space for other vehicles to pass without needing to swerve off-road.
+(B) Reckless driving that compromises the safety or operation of other academy events is strictly prohibited and the operator is subject to legal prosecution.
+(C) Military vehicles may only be summoned and operated by Colonel+ for the sole intended purpose of event transportation.ー
+(i) Operating any vehicle without direct consent from a Colonel+ and a military operating license will result in regimental indoctrination or legal prosecution.
+(D) If one spawns or operates a vehicle, they are liable for what happens to the vehicle, including,ー
+        (i) Theft of the vehicle.
+(ii) Harm to others or disruption of academy events via the vehicle.
+        (iii) Removal of the vehicle after usage.
+        (iv) Location of the vehicle during operation.
+        (v) Obedience of traffic laws during operation.
+(E) A vehicle operator may eliminate any individual blocking their vehicle’s path after giving a warning.
+(i) The vehicle operator may not eliminate any Intelligence Corps personnel, any personnel holding a rank of Major General and above, or a member of the Royal Family.
+(5) Administrator command policy.ー
+(A) Administrator command levels.ー
+(i) Moderator level; granted to ETS Low Ranks and the rank of Second Lieutenant till Colonel.
+(ii) Administrator level; granted to the rank of Brigadier.
+(B) Usable Administrator commands and policies.ー
+(i) Moderator level administrators are permitted to use the following administrator commands only.ー
+(I) :refresh [Roblox username | me];
+(II) :respawn [Roblox username | me];
+(III) :h [Tryout, Interview or Training shout];
+(IV) :pm [Roblox username | %team] [Message];
+(V) :to [Roblox username];
+(VI) :bring [Roblox Username | %team];
+(VII) :view [Roblox Username];
+(VIII) :unview [Roblox Username];
+(IX) :chatlogs;
+(X) :logs;
+(XI) :cmds;
+(XII) :timer [number in seconds];
+(XIII) :lockpad (hq) [pad number];
+(XIV) :unlockpad (hq) [pad number];
+(XV) :strike [Roblox Username];
+(XVI) :clear [Roblox Username];
+(XVII) :tp [pd, hq, gate, airfield, hsd, park, lz, hospital, rmp, motorpool];
+(XVIII) :check [Roblox Username].
+(ii) Administrator level administrators are permitted to use the administrator commands listed in MSL AL-33 (§002)(a)(5)(B)(i) and the following administrator commands only.ー
+(I) :kick [Roblox Username].
+(iii) The exercise of any administrator command not listed in MSL AL-33 (§002)(a)(5)(B) shall constitute Unusable Administrator Commands and shall render the offender liable to punishment by the Royal Military Academy Sandhurst.
+(iv) Administrator commands shall be exercised solely within the regiment that has granted them.
+(v) Any administrator discharged, whether from a commissioned officer ranking or ETS, shall be prohibited from the exercise of administrator commands that remain accessible in-game.
+(I) Violation constitutes Admin Abuse and renders the offender liable to sanction up to and including Officer Blacklist.
+(vi) Administrators must not use any administrator command on any personnel of another regiment, Intelligence Corps, a personnel of a higher rank in the British Army or the Headquarters without permission.
+(I) The only exception is the private message {:pm} administrator command.
+(II) Violation constitutes Admin Abuse and renders the offender liable to sanction up to and including Officer Blacklist.
+(vii) Allegations of Admin Abuse may be referred by the Royal Military Academy Sandhurst to the 1st Military Intelligence Battalion for impartial investigation.
+(viii) Admin Abuse may, where associated with other offences, fall within the jurisdiction of a Court Martial or other court.
+(C) Viewing and teleporting.ー
+(i) Moderator level administrators - must use {:view} prior to teleporting to {:to} or bringing {:bring} an individual.ー
+(I) Violation constitutes minor admin abuse.
+(ii) Administrators are not permitted to teleport to {:to} {:tp [location]} or bring {:bring} civilians or any raider in order to incarcerate or kill them.ー
+(I) Violation constitutes major admin abuse.
+(iii) Administrators are never permitted to bring {:bring} all - under any circumstances.ー
+        (I) Violation constitutes mass admin abuse.
+(iv) Administrators must use the first five letters of an individual’s name for using an admin command on someone.ー
+(I) Violation constitutes minor admin abuse.
+(II) The only exception is if the individual’s Roblox username is shorter than five letters.
+(v) Administrators are not permitted to teleport to {:to}, bring {:bring}, or view {:view} another administrator of higher-ranking without direct permission from the given individual.ー
+(I) Violation constitutes minor admin abuse.
+(D) Private messaging and announcing.ー
+        (i) Administrators may only private message {:pm} an individual for necessary purposes {eg. tryout or teleportation}.ー
+(I) Violating constitutes minor admin abuse.
+(ii) Administrators may only announce {:h} regimental events and trainings, nothing else.ー
+(I) Violation constitutes major admin abuse.
+                (E) Kicking and banning.ー
+(i) Administrators may only kick {:kick} an individual if there is no game moderator available and they are,ー
+                (I) Exploiting,
+(II) Raiding as a service person or cleared civilian,
+                (III) Abusing glitches,
+                (IV) Stating discriminatory remarks,
+                (V) Evading arrest,
+(VI) Removing exiled individuals from the game if they refuse to leave whilst having admin.
+(F) Administration abuse policy.ー
+        (i) Minor admin abuse.ー
+(I) Minor Admin Abuse is defined as misuse of usable administrator commands contrary to limitations set forth herein or accidently committing admin abuse.
+(II) Minor admin abuse constitutes a Regimental indoctrination or a three-month officer blacklist depending on the severity of the abuse.
+(ii) Major admin abuse.ー
+(I) Major admin abuse is defined as using administrator commands with the intention to harm, to do harm or using unusable administrator commands.
+(II) Major admin abuse constitutes a four to seven-month officer blacklist.
+(ii) Mass admin abuse.ー
+(I) Mass admin abuse is defined as the use of “all,” “random,” or equivalent parameters with intent to cause mass disruption or harm.
+(II) Mass admin abuse constitutes an appealable permanent officer blacklist.
+(6) Academy raiding policy.ー
+(A) Service Personnel are strictly prohibited from raiding whilst on the ‘British Army Personnel’ Team.ー
+(i) Perpetrators are subject to regimental indoctrination, incarceration, legal prosecution, or temporary banishment from the academy.
+(B) Officers in combat regiments are strictly prohibited from raiding on the British Army, Civilian and Gangster teams.ー
+        (i) Perpetrators are subject to regimental indoctrination, incarceration or legal prosecution.
+(C) Enlisted personnel in combat regiments are strictly prohibited from raiding while on the following teams:;
+(i) Civilian,
+(ii) British Army Team
+(iii) Perpetrators are subject to regimental indoctrination, incarceration and legal prosecution.
+(iv) However, enlisted personnel and officers in combat regiments are permitted to join the RAIDER team any may raid, which requires a gamepass.
+(D) Non-combat regiment enlisted personnel and civilians are permitted to raid - but still subject to incarceration - on the following teams,ー
+(i) Civilian,
+(ii) Raider,
+(iii) Gangster.
+(E) Non-combat regiment commissioned officers are permitted to raid - but still subject to incarceration - on the following teams,ー
+        (i) Raider,
+(ii) Gangster.
+(7) Academy guarding policy.ー 
+(A) Definition of Escort.ー
+(i) An escort is defined as any official Household Division duty where cavalry or guards are tasked with accompanying, protecting, or clearing the way for a person, formation, or ceremonial procession.
+(ii) This includes, but is not limited to: horse escorts, ceremonial escorts, and Royal Family escorts.
+(B) The Grenadier Guards are permitted to eliminate an individual (even if they’re AFK) if they continue to disrupt the guard’s march after ordering them to make way.ー
+(i) A lawful "MAKE WAY" order may only be issued by Household Division personnel (HCAV or Grenadier Guards).
+(ii) The eliminating guard does not have to be the same individual who issued the order, provided that:
+        (I) The elimination occurs within a reasonable timeframe of the original order being issued ;
+        (II) The guard is part of the same escort or guard march.
+(iii) The guard must wait two to three seconds for the individual to make way.
+(iv) This also applies if the guard is on a horse.
+(v) Definition of Disruption.ー 
+(I) Disruption includes blocking the path of the escort or march, repeatedly crossing in front of the escort or march, refusing to clear the designated route, or any action that impedes the movement or formation of Household Division personnel during their duties.
+(vi) The guard is NOT permitted eliminate an individual for not moving out of their way if they are,ー
+(I) A member of the Intelligence Corps,
+        (II) A Major General+,
+        (III) A member of the Royal Family.
+(C) The Household Division is permitted to eliminate any individual that touches a sentry or household cavalry horses.ー
+(i) There is no time limit, the Household Division is allowed to eliminate the perpetrator as soon as they touch the restricted area/object.
+(D) The Grenadier Guards are permitted to eliminate any individual in the five stud radius of a sentry or VIP unless they are,ー
+        (i) A member of the Intelligence Corps,ー
+(I) Failure to move should be reported to the Commander of the Household Division.
+        (ii) A Major General+.ー
+(I) Failure to move should be reported to the Commander of the Household Division.
+(E) All guarding regiments are subject to their respective guarding policies and all individuals are expected to abide by them at all times.
+(i) Failure to abide by guarding regulations and policies – guard or bystander – could result in,ー
+        (I) Elimination,
+        (II) Regimental indoctrination,
+        (III) Legal prosecution.
+~
+________________
+
+
+
+
+Subpart III-A - ‘§003-A’
+
+
+Uniform Regulations
+
+
+(a) All uniform regulations shall be listed under this category. Uniforms range from formal attire to physical attire and standard attire. A more specific outline of the uniform regulations is found in Army Dress Regulations. ー 
+(1) General uniform policy and regulations.ー 
+(A) Custom Uniforms.ー 
+(i) All custom uniforms are required to be made by the Quartermasters Customs. 
+(ii) Individuals are prohibited from wearing custom uniforms not designed for them.ー 
+(I) Perpetrators are to be reported to the 1st Military Intelligence Battalion of the Intelligence Corps and Quartermasters Customs.
+(B) Jurisdiction.ー 
+(i) All Lieutenant General+ and superior officers have the authority to instruct someone to change their attire under reasonable circumstances. This includes,ー 
+(I) Quartermaster Customs and the Royal Military Police. 
+(ii) If one becomes defiant, the Royal Military Police may detain and arrest the perpetrator. 
+(C) Formal Attire.ー
+(i) Formal attire ranges from the provided No. 1’s to No. 14’s, in both Ceremonial and Non-Ceremonial formsー
+(I) The specifics of when a service member is permitted to wear formal attire can be found below.
+(ii) When wearing formal attire, you are required to wear a headdress.
+(D) Physical Attire.ー
+(i) Physical attire ranges from personalised physical uniforms and the provided physical training uniform. 
+(ii) NO accessories of any kind (unless approved by Quartermaster Customs) may be worn while in physical attire. This includes,ー
+        (I) T-Shirts,
+        (II) Unauthorised facewear,
+        (III) Unauthorised headwear,
+                (IV) Body attachments and packages.
+(E) Standard Attire.ー
+(i) Standard attire includes provided Multi-Terrain Patterns and winter coats during the wintertime, as well as authorised suits for authorised regiments.
+(ii) All personnel may wear standard attire.
+(iii) NO accessories of any kind (unless approved by Quartermaster Customs) may be worn while in standard attire. This includes,ー
+        (I) T-Shirts,
+        (II) Unauthorised facewear,
+        (III) Unauthorised headwear,
+                (IV) Body attachments and packages.
+(iv) British Army Personnel wearing authorised attires which don’t require a headwear may wear the following hair.ー 
+(iv-MSL-RPP)|BA| Manual of Service Law | Registered Personnel Guidelines
+(v) British Army Personnel are permitted to have facial hair as long as it is professional and a natural color.
+
+
+(F) Accessories.ー
+(i) British Army Personnel are prohibited from wearing any accessory unless it is specifically permitted by the Quartermaster Customs.
+(I) The approved accessories can only be worn in their original state (can’t be modified through tilting it etc. from the avatar customization). 
+(ii) A poppy may only be worn during the Remembrance Period. 
+(I) The remembrance period which the British Army will be observing will always be announced. 
+(iii) A Santa hat/Christmas hat may only be worn from the 21st of December to the 30th of December.
+(2) Military court dress.ー
+        (A) Legal representatives are required to wear No.2’s or barrister gowns during any given court trial.ー
+(i) They are only permitted to wear them at this time, not anywhere else in the academy unless attending an inspection, ceremony, etc.ー
+(I) They may wear a suit around the academy when they are not participating in a court trial.
+(B) Judge advocates and ‘jury’ members - including the registered bailiff - are required to wear robes during all court trials.ー
+        (i) They may wear suits around the academy at any given time.
+(C) The defendant is required to wear anything of professionalism during any given court trial.
+(D) Court spectators may wear anything they wish as long as it does not obstruct the operation of the trial and proceeding.
+(3) Badges, ribbons, and medals.ー
+(A) Proof of achievement is required for all awards.ー
+(i) An overview of what medals and their respective requirements can be located in the Quartermaster Customs Discord server.
+(B) Submitting false proof and wearing unauthorised decorations is considered both fraud and stolen valour.
+(C) Caught stealing assets from that of the Quartermaster Customs regiment will result in removal from your active position and a possible burn from that of the British Army.
+(4) Uniform variety and usage specifics.ー Within Quartermaster Customs, there are approximately twelve uniforms for consumer consumption. The list goes as follows,ー
+                (A) Full Dressー
+(i) Full dress may only be worn by the Household Division; howeverー
+(I) may also be worn, at unit or individual expense, by personnel from other regiments when authorised for specific duties.
+(ii) Full dress may be worn at the public expense by the Household Division and other units detailed for Public Duties.
+(B) Frock Coatー
+(i) Frock Coat may only be worn by those holding the rank of Major General or higher; howeverー
+(I) may also be worn as Undress by certain officers of the Household Division.
+(ii) Frock Coat is to be worn for formal occasions when not on parade in command of troops.
+                (C) No.1’s (Temperate Ceremonial Uniform).ー
+(i) No.1’s are able to be worn by all ranks in the British Army; however,ー
+(I) are only to be worn at ceremonial occasions as dictated by a Commanding Officer.
+(ii) Ceremonial No.1s are to be worn at the most ceremonial        occasions such as inspections or large British Army Parades.
+(iii) Non-Ceremonial No.1s are to be worn at less ceremonial occasions.
+(I) Commissioned Officers are permitted to wear Non-Ceremonial No.1s within the regimental team in which they serve as a high rank around the academy.
+                (D) No. 2’s (Service Dress).ー
+(i) No.2’s are able to be worn by all ranks in the British Army; however,ー
+(I) are only to be worn on parades as dictated by a
+Commanding Officer.
+(A) Legal representatives are required to wear Ceremonial No.2’s when partaking in a military court trial (unless they're wearing a barrister gown).
+(ii) Ceremonial No.2s are to be worn at more ceremonial occasions, including Practice Inspections, Basic Military Training Graduations and Royal Military Academy Sandhurst graduations.
+(iii) Non-Ceremonial No.2s are to be worn at less ceremonial occasions.
+(I) Commissioned Officers are permitted to wear Non-Ceremonial No.2s within the regimental team in which they serve as a high rank around the academy.
+                (E) No. 3’s (Warm Weather Ceremonial Uniform).ー
+(i) No.3’s are able to be worn by all ranks in the British Army; however,ー
+(I) are only to be worn at formal occasions during Summer time as dictated by a Commanding Officer.
+(ii) Ceremonial No.3s are to be worn at the most ceremonial
+occasions such as inspections or large British Army Parades.
+(iii) Non-Ceremonial No.3s are to be worn at less ceremonial
+occasions.
+        (I) Commissioned Officers are permitted to wear Non-Ceremonial No.3s within the regimental team in which they serve as a high rank around the academy.
+(F) No. 4’s (Warm Weather Service Dress).ー
+        (i) No.4’s are able to be worn by Commissioned Officers in the British Army; however,ー
+(I) are only to be worn on parades during Summer time as dictated by a Commanding Officer.
+(ii) Ceremonial No.4s are to be worn at more ceremonial occasions, including Practice Inspections, Basic Military Training Graduations and Royal Military Academy Sandhurst graduations.
+(iii) Non-Ceremonial No.4s are to be worn at less ceremonial occasions.
+(I) Commissioned Officers are permitted to wear Non-Ceremonial No.4s within the regimental team in which they serve as a high rank around the academy.
+                (G) No. 6’s (Warm Weather Parade Uniform).ー
+        (i) No.6’s are able to be worn by Enlisted Personnel in the British Army; however,ー
+(I) are only to be worn on parades during Summer time as dictated by a Commanding Officer.
+(ii) Ceremonial No.6s are to be worn at more ceremonial occasions, including Practice Inspections, Basic Military Training Graduations and Royal Military Academy Sandhurst graduations.
+(iii) Non-Ceremonial No.6s are to be worn at less ceremonial occasions.
+(H) No. 7’s (Warm Weather Barrack Dress).ー
+        (i) No.7’s are able to be worn by all ranks in the British Army; however,ー
+(I) are only to be worn during regimental events during Summer time as dictated by the Instructor.
+(iii) Non-Ceremonial No.7s are to be worn by British Army Personnel in the academy
+(I) No. 8’s (Temperate Combat Dress), otherwise known as the Multi-Terrain-Pattern-Standard.ー
+        (i) These uniforms may be worn strictly only on the Sandhurst Military Academy map and cannot be worn on the Parade Squares map. 
+(ii) These are used for training & off-duty usage. 
+(iii) All ranks can own and wear these; however,ー 
+(I) may be required to switch off into that Physical Training Uniform or formal uniform, depending on the situation.
+                (J) No. 10’s (Mess Dress).ー
+        (i) No.10’s are able to be worn by all ranks in the British Army; however,ー
+(I) are only to be worn during very formal occasions as dictated by a Commanding Officer.
+(ii) Ceremonial No.10s are to be worn at the most ceremonial occasions such as formal dinners, balls and award ceremonies.
+(K) No. 13’s (Temperate Barrack Dress).ー
+        (i) No.13’s are able to be worn by all ranks in the British Army during the winter period.
+(ii) Non-Ceremonial No.13s are to be worn by British Army Personnel within the academy.
+                (L) No. 14’s (Short Sleeve Order).ー
+(i) No.14’s are able to be worn by all ranks in the British Army; however,ー
+(I) are only to be worn during regimental events during Summer time as dictated by the Instructor.
+(iii) Non-Ceremonial No.14s are to be worn by British Army Personnel in the academy        
+(M) Uniform Regulation Exempts.ー
+        (i) Lieutenant General+ are exempt from uniform policies within Sandhurst Military Academy.
+(ii) The Intelligence Corps are exempt from Uniform policies within Sandhurst Military Academy.
+
+
+~
+________________
+
+
+
+
+
+
+Subpart III-B - ‘§003-B’
+
+
+Parade Deck Policy
+
+
+(a) Most academy operations, such as tryouts and regimental events, take place on the Parade Deck. With this, some specific regulations and policies must be followed to maintain a safe, productive environment for all service personnel.ー
+        (1) Spectating policy.ー
+(A) Regiments are only permitted to spectate their own regiment’s events from inside the designated locked pad.ー
+        (i) Spectators must have direct permission from the event host.
+(B) Intelligence Corps personnel are permitted to spectate any event on the Parade Deck without direct permission from the event host.ー
+(i) If the event host requests for the Intelligence Corps personnel to leave, they must leave void of argumentation.
+(I) This rule does not apply to personnel of the Intelligence Corps’ 2nd and 3rd Military Intelligence Battalions.
+(C) All spectating must be done inside the locked pad in an orderly manner.ー
+(i) Spectating outside of the locked pad is considered invalid and personnel doing so are subject to codex enforcement by the Royal Military Police.
+(D) Event spectators must be mature, professional, and respectful of the ongoing event as to not disrupt the efficiency of stated event.ー
+(i) Disorderly spectators and attendees are subject to dismissal by the host or codex enforcement by the Royal Military Police.
+        (2) Standard Parade Deck policy.ー
+(A) Vehicles - motorcycles, patrol automobiles, and aircraft - are strictly prohibited from entering and residing on the Parade Deck.ー
+(i) Perpetrators are subject to regimental indoctrination or legal prosecution.
+(B) All service persons are obligated to adhere to academy codex and discipline/criminal conduct offences whilst on the Parade Deck.ー
+(i) Perpetrators are subject to regimental indoctrination, incarceration, or legal prosecution.
+(C) Civilians without base clearance are to be incarcerated for trespassing.
+(D) Civilians are not permitted to excessively brandish weaponry in a threatening or aggressive manner. 
+(E) Service Personnel are strictly prohibited from raiding whilst on the British Army team.ー
+(i) Perpetrators are subject to regimental indoctrination, incarceration, legal prosecution, or temporary banishment from the academy.
+(3) Sunset Insurgency policy
+(A) The Sunset Insurgency is exempt from the Manual of Service Law and its regulations; however, it remains subject to internal disciplinary measures approved by Senior Headquarters.
+(i) However, any serving member of a regiment remains subject to the Manual of Service Law and its regulations; therefore, legal prosecution and regimental disciplinary measures may be imposed depending on the circumstances and the nature of the offence.
+(ii) All regulations within the Insurgency require approval from the respective overseer and Senior Headquarters to ensure alignment with the standards set out in the Manual of Service Law and British Army regulations.
+(iii) Insurgents remain subject to the Public Code of Offences, as enforced by PATROL and Moderation authorities.
+
+
+~
+________________
+
+
+Part IV - ‘§004’
+
+
+Individual Rights
+
+
+(a) All service personnel are guaranteed the rights outlined in this part. Rights may be restricted only where it is lawful, necessary, and is in the interest of protecting others.
+(1) Right to Life and Safety.ー
+(A) No service person shall be intentionally deprived of life save in the lawful execution of a duty or self-defence.
+(B) Reasonable measures are to be taken by the British Army to protect from unlawful harm.
+(C) The rules of engagement and self-defence must be clearly briefed to all service persons during military operations.
+(2) Right to Fair Trial.ー
+(A) Every service person accused of an MSL service offence shall be entitled to an impartial and fair hearing before the Service Justice System.
+(B) All accused service persons shall have the right to defence representation, to present evidence, and to cross-examine witnesses in accordance with the Rules of Procedure.
+(C) All legal proceedings shall be impartial, conducted without bias or favouritism.
+(3) Right to a Fair Defence.ー
+(A) No legal proceeding under the Service Justice System against a service person shall proceed until a charge sheet listing all the charges against them are submitted to the court.
+(B) No person shall be liable for a ‘Discipline’ service offence if a period of one-month has elapsed since the alleged service offence.
+(C) No person shall be liable for a ‘Criminal Conduct’ service offence if a period of three-months has elapsed since the alleged service offence.
+(D) Every service person charged with a service offence is to be tried before an impartial judge showing no prejudice on the case.
+(E) Every service person charged with a service offence must be granted sufficient time to prepare a defence after being charged.
+(F) Every service person charged with a service offence must be provided a reasonable time between being summoned to trial and its commencement.
+(G) Every service person charged with a service offence is entitled to a qualified defence.
+(H) Every service person charged with a service offence is entitled to a disclosure of all evidence relevant to their case prior to the case’s hearing.
+(I) Any service person held for interrogation for an MSL service offence investigation by the 1st Military Intelligence Battalion of the Intelligence Corps has a right to legal counsel during it.
+(i) The 1st Military Intelligence Battalion must remind the suspect of their right to legal counselling prior to the questioning.
+(4) Freedom of Expression.ー
+(A) All service persons may express opinions and discuss matters within the boundaries of discipline.
+(B) This freedom does not protect hate speech, incitement of insubordination, or disclosure of classified information without lawful consent.
+(C) Restrictions must be lawful, proportionate, and necessary for maintaining military and operational discipline.
+(5) Freedom of Religion and Belief.ー
+(A) All individuals may hold and practice religious or non-religious beliefs.
+(B) Such freedom includes doing private worship and making verbal expressions of belief.
+(6) Right to Silence.ー
+(A) No service person shall be compelled to self-incriminate.
+(B) The accused has the right to remain silent during questioning or legal proceedings.
+(C) Exercising silence must not be treated as evidence of guilt.
+(D) The Appeals Committee of the Military Court Service and the Intelligence Corps may only interrogate service personnel.
+(i) The Intelligence Corps reserves the right to formally request you to complete a task. You must follow their instructions; otherwise, you may face repercussions. 
+(I) Formal messages must include a signature and a format from the Intelligence Corps member. 
+(7) Right to Appeal.ー
+(A) Service Personnel have the right to appeal disciplinary or judicial outcomes to higher authority, including competent courts as described in MSL AL-33 (§005)(a).
+(B) Appeals must be dealt within the prescribed time limit, and reviewed impartially.
+(C) No service person shall be penalised for exercising the right of appeal.
+(8) Right to Privacy.ー
+(A) All service persons are entitled to privacy in personal communications, personal information and personal data.
+(B) Monitoring of communications may only occur where authorised by law, and necessary for disciplinary enforcement.
+(C) Personal data must be protected and shall not be disclosed without a lawful cause.
+(9) Freedom from Discrimination.ー
+(A) All service persons shall be treated equally, regardless of rank, regiment, origin, religion, or personal identity.
+(B) Discrimination, harassment, or abuse by reason of personal status is prohibited.
+(C) Equality does not stop lawful differences based on a member’s role, training, or rank.
+(10) Right to Petition and Complaints.ー
+(A) Any service person may submit petitions, complaints, or grievances to a superior authority.
+(B) Such petitions shall be reviewed fairly and without retaliation against the petitioner.
+(C) Complaints must be addressed within a reasonable timeframe.
+(11) Right to Association.ー
+(A) All service persons may join regiments, teams, or lawful associations within the British Army structure.
+(B) They may not form or join associations hostile to the British Army or its command (blacklisted groups).
+(C) Lawful association shall not be interfered with unless contrary to discipline.
+(12) Right to Rest and Relief.ー
+(A) All service persons are entitled to reasonable periods of leave and relief from duty, subject to operational demands.
+(B) No individual shall be subjected to continuous duty.
+(C) Commanding Officers must prioritize the welfare of service personnel.
+(13) Right to Self-Militia.ー
+(A) Service personnel may bear arms in accordance with their role and orders.
+(B) Force may only be used in self-defence, defence of others, or authorised missions.
+(C) Unlawful raids, excessive force, or acts outside of mission authorisation are prohibited.
+(14) Right to Information.ー
+(A) Service personnel shall be entitled to know the regulations, orders, and procedures governing their service.
+(B) They shall be informed of charges, punishments, or restrictions imposed upon them.
+(C) Access to legal manuals, British Army wide rules, and standing orders shall be disclosed to all.
+(15) Right to Dignity in Discipline.ー
+(A) Disciplinary actions shall be firm but fair, respecting the dignity of the service person.
+(B) Excessively harsh punishments, humiliation, or derogatory treatment is prohibited.
+(C) Corrective measures must be proportionate with service law.
+(16) Right to General Discharge.ー
+(A) Service personnel may resign or request discharge in accordance with established procedures within a regiment or team.
+(B) No individual shall be compelled to remain within a regiment or team.
+(C) Discharge decisions must be recorded and authorised by the respective Regimental High Command or Team Leadership.
+(17) Intellectual Property Rights.ー
+(A) Any British Army document owner is entitled to army-wide copyright protection and ownership.ー
+(i) No individual is permitted to copy, use regimental or personal documentation or assets under copyright protection without direct consent from the document-owner.
+(B) The dissemination of confidential or sensitive documents under intellectual property protection is prohibited.
+(18) Right to Judicial Review.ー
+(A) The right of higher courts to hear appeals from the lower courts may not be seized by any other authority, regiment or team.
+(B) The right of courts to declare actions of any authority, regiment or team may not be seized by any other authority, regiment or team.
+(19) Right to Judicial Independence.ー
+(A) No judge shall be penalized for any decisions they make later found to be in error except if such error arose from reckless disregard of Individual Rights.
+(B) Judges may only be appointed or removed by the Judge Advocate General.
+(C) All courts shall be free from any interference, and no authority or individual shall attempt to direct or influence the outcome of any case.
+~
+
+
+________________
+
+
+
+
+
+
+Part V - ‘§005’
+The Service Justice System
+
+
+(a) There are four different recognised court systems within the British Army’s service justice system (SJS),ー
+        (1) Summary Hearing (SH).ー
+(A) A Summary Hearing relates necessarily to service offences. 
+(B) Summary Hearings are generally done for minor disciplinary offences in the MSL. 
+(C) Summary Hearings are done following the investigation process, outlined in the Rules of Procedure. 
+(D) Should the SPA or the Court itself decide that a case is not worth the attention of the higher instance, they can send it back to the lower instance.
+(E) Summary Hearings must be done under the supervision of an active duty judge.
+(F) Summary Hearings are done entirely in Discord and do not need scheduling. They can be done in a group chat or a ticket channel. 
+(G) Summary Hearings done not in the presence of a judge are considered invalid. 
+(H) The general procedure for Summary Hearings consists of the Commanding Officer, under whom the accused is, requesting information, asking the accused questions and then ultimately deciding on an appropriate punishment or acquittal.
+(I) Once a Summary Hearing is complete, the Commanding Officer must submit a hearing report to the supervising judge, who is to then file it appropriately. 
+(J) The accused must be informed of the verdict and the applicable punishment after it has been reached. Reports must be submitted within a maximum of 24 hours after the conclusion of the hearing.
+(K) Summary hearings cannot punish their defendants with anything higher than a Regimental Blacklist (for those ranked between Recruit to Second Lieutenant), and a suspension (for those ranked from Lieutenant to Major). Service Personnel with the rank higher than Major cannot be tried with a summary hearing. 
+(L) Suspensions cannot exceed 2 weeks.
+(2) Summary Appeal Court (SAC).ー
+(A) The SAC is the lowest appellate body of the SJS. Its goal is to deal with appeals taken from the various summary hearings. 
+(B) Should a service person be unsatisfied with the punishment or verdict received from a summary hearing, they may appeal it to this court.
+(C) Summary appeals are also done in group chats with the responsible Commanding Officer (from the summary hearing) present. This time, however, a judge advocate will be hearing the case in full. 
+(D) It is the goal of the commanding officer to defend his decision, whilst the convicted pleads for an acquittal or leniency. 
+(E) Should the judge advocate not reach an appropriate decision within 24-48 hours of the appeal, the appellant can submit another appeal to the Court Martial.
+(F) Should the verdict of the judge advocate be made on illegal grounds; within a questionable bias, if a conflict of interest is present; if this document was violated or; the MSL was violated in any way, the appellant can appeal the summary hearing punishment to the Court Martial. 
+(G) Judges hearing summary appeals must file a detailed report.
+(H) The Summary Appeal Court can overturn the decision of a summary hearing completely. If the commanding officer is unsatisfied with this (so long as it is listed in the situations above), he may appeal the decision to the Court Martial. 
+(3) Court Martial (CM).ー
+(A) The Court Martial is the primary court of the SJS, responsible for hearing the majority of service violation allegations and adjudicating in favour of the law. 
+(B) Court Martial cases are done in-game so long as they are sufficiently scheduled prior. Discord trials are rare; however, they are still an option. 
+(C) Court Martial proceedings are initiated from the moment the Service Prosecuting Authority files a charge sheet with the respective court. 
+(D) It is the Vice Judge Advocate General’s responsibility to assign judges for all courts, including the Court Martial.
+(E) Once a judge is assigned to hear the case, he will be responsible for conducting the trial’s operations from pre-trial to post-trial. 
+(F) Judges are mandated to submit detailed reports from their cases, which the Judge Advocate General must approve.
+(G) Prosecutions are an exclusive courtesy of the Service Prosecuting Authority. All prosecutors are assigned appropriately by the Director of Service Prosecutions, who deals with and approves all prosecutions before they reach the Judiciary.
+(H) Once the defendant is added to the appropriate group chat or channel, he will be asked to either choose a barrister or have one assigned to him. 
+(I) In the case where the court has to choose a barrister, the selected barrister is bound by the so-called ‘Cab Rank rule’ wherein he is forbidden from declining the representation unless he poses a risk to proceedings either through bias, partiality or is generally unavailable to deal with the case. Violators will be charged with Obstruction accordingly. 
+(J) The accused shall not be permitted to transfer from, nor be discharged from, the regiment in which they are alleged to have committed the offence.
+(4) Court Martial Appeals Court (CMAC).ー
+(A) The CMAC (for short) is the final instance of the SJS. It deals with appeals from all courts, including summary hearings. 
+(B) Should a summary appeal not be dealt with appropriately by the lower courts, it can be taken by the CMAC to adjudicate. 
+(C) The CMAC’s verdict cannot be challenged. 
+(D) Appeals from the Court Martial can only be heard in the CMAC.
+(E) All CMAC cases have a panel of at least three judges assigned by the Judge Advocate General himself who must actively engage in the proceedings by observation and analysis.
+(F) One of the three judges will head the proceedings, like in the Court Martial. 
+(G) Reports of the CMAC must be approved by the JAG.
+(b) All MSL Service Offences fall into two main categories,ー
+(1) discipline offences.ー 
+(A) Discipline offences are minor service offences which must be dealt by a Summary Hearing or Court Martial.
+(B) Service Offences from MSL AL-33 (§006)(a)(1) till MSL AL-33 (§006)(a)(20) are classified as discipline offences.
+(C) Every person has the right to appeal a discipline offence’s sentence through either Summary Appeal Court if appealing a Summary Hearing punishment or, a Court Martial Appeal Court if appealing a sentence issued by Court Martial.
+(D) The 1st Military Intelligence Battalion investigates discipline offences who must forward them to the SPA.
+(2) criminal conduct offences.ー 
+(A) All criminal conduct offences are to be dealt with through a Court Martial only.ー
+(i) These offences must only be dealt by a Court Martial.
+(ii) Failure to proceed a case despite requirements being met will result in the prosecution of the 1MIB investigator responsible on the charges of,ー
+(I) Obstruction, MSL-AL33 (§004)(c)(Sec. 39)
+(II) Violation of Rights, MSL-AL33 (§004)(c)(Sec. 56)
+(B) Service Offences from MSL AL-33 (§006)(a)(20) till MSL AL-33 (§006)(a)(49) are classified as criminal conduct offences.
+(C) Every person has the right to appeal a criminal offence’s sentence by a Court Martial Appeal Court if the court gives permission to appeal after a formal request form has been submitted after within two weeks of the verdict and sentence issued.
+(D) If one is sentenced to a regimental blacklist and, hence, terminated from their active regiment, they are not permitted to be reinstated following their regimental blacklist deadline.
+(1) Judge Advocate General’s Office clarificationー 
+(A) The Judge Advocate General and the Vice Judge Advocate General are hereby authorized to conduct monthly inspections of MSL related documents within the service regiments to ensure continuous compliance with the Manual of Service Law.
+(B) Only documents subject to verification are those that fall within the scope of the Manual of Service Law, all other matters are outside the jurisdiction of the Judge Advocate General’s Office.
+ (C) These verifications must be approved by the Assistant Chief of the General Staff or above, as formal warrants will be issued monthly and must be signed by a member of Senior Headquarters.
+(D) The Judge Advocate General’s Office is the sole body within ReaperMah’s British Army responsible for reviewing all suggestions pertaining to the Manual of Service Law submitted by the British Army.
+(E) The Judge Advocate General’s Office works closely with the Judge Advocate General to ensure that all proposals are properly reviewed and processed.
+(F) The Senior Headquarters must approve all proposals submitted by the Judge Advocate General and therefore reserves the right to deny any proposals pertaining to the Manual of Service Law at its discretion.
+
+
+
+
+
+
+
+
+
+~
+________________
+Part VI - ‘§006’
+MSL Service Offences
+
+
+(a) Below are all the recognized MSL Service offences which must be tried through an appropriate legal proceeding under the Service Justice System as outlined in MSL AL-33 (§005). These offences are classified into Criminal Conduct and Discipline in accordance with MSL AL-33 (§005)(B).
+
+
+Sec.
+	Offence
+	Classification
+	Definition
+	1
+	Failing to apprehend desertees or absentees
+	Discipline
+	1. A desertee is defined as someone who has been found guilty of desertion, as defined in MSL AL-33 (§001-A)(a)(1).
+2. An absentee is defined as someone who has lacked to properly complete their assigned duties or overstayed their authorised leave.
+3. Failure to apprehend the above can result in the said offence.
+	2
+	Misconduct towards a superior officer
+	Discipline
+	1. A service person commits this offence if –
+(i) They utilise violence towards a superior officer, whether it be in Sandhurst or an official operation.
+(ii) Their behaviour or communication towards the superior officer is deemed threatening or disrespectful.
+	3
+	Disobedience to lawful commands
+	Discipline
+	1. A lawful command is defined as the following —
+(i) An official order provided by a superior commissioned officer, whether this be in written or verbal form. 
+(ii) This order can only be withdrawn by the officer who issued it or their superior, if said superior has a reasonable cause for the withdrawal.
+2. Disobedience to a lawful command is defined as the following —
+(i) Intentionally or recklessly disobeying or neglecting to act on a given order.
+        (I) This includes failure to follow an order within the set given time frame.
+	4
+	Laxity
+	Discipline
+	1. A service person commits this offence if they are:
+(i) Neglecting to carry out an assigned duty, whether it be in a given time frame or overall.
+(ii) Performing an assigned duty negligently.
+	5
+	Malingering
+	Discipline
+	1. A service person commits this offence if they purposefully lie about a condition or situation to avoid service.
+(i) This also includes anything done purposefully resulting in avoiding service.
+
+
+	6
+	Harassment
+	Discipline
+	1. A service person commits this offence if they use a form of communication or interaction behaviour resulting in an uncomfortable feeling of another.
+	
+
+7
+	Fighting or threatening behaviour
+	Discipline
+	1. A service person commits this offence if they are:
+(i) Fighting another without any lawful reason.
+(ii) Intentionally using threatening, abuse, provocative or insulting behaviour or communication with the intent to disturb another or a regiment.
+	8
+	Ill-treatment of subordinates
+	Discipline
+	1. A commissioned officer commits this offence if they:
+(i) Use humiliating, degrading or unnecessarily harsh behaviour towards a subordinate of them.
+(ii) Provide an uneven task load to their subordinates. 
+	9
+	Obstruction of a Peace Officer
+	Discipline
+	1. A Peace Officer is a member within the following regiments:
+(i) The Royal Military Police
+(ii) The Household Division, in certain circumstances.
+(iii) Any other regiment which has specific duties assigned to them, with the aim of preserving peace.
+2. Obstructing a peace officer can be described as a service person:
+(i) Deliberately blocking the pathway of a service policeman who intends to exercise their duty.
+(ii) Refusing to aid a service policeman, without lawful excuse.
+	10
+	Misconduct while in custody
+	Discipline
+	1. A service person commits this offence if they:
+(i) Use violence or threatening language against a person with lawful custody.
+(ii) Attempt to flee whilst in lawful custody.
+2. A person with lawful custody is defined as one of the following:
+(i) A member of the Royal Military Police
+(ii) A member of the British Army who has been granted custodial duties, in light of their main duties.
+(I) They shall have a valid license, which they should provide if deemed necessary.
+	11
+	Allowing escape, or unlawful release, of prisoners
+	Discipline
+	1. A prisoner is defined as the following:
+(i) An incarcerated member of the British Army, who has committed an offence that carries a jail sentence.
+(ii) Anyone that has committed an offence within military grounds, carries a jail sentence.
+(iii) An enemy of the United Kingdom, who has been arrested, whether or not it has been on suspicion, of committing a crime against the United Kingdom or international law.
+2. A service person commits this offence if:
+(i) They aid in the escape of a prisoner.
+(ii) They neglect to report an escape attempt.
+(iii) They release a prisoner, without lawful cause for doing so.
+	12
+	Vandalism of Military Equipment
+	Discipline
+	1. Military Equipment is all equipment that falls under the following:
+(i) Bought through the proper means by the military.
+(ii) Mandated for utilisation by the military.
+(iii) Commandeered by the military for military use.
+2. Service personnel commit this offence if they, intentionally or without lawful excuse: 
+(i) Recklessly damage the equipment, when it could have been avoided.
+(ii) Strand equipment.
+(iii) Cause the loss of military equipment.
+	
+
+13
+	Dangerous & reckless flying or utilisation of an aircraft
+	Discipline
+	1. Service personnel commit this offence if they, intentionally or without lawful excuse:
+(i) Recklessly do an act when flying.
+(ii) Neglect proper flying protocol.
+(iii) Harm another through their act whilst flying or in relation to an aircraft.
+(iv) Fly an aircraft without proper authorisation.
+	14
+	Murder
+	Discipline
+	1. Service personnel commit this offence if:
+(i) They end another’s life with malice aforethought.
+(I) This does not apply if it was an enemy combatant.
+(ii) They end another’s life based on a direct order, they should identify as unlawful.
+	15
+	Attempted Murder
+	Discipline
+	1. Service personnel commit this offence if:
+(i) They attempt to take someone’s life with malice aforethought and the attempt has failed.
+(I) This does not apply if it’s an enemy combatant.
+	16
+	Manslaughter
+	Discipline
+	1. Service personnel commit this offence if:
+(i) They end another person’s life without malice aforethought.
+(I) This does not apply if it is out of self-defence or if it is against an enemy combatant.
+	17
+	Abuse of Regimental Privileges
+	Discipline
+	1. Service personnel commit this offence if they:
+(i) Abuse privileges granted by their regimental position.
+(ii) Abuse privileges granted by being in a certain regiment.
+	18
+	Careless Driving
+	Discipline
+	1. Service personnel commit this offence if they: 
+(i) Commit a violation stated under MSL AL-33 (§003)(a)(4).
+(ii) Put others at risk of harm whilst driving.
+	19
+	Taking a Vehicle Without Consent
+	Discipline
+	1. Service personnel commit this offence if they:
+(i) Utilise a vehicle without direct consent of the owner or driver.
+(ii) Utilise a vehicle without a direct order to do so.
+	
+
+20
+	Disgraceful conduct of a cruel or indecent kind
+	Criminal
+Conduct
+	1. A person can be found guilty of this charge if:
+(i) they have exchanged sexual or sexually tinted communication;
+(ii) they have or are part of a sexual relationship, which has been facilitated due to British Army communication channels;
+(iii) they have engaged in misconduct or harassment of a sexual kind.
+	
+
+21
+	Conspiracy 2nd Degree
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Plot, plan or prepare to commit a disciplinary offence with intent of carrying it out.
+(ii) Know and, or neglect to report, personnel that are, or were, plotting to commit a disciplinary offence.
+	22
+	Assisting an enemy whilst participating in an operation
+	Criminal Conduct
+	1. A person subject to service law commits an offence if, without lawful excuse, he intentionally—
+(i) communicates with an enemy;
+(ii) gives an enemy information that would or might be useful to the enemy;
+(iii) fails to make known to the proper authorities any information received by him
+ from an enemy;
+(iv) provides an enemy with any supplies; or
+(v) harbours or protects an enemy other than a prisoner of war.
+	23
+	Misconduct on operations
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Surrender or abandon a position, equipment etc. to an enemy combatant without reasonable excuse.
+(ii) Fail to stay alert whilst on post during a military operation
+(iii) Purposefully neglecting an order whilst participating in a military operation.
+	24
+	Obstructing operations
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Put at risk, through intent or recklessness, the success of any military operation within a regiment.
+(ii) Put at risk, through intent or recklessness, a singular or multiple objections within a military operation.
+	25
+	Theft
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Take one’s property without their consent and with intent to deprive them of it.
+	26
+	Mutiny
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Attempt to overthrow or resist lawful authority.
+(ii) Disobey lawful authority in order to subvert discipline.
+(iii) Conspire to overthrow their superiors.
+	27
+	Failure to suppress mutiny
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Fail to prevent or suppress a mutiny one knows is occurring or is intended to occur.
+	28
+	Disclosing information useful to an enemy and committing treason
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Disclose information known, or believed to be, useful to an enemy of the British Army, without lawful authorisation.
+(ii) Disclose classified information towards an unauthorised member of the military or civilian.
+	29
+	Making false records
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Make a false official record.
+(ii) Tamper with or suppress an official document, with intent to deceive.
+(iii) Fail to make an official record, that one has the duty to make.
+	30
+	Unlawful Termination
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Wrongfully terminate a member of their regiment, whether or not it be with probable cause.
+(ii) Failed to properly investigate the grounds of the termination.
+	
+
+31
+	Major Admin Abuse
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Intentionally or recklessly misuse commands that cause serious harm or disruption.
+(ii) Commit anything classed as Major Admin Abuse in MSL AL-33 (§003)(a)(5).
+	32
+	Obstruction
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Intentionally & unlawfully interfere with a legal process.
+(ii) Attempt to or successfully tamper with evidence or witnesses.
+(iii) Attempt to coerce court officials.
+(iv) Withheld evidence from court officials.
+(v) Leaving the British Army or a regiment whilst undergoing an investigation or legal process.
+	33
+	Bribery
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Offer, give, receive or solicit any item of value to influence the actions of a personnel.
+	34
+	Espionage
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Spy or utilise spies to harm their regiment’s duty or any military operation.
+	35
+	Extortion and Blackmail
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Obtain a benefit through coercion.
+(ii) Threaten to reveal or publicise information, whether or not partially, unless certain demands are met.
+(I) This information does not have to be truthful.
+	36
+	Defamation
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) State a false statement about another that unjustly harms their reputation.
+(ii) Repeat a statement about another, with knowledge of it being false.
+	37
+	Impersonation
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Pretend to be another person in order to obtain something in a military operation.
+	38
+	Entrapment
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Deceive someone into committing any crime or MSL service offence they did not have the intent to commit.
+	39
+	Violation of Rights
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Deny or deprive anyone from any right stated in MSL AL-33 (§004), whether it be intentional or accidental.
+(ii) Fail to ensure all rights in MSL AL-33 (§004) are respected, by their subordinates or themselves. 
+This does not adhere to moderation offences outlined in the PATROL Code of Offences.
+(i) If you believe to be unlawfully moderated you should file a report through the Chain of Command through Patrol & Moderation team.
+(ii) If you believe to be unlawfully banished you should file a Ban Investigation Request, through the Appeals Committee under the Military Court Service.
+	
+
+40
+	Fraudulent Misrepresentation
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Intentionally misuse authority and/or power of another individual for their own gain.
+(I) This authority can be based on one of the following:
+(I-A) A military rank within the British Army.
+(I-B) A member of a regiment that has been granted certain authority.
+(I-C) A member within the British Army who has held a position of authority in the past.
+(ii) Intentionally speak on behalf of, and/or using the authority of another individual where the information being spoken of is invalid or deemed to be false.
+	41
+	Threatening Admin Abuse
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Threaten the usage of administrative commands to intentionally inflict harm on the British Army and/or its personnel or to violate the administrative command policy.
+	42
+	Perjury
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Intentionally provide a false statement whilst under oath to tell the truth in court.
+	43
+	Perverting the Course of Justice
+	Criminal Conduct
+	1. Commissioned officers commit this offence if they:
+(i) Intentionally, recklessly or negligently improperly punish a subordinate for a service offence outlined in MSL AL-33 (§006)(a).
+(I) Improperly punishing is one of the following:
+(I-A) The punishment is not in accordance with the severity of the crime written in the sentencing guide provided.
+(I-B) The punishment is not in accordance with the MSL.
+	44
+	Criminal Negligence
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Negligently conduct or behave in a manner, which results in a separate crime to be committed.
+	45
+	Conspiracy of the 1st Degree
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Plot, plan, prepare to commit a criminal offence, with the intention of carrying it out.
+	46
+	Corruption
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Misuse regimental privileges or misuse their rank given for personal gain.
+(ii) Exploit their authority for personal gain.
+	47
+	Leaking
+	Criminal Conduct
+	1. Service personnel commit this offence if they:
+(i) Disclose without proper authority, any information, document, or material belonging to or concerning the regiment/team, its personnel, or its operations, whether such disclosure is done orally, in writing, or through digital means.
+	
+
+
+
+~
+
+
+________________
+
+
+
+
+Signed & Written By,
+Former Major General,
+Former Judge Advocate General,
+red_green1 
+f.ateh | 731133036883869808
+
+
+
+
+
+
+Major General,
+Judge Advocate General,
+whosl1ukas
+.whos.l1ukas. | 1253780924399620211
+
+
+
+
+
+
+Signed & Approved By,
+Former Chief of the General Staff,
+British Army Headquarters,
+hayley1978
+hayley_04 | 626501386921574400
+
+
+
+
+
+
+
+
+
+
+Last Updated: March 28th, 2026.
+Property of ReaperMah’s British Army, 2026.
+
+
+[END OF LAWBOOK]  
+________________
