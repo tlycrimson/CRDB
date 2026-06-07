@@ -120,7 +120,7 @@ def build_change_log(prefix, page):
                 embed.description=april_updates
                 embed.add_field(name="New Commands", value=april_new_commands,inline=False)
 
-        embed.add_field(name="Acknowledgements", value=acknowledgements, inline=False)
+        embed.add_field(name="Acknowledgements & Transparency", value=acknowledgements, inline=False)
         embed.set_footer(text=footer)
 
         return [top_embed, embed]
