@@ -474,7 +474,7 @@ class DatabaseHandler:
         color = discord.Color.green()
         title = "User Archived"
         icon_url = Config.ARCHIVE_ICON
-        description = f"**{username}** has been successfully removed from the database and archived and can be retrieved within a thirty-day period."
+        description = f"**{username}** has been successfully removed from the database and archived; they can be retrieved within a thirty-day period."
         success = False
 
         try:
