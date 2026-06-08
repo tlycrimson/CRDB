@@ -361,9 +361,10 @@ class MessageLoggerCog(commands.Cog):
             logger.error("Failed to check sc request: %s", e)
             try:
                 if sc_request:
-                    embed = sc_request.embeds[0].set_footer(text="Could not fetch data.")
-                    await sc_request.edit(embed=embed)
-            except:
+                    panel_embed.set_footer(text="Could not fetch data.")
+                    await sc_request.edit(embed=panel_embed)
+            except Exception as inner_e:
+                logger.error(f"Failed to update panel embed after error:{inner_e}")
                 pass
 
 
