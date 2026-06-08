@@ -577,11 +577,11 @@ class RequestView(discord.ui.View):
  
     async def interaction_check(self, interaction: discord.Interaction) -> bool:    
         if self._processing:
-            await interaction.response.send_message("```⛔ You cannot respond to this. Try again in 2 minutes.```", ephemeral=True)
+            await interaction.response.send_message("```⛔ You cannot interact with this. Try again in 2 minutes.```", ephemeral=True)
             return False
 
         if not (await has_role(self.checker_type, interaction, self.interaction_user)):
-            await interaction.response.send_message("```⛔ You cannot respond to this.```", ephemeral=True)
+            await interaction.response.send_message("```⛔ You cannot interact with this.```", ephemeral=True)
             return False
 
         return True
