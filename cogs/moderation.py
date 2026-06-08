@@ -5,9 +5,9 @@ from config import Config
 from typing import Optional, Literal
 from utils.decorators import  has_modular_permission 
 from discord.ext import commands
-from discord import app_commands
+from discord import Color, app_commands
 from utils.helpers import clean_nickname, MockPayload
-from utils.views import ConfirmView
+from utils.views import ConfirmView, PageButtonView
 
 logger = logging.getLogger(__name__)
 
@@ -469,10 +469,64 @@ class ModerationCog(commands.Cog):
     @app_commands.describe(roblox_user="The user you want to manage (id/username)", case_link="The link to the record you want to add/remove (leave blank just to view their criminal record)")
     @app_commands.checks.cooldown(1, 5.0)
     @has_modular_permission("moderation")
-    async def remove_case_log(self, ctx: commands.Context, roblox_user: str, case_link: Optional[str] = None):
+    async def remove_case_log(self, ctx: commands.Context, roblox_user: Optional[str] = None, case_link: Optional[str] = None):
 
         if ctx.interaction:
             await ctx.interaction.response.defer(ephemeral=False)
+
+        if (not roblox_user and not case_link):
+            records = await self.bot.db.get_all_criminal_records()
+            
+            if not records: 
+                await ctx.send("```❌ No recent criminal records found.```")
+                return
+
+            criminal_records = {}
+            for criminal in records:
+                username = criminal['username']
+                record = criminal['record']
+                
+                if username not in criminal_records:
+                    criminal_records[username] = []
+
+                count = len(criminal_records[username]) + 1
+                criminal_records[username].append(f"- [Record {count}]({record})")
+            
+            cr_embed = discord.Embed(
+                    color=discord.Color.dark_red(),
+            ).set_author(name="Criminal Records", icon_url=Config.CUFFS_ICON)
+            
+            pages = []
+            criminal_list = "All criminal records logged in the past 2 days. Use this command with the 'roblox_user' and 'case_link' argument to add/remove a case.\n\n"
+
+            for username, record in criminal_records.items():
+                criminal_str = (
+                        f"__**{username}**__\n"
+                        f"{'\n'.join(record)}"
+                        f"\n\n"
+                )
+            
+                if (len(criminal_list) + len(criminal_str)>4000):
+                    pages.append(criminal_list)
+                    criminal_list = criminal_str
+                else:
+                    criminal_list += criminal_str
+
+            pages.append(criminal_list) 
+
+            view = None
+            if len(pages)>1:
+                view = PageButtonView(
+                        user=ctx.author,
+                        current_page=0,
+                        total_pages=len(pages),
+                        data = pages
+                )
+
+            cr_embed.description = pages[0]
+
+            await ctx.send(embed=cr_embed, view=view)
+            return
 
         ctx.author = ctx.author
         cleaned_name = clean_nickname(ctx.author.display_name)

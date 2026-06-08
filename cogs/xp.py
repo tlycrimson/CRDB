@@ -344,7 +344,7 @@ class XPCog(commands.Cog):
                 view = None
 
                 if total_pages>1:
-                    embed.set_footer(text=f"page 0/{total_pages-1}")
+                    embed.set_footer(text=f"page 1/{total_pages}")
                     view = PageButtonView(ctx.author, 0, total_pages, leaderboard_pages)
                 
                 await ctx.send(embed=embed, view=view)

@@ -52,14 +52,16 @@ def build_change_log(prefix, page):
         
         june_updates = (
                         "- Minor bug fixes.\n"
-                        "- New command called msl that uses AI to answer questions based on the MSL.\n"
-                        "- Moved from Roblox's decpreacted batch fetch api to their Open Cloud.\n"
-                        "- Added badge graph history command (!gbh).\n"
+                        "- New command called 'msl' that uses AI to answer questions based on the MSL.\n"
+                        "- Moved from Roblox's deprecated batch fetch API to their Open Cloud.\n"
+                        "- Added a badge graph history command that allows you to view a user's badge progression (!gbh).\n"
                         "- Updated logging embeds: The title is now a hyperlink that directs you to the original message instead of its own field. Additionally, the footer will display the Original Message ID (OMID) for some entries. The database logger embed will be sent in the same message with other subsequent embeds caused by the logger's reaction. This is still under experimentation and may be subject to future changes.\n"
-                        "- Co-Hosts if any are now included in logging.\n"
+                        "- Co-Hosts if any, are now included in logging.\n"
                         "- If an error occurs in logging all operational changes (e.g. giving points) are rolled back.\n"
-                        "- Blacklist command now has a desertion field to allow high command to bypass permission request for blacklisting deserters.\n"
-                        "- Security Check information now includes the user's badge history (may be removed later on to improve speed).\n"
+                        "- The blacklist command now has a desertion field to allow high command to bypass permission requests for blacklisting deserters.\n"
+                        "- Security check information now includes the user's badge history (may be removed later on to improve speed).\n"
+                        "- The manage Case Logs command can now be executed with no arguments to show all criminal records.\n"
+                        "- Sergeant Majors events-attended column gets updated when their event gets logged instead of being treated as a HR.\n"
         )
         june_new_commands = (
                         "- /get-badge-history (!gbh)\n"

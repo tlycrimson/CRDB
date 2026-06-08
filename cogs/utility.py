@@ -107,6 +107,9 @@ class UtilityCog(commands.Cog):
         prefix = self.bot.command_prefix
         page = page_mapping.get(category)
         embed = embedBuilder.build_commands_page(page, prefix)
+        footer = embed.footer.text
+        embed.set_footer(text=f"{footer if footer else ''}\n page 1/6")
+
         view = PageButtonView(ctx.author, page, 6)
         view.message = await ctx.send(embed=embed, view=view)
         
@@ -172,6 +175,8 @@ class UtilityCog(commands.Cog):
     async def change_logs(self, ctx: commands.Context):
         view = PageButtonView(ctx.author, 0, 2,change_logs=True)
         embeds = embedBuilder.build_change_log(self.bot.command_prefix, page=0)
+        footer = embeds[-1].footer.text
+        embeds[-1].set_footer(text=f"{footer if footer else ''}\n page 1/2")
         await ctx.send(embeds=embeds, view=view, ephemeral=True)
 
     @commands.hybrid_command(
@@ -186,7 +191,7 @@ class UtilityCog(commands.Cog):
         lr_users = self.bot.db._lrs_cache
 
         member_count = len(all_users)
-        hr_count = len(hr_users) - 3 #Bc of SMs
+        hr_count = max(len(hr_users) - 3, 0) #Bc of SMs
         lr_count = len(lr_users)
         
         pm = ""

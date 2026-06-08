@@ -74,16 +74,18 @@ class PageButtonView(discord.ui.View):
         if self.data:
             embed = interaction.message.embeds[0]
             embed.description = self.data[self.current_page]
+            embeds = [embed] 
         elif self.cl:
-            embed = embedBuilder.build_change_log(prefix, self.current_page) #returns 2
+            embeds = embedBuilder.build_change_log(prefix, self.current_page) #returns 2
         else:
-            embed = embedBuilder.build_commands_page(self.current_page, prefix)
+            embeds = [embedBuilder.build_commands_page(self.current_page, prefix)]
         
-        embed.set_footer(text=f"page {self.current_page}/{self.total_pages-1}")
-
+        footer = embeds[-1].footer.text 
+        embeds[-1].set_footer(text=f"{footer if footer else ''}\npage {self.current_page+1}/{self.total_pages}")
+            
         successful = False
         try:
-            await interaction.message.edit(embeds=[embed])
+            await interaction.message.edit(embeds=embeds)
             successful = True
         except Exception as e:
             logger.error(e)

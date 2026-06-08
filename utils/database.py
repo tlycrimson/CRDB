@@ -666,7 +666,28 @@ class DatabaseHandler:
         except Exception as e:
             logger.exception("get_user_roles failed for %s: %s", user_id, e)
             return []
-    
+
+    async def get_all_criminal_records(self):
+        if not self.supabase:
+            return None
+        
+        try:
+            res = (
+                    await self.supabase
+                    .table(self.crs_table)
+                    .select("*")
+                    .execute()
+            )
+
+            if res and not res.data:
+                return None
+            
+            return res.data
+        except Exception as e:
+            logger.exception(f"Failed to fetch all criminal  records: {e}")
+            return None
+
+
     async def get_criminal_record(self, user_id: str|None=None, username: str|None=None):
         if not self.supabase:
             return None
@@ -692,7 +713,7 @@ class DatabaseHandler:
             return res.data 
             
         except Exception as e:
-            logger.exception("Failed to fetch records: %s", e)
+            logger.exception(f"Failed to fetch records: {e}")
             return None
 
 

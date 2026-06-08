@@ -258,7 +258,7 @@ async def on_command_error(ctx: commands.Context, error: commands.CommandError):
             )
 
             if isinstance(error, commands.BadLiteralArgument):
-                options = ", ".join(f"`{l}`" for l in error.literals)
+                options = ", ".join(f"'{l}'" for l in error.literals)
                 error_msg += f"**Valid Choices:**\n```{options}```"
             
             await ctx.send(error_msg, ephemeral=True)
