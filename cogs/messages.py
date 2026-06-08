@@ -416,6 +416,7 @@ class MessageLoggerCog(commands.Cog):
         if not match:
             has_format = any(re.search(p, content, re.IGNORECASE) for p in [
                 r'Course Selected:',
+                r'Requirement Proof:',
                 r'Ping:',
             ])
 

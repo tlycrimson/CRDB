@@ -25,6 +25,7 @@ def build_regiment_info(data: dict):
                         
         info_embed.add_field(name="OVERSIGHT", value=f"───────────────────", inline=False)
         info_embed.add_field(name="Overseer:", value="dominqsss")
+        info_embed.add_field(name="Temp Overseer:", value="dxstrii")
         info_embed.add_field(name="Provost Marshal:", value=data["pm"])
 
 
@@ -63,6 +64,7 @@ def build_change_log(prefix, page):
                         "- A preview of a halt message is provided before sending for background checkers.\n"
                         "- The manage Case Logs command can now be executed with no arguments to show all criminal records.\n"
                         "- Sergeant Majors events-attended column gets updated when their event gets logged instead of being treated as a HR.\n"
+                        "- Added Temp Overseer field to RMP info embed (!info).\n"
         )
         june_new_commands = (
                         "- /get-badge-history (!gbh)\n"
@@ -261,7 +263,7 @@ def build_commands_page(page: int, prefix):
 
         return embed
 
-def build_request_respsone(accepted: bool, username: str, check_type:int, halted: bool | None = None, reason: str | None = None):
+def build_request_respsone(accepted: bool, username: str, check_type:int, halted: bool | None = None, reason: str | None = None, course: str | None = None):
         if halted:
                 color = discord.Color.orange()
                 title = "HALTED"
@@ -288,9 +290,9 @@ def build_request_respsone(accepted: bool, username: str, check_type:int, halted
         
         status_msg = f"{accepted_msg if accepted else denied_msg}"
         if check_type == Config.LA_ROLE_ID:
-                status_msg = f"Your induction request has been {'accepted.' if accepted else 'denied'}"
-                if reason:
-                        status_msg += f" for the following:\n- {reason}"
+                course_msg = f", {course}," if course else ""
+                status = 'accepted.' if accepted else f'denied for the following:\n- {reason if reason else "No reason provided."}'
+                status_msg = f"Your induction request for your selected course{course_msg} has been {status}"
        
         embed = discord.Embed(
                         description=status_msg,

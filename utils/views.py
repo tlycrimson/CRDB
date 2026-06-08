@@ -585,13 +585,36 @@ class RequestView(discord.ui.View):
             return False
 
         return True
+    
+    def get_course(self):
+        course_match = re.search(r'Course(?:\s+Selected)?:\s*(\w+)', self.original_msg.content, re.IGNORECASE)
+        if not course_match:
+            return
+
+        course = course_match.group(1)
+
+        courses = {
+                'handcuff': "HandCuffs",
+                'handcuffs': "HandCuffs",
+                'cuff': "HandCuffs",
+                'cuffs': "HandCuffs",
+                'taser': "Taser",
+                'tasers': "Taser",
+                'tazer': "Taser",
+                'tazers': "Taser"
+        }
+
+        return courses.get(course.lower(), None)
+
 
     @discord.ui.button(label="Accept", style=discord.ButtonStyle.green, custom_id="accept_req")
     async def approve_sc(self, interaction: discord.Interaction, button: discord.ui.Button):
         self._processing = True
         await interaction.response.defer(ephemeral=True)
         try: 
-            embed = embedBuilder.build_request_respsone(True, interaction.user.display_name, self.checker_type)
+            course = self.get_course()
+            
+            embed = embedBuilder.build_request_respsone(True, interaction.user.display_name, self.checker_type, course=course)
            
             await delete_pending_checks(self.bot, interaction.message.id)
 
@@ -638,8 +661,9 @@ class RequestView(discord.ui.View):
                 return
         else:
             await interaction.response.defer(ephemeral=True)
-
-        embed = embedBuilder.build_request_respsone(False, interaction.user.display_name, self.checker_type, False, reason)
+        
+        course = self.get_course()
+        embed = embedBuilder.build_request_respsone(False, interaction.user.display_name, self.checker_type, False, reason, course)
         await delete_pending_checks(self.bot, interaction.message.id)
 
         await interaction.message.delete()
