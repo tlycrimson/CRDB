@@ -395,15 +395,11 @@ class ReactionLoggerCog(commands.Cog):
             
             db_embed = embedBuilder.build_db_logger_record(member, message, Config.POINTS_PER_ACTIVITY, payload.emoji)
             log_embed = embedBuilder.build_event_log(member, message, host_member, co_host_names, event_name, "\n".join(successful_attendees))
+            xp_log = embedBuilder.build_xp_log(member, [f"{cleaned_host_name} | {host_member.id}: {new_total-1} ↠ {new_total}"], 1, f"[Hosting]({message.jump_url})", message.id)
             
-            # SEND ALWAYS RETURNS A SINGLE MESSAGE OBJECT EVEN FOR MULTIPLE EMBEDS
-            msg = await self.log_channel.send(embeds=[db_embed, log_embed])
+            msg = await self.log_channel.send(embeds=[db_embed, log_embed, xp_log])
             tx.track_message(msg)
             
-            await asyncio.sleep(0.3)
-            admin_cog = self.bot.get_cog("XPCog")
-            if admin_cog:
-                await admin_cog.log_xp_to_discord(member, [f"{cleaned_host_name} | {host_member.id}: {new_total-1} ↠ {new_total}"], 1, f"[Hosting]({message.jump_url})", message.id)
             return True
         except Exception as e:
             await tx.rollback()
@@ -438,6 +434,8 @@ class ReactionLoggerCog(commands.Cog):
             host_member = guild.get_member(user_id) or await guild.fetch_member(user_id)
 
             await tx.update_hr(host_member, {column_to_update: 1})
+            await tx.update_hr(member, {"courses": Config.POINTS_PER_ACTIVITY})
+            _, new_total = await tx.add_xp(str(host_member.id), host_member.display_name, 1)
 
             display_mapping = {
                 self.phase_log_channel_id: "Phase",
@@ -449,10 +447,11 @@ class ReactionLoggerCog(commands.Cog):
             title = display_mapping.get(payload.channel_id)
             log_embed = embedBuilder.build_event_log(member, message, host_member, event_type=title)
 
-            await tx.update_hr(member, {"courses": Config.POINTS_PER_ACTIVITY})
-            db_embed = embedBuilder.build_db_logger_record(member, message, Config.POINTS_PER_ACTIVITY, payload.emoji)
 
-            msg = await self.log_channel.send(embeds=[db_embed, log_embed])
+            db_embed = embedBuilder.build_db_logger_record(member, message, Config.POINTS_PER_ACTIVITY, payload.emoji)
+            xp_log = embedBuilder.build_xp_log(member, [f"{clean_nickname(host_member.display_name)} | {host_member.id}: {new_total-1} ↠ {new_total}"], 1, f"[Hosting]({message.jump_url})", message.id)
+
+            msg = await self.log_channel.send(embeds=[db_embed, log_embed, xp_log])
             tx.track_message(msg)
             
             return True

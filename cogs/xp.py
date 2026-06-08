@@ -35,29 +35,10 @@ class XPCog(commands.Cog):
             logger.error("Default Logging channel not found!")
             return False
         
-        embed = discord.Embed(
-            color=discord.Color.green() if xp_change > 0 else discord.Color.red(),
-            timestamp=datetime.now(timezone.utc)
-        )
-
-        embed.set_author(
-                name="XP Log",
-                icon_url=Config.STAR_ICON
-        )
-
-        embed.add_field(name="Staff:", value=f"{clean_nickname(admin.display_name)}", inline=True)
-        embed.add_field(name=f"{'Added:' if xp_change>0 else 'Removed:'}", value=f"{abs(xp_change)}", inline=True)
-        embed.add_field(name="Reason:", value=f"{reason}", inline=True)
-        
-        embed.add_field(
-                name=f"User{'s' if len(users)>1 else ''}:", 
-                value=(f"```{"\n".join(users)}```"),
-                inline=False
-        )
-        embed.set_footer(text=f"Staff ID: {admin.id} • Trigger ID: {message_id}")
+        xp_log = embedBuilder.build_xp_log(admin, users, xp_change, reason, message_id)
         
         try:
-            await log_channel.send(embed=embed)
+            await log_channel.send(embed=xp_log)
             return True
         except Exception as e:
             logger.error(f"Failed to log XP to Discord: {str(e)}")

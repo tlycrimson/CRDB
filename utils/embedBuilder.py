@@ -3,6 +3,37 @@ from config import Config
 from utils.helpers import clean_nickname, get_tier_info, make_progress_bar
 from datetime import datetime, timezone 
 
+def build_xp_log(        
+        admin: discord.User | discord.Member,
+        users: list[str],
+        xp_change: int,
+        reason: str,
+        message_id: int
+):
+        xp_log = discord.Embed(
+            color=discord.Color.green() if xp_change > 0 else discord.Color.red(),
+            timestamp=datetime.now(timezone.utc)
+        )
+
+        xp_log.set_author(
+                name="XP Log",
+                icon_url=Config.STAR_ICON
+        )
+
+        xp_log.add_field(name="Staff:", value=f"{clean_nickname(admin.display_name)}", inline=True)
+        xp_log.add_field(name=f"{'Added:' if xp_change>0 else 'Removed:'}", value=f"{abs(xp_change)}", inline=True)
+        xp_log.add_field(name="Reason:", value=f"{reason}", inline=True)
+        
+        xp_log.add_field(
+                name=f"User{'s' if len(users)>1 else ''}:", 
+                value=(f"```{"\n".join(users)}```"),
+                inline=False
+        )
+
+        xp_log.set_footer(text=f"Staff ID: {admin.id} • Trigger ID: {message_id}")
+
+        return xp_log
+
 
 def build_comply_notif(msg: str, update_type):
 
@@ -57,6 +88,7 @@ def build_change_log(prefix, page):
                         "- Moved from Roblox's deprecated batch fetch API to their Open Cloud.\n"
                         "- Added a badge graph history command that allows you to view a user's badge progression (!gbh).\n"
                         "- Updated logging embeds: The title is now a hyperlink that directs you to the original message instead of its own field. Additionally, the footer will display the Original Message ID (OMID) for some entries. The database logger embed will be sent in the same message with other subsequent embeds caused by the logger's reaction. This is still under experimentation and may be subject to future changes.\n"
+                        "- Hosts now get 1 xp when their event gets logged. XP logs that show this may not occur in the future, as this will be assumed instead.\n"
                         "- Co-Hosts if any, are now included in logging.\n"
                         "- If an error occurs in logging all operational changes (e.g. giving points) are rolled back.\n"
                         "- The blacklist command now has a desertion field to allow high command to bypass permission requests for blacklisting deserters.\n"
@@ -64,7 +96,7 @@ def build_change_log(prefix, page):
                         "- A preview of a halt message is provided before sending for background checkers.\n"
                         "- The manage Case Logs command can now be executed with no arguments to show all criminal records.\n"
                         "- Sergeant Majors events-attended column gets updated when their event gets logged instead of being treated as a HR.\n"
-                        "- Added Temp Overseer field to RMP info embed (!info).\n"
+                        "- Added Temp Overseer field to RMP info embed for the general race (!info).\n"
         )
         june_new_commands = (
                         "- /get-badge-history (!gbh)\n"
