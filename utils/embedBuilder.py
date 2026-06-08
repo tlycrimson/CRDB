@@ -60,6 +60,7 @@ def build_change_log(prefix, page):
                         "- If an error occurs in logging all operational changes (e.g. giving points) are rolled back.\n"
                         "- The blacklist command now has a desertion field to allow high command to bypass permission requests for blacklisting deserters.\n"
                         "- Security check information now includes the user's badge history (may be removed later on to improve speed).\n"
+                        "- A preview of a halt message is provided before sending for background checkers.\n"
                         "- The manage Case Logs command can now be executed with no arguments to show all criminal records.\n"
                         "- Sergeant Majors events-attended column gets updated when their event gets logged instead of being treated as a HR.\n"
         )
