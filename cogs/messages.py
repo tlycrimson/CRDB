@@ -128,7 +128,7 @@ class MessageLoggerCog(commands.Cog):
 
         try:
             if log_channel:
-                await log_channel.send(embed=cl_embeds)
+                await log_channel.send(embeds=cl_embeds)
         except Exception:
             pass
 
