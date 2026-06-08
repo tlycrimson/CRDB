@@ -80,8 +80,14 @@ class PageButtonView(discord.ui.View):
         else:
             embeds = [embedBuilder.build_commands_page(self.current_page, prefix)]
         
-        footer = embeds[-1].footer.text 
-        embeds[-1].set_footer(text=f"{footer if footer else ''}\npage {self.current_page+1}/{self.total_pages}")
+        footer = embeds[-1].footer.text  or ""
+        page_str = f"page {self.current_page+1}/{self.total_pages}"
+        new_footer = re.sub(r'page \d+/\d+', page_str, footer)
+
+        if new_footer == footer:
+            new_footer = f"{footer}\n{page_str}".strip()
+        
+        embeds[-1].set_footer(text=new_footer)
             
         successful = False
         try:

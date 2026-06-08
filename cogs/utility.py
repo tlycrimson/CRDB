@@ -176,7 +176,7 @@ class UtilityCog(commands.Cog):
         view = PageButtonView(ctx.author, 0, 2,change_logs=True)
         embeds = embedBuilder.build_change_log(self.bot.command_prefix, page=0)
         footer = embeds[-1].footer.text
-        embeds[-1].set_footer(text=f"{footer if footer else ''}\n page 1/2")
+        embeds[-1].set_footer(text=f"{footer if footer else ''}\npage 1/2")
         await ctx.send(embeds=embeds, view=view, ephemeral=True)
 
     @commands.hybrid_command(
