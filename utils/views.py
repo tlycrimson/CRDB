@@ -63,7 +63,7 @@ class PageButtonView(discord.ui.View):
     async def interaction_check(self, interaction: discord.Interaction) -> bool:
         if interaction.user.id != self.user.id:
             await interaction.response.send_message(
-                "```⛔ You cannot respond to this confirmation.```",
+                "```⛔ You cannot interact with this.```",
                 ephemeral=True
             )
             return False
