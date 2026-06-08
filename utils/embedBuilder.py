@@ -46,7 +46,7 @@ def build_regiment_info(data: dict):
         return info_embed
 
 def build_change_log(prefix, page):
-        title = "MP Assistant v1.3.1 Change Logs"
+        title = "MP Assistant v1.4 Change Logs"
         description = "Below features the recent changes made to the bot. If you wish to make a suggestion to improve the bot, use the suggest command. As well, if you spot a mistake or an error, use the report command.\n\n"
         footer = "Last Updated: June 2026"
         
