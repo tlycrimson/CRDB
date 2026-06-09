@@ -78,7 +78,7 @@ def build_regiment_info(data: dict):
         return info_embed
 
 def build_change_log(prefix, page):
-        title = "MP Assistant v1.4 Change Logs"
+        title = "MP Assistant v1.4.1 Change Logs"
         description = "Below features the recent changes made to the bot. If you wish to make a suggestion to improve the bot, use the suggest command. As well, if you spot a mistake or an error, use the report command.\n\n"
         footer = "Last Updated: June 2026"
         
@@ -97,6 +97,9 @@ def build_change_log(prefix, page):
                         "- The manage Case Logs command can now be executed with no arguments to show all criminal records.\n"
                         "- Sergeant Majors events-attended column gets updated when their event gets logged instead of being treated as a HR.\n"
                         "- Added Temp Overseer field to RMP info embed for the general race (!info).\n"
+                        "- (4.1) Improved AI Handler for msl command.\n"
+                        "- (4.1) Fixed minor quirks during logging.\n"
+                        "- (4.1) Added detection for duplicate accounts during logging."
         )
         june_new_commands = (
                         "- /get-badge-history (!gbh)\n"
