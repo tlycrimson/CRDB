@@ -389,7 +389,12 @@ class WelcomeCog(commands.Cog):
             if rmp_role and rmp_role not in before.roles and rmp_role in after.roles:
                 roblox_id = await self.bot.roblox.get_user_id(cleaned_nickname)
                 
-                await self.bot.db.create_or_update_user_in_db(str(after.id), after.display_name, after.guild, roblox_id, guild=after.guild)
+                await self.bot.db.create_or_update_user_in_db(
+                        discord_id=str(after.id), 
+                        username=after.display_name,
+                        guild=after.guild,
+                        roblox_id=roblox_id
+                )
 
                 await self.send_rmp_welcome(after)
 

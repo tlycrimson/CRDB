@@ -119,7 +119,7 @@ class DatabaseHandler:
    
     async def get_user(self, user_id: str):
         """Retrieves full user data from cache, falling back to Database if missing."""
-        user_id_str = str(user_id)
+        user_id_str = user_id
 
         if user_id_str in self._user_cache:
             return self._user_cache[user_id_str]
@@ -419,13 +419,20 @@ class DatabaseHandler:
             new_points = points if replace else (current_points + points)
 
             await self.create_or_update_user_in_db(discord_id=user_id_str, username=cleaned_nickname, guild=member.guild)
+            
+            try:
+                await self.supabase.table(table).upsert({
+                    "user_id": user_id_str,
+                    "username": cleaned_nickname,
+                    column: new_points
+                }).execute()
+            except Exception as e:
+                if getattr(e, 'code', None) == '23505' or '23505' in str(e):
+                    await self.handle_duplicate_user(user_id=user_id_str, username=cleaned_nickname, guild=member.guild)
+                    return None, None
+                else:
+                    raise e
 
-            await self.supabase.table(table).upsert({
-                "user_id": str(member.id),
-                "username": cleaned_nickname,
-                column: new_points
-            }).execute()
-        
             logger.info("Updated %s | %s points for %s (%s): %s ➝ %s", table, column, cleaned_nickname, user_id_str, current_points, new_points)
 
             return current_points, new_points
@@ -456,6 +463,39 @@ class DatabaseHandler:
                     return True
 
         return False
+
+    async def handle_duplicate_user(self, user_id: str, username: str, guild: discord.Guild):
+        accounts = f"Username: {username}\nAccount 1 ID: {user_id}"
+        res = await self.supabase.table(self.users_table).select("*").eq("username", username).execute() 
+        if res.data:
+            for user in res.data:
+                _id = user.get('user_id', None)
+                if _id and int(_id) != int(user_id):
+                    accounts += f"\nAccount 2 ID: {_id}"
+                    break
+
+        color = discord.Color.orange()
+        title = "Duplicate User Detection"
+        icon_url = Config.ALERT_URL
+        description = (
+                f"Duplicate accounts for the user, **{username}**, has been detected during logging."
+                f" To stop this alert from occuring again for the same user, please do the following:\n" 
+                f"- Identify the correct active account.\n"
+                f"- Check if the inactive account is in the database using the profile command.\n"
+                f"- If the inactive account is in the database use the remove command to remove them.\n"
+                f"- Have the inactive discord account kicked from the server or have the correct active account mentioned in logs.\n\n"
+                f"**User information:**\n{accounts}"
+        )
+
+        alert = discord.Embed(description=description, color=color)
+        alert.set_author(name=title, icon_url=icon_url)
+        
+        log_channel = guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
+        if log_channel:
+            try:
+                await log_channel.send(embed=alert)
+            except Exception as e:
+                logger.error(f"Failed to alert duplicate accounts for {user_id}: {e}")
 
 
     async def discharge_user(self, user_id: str, username: str, guild: discord.Guild) -> bool:
@@ -538,7 +578,7 @@ class DatabaseHandler:
 
         user_id_str = str(user_id)
         cleaned_name = clean_nickname(username)
-        await self.create_or_update_user_in_db(user_id, cleaned_name)
+        await self.create_or_update_user_in_db(discord_id=user_id, username=cleaned_name)
 
         update_data = {
             "user_id": user_id_str,
@@ -567,7 +607,7 @@ class DatabaseHandler:
 
         user_id_str = str(user_id)
         cleaned_name = clean_nickname(username)
-        await self.create_or_update_user_in_db(user_id, cleaned_name)
+        await self.create_or_update_user_in_db(discord_id=user_id, username=cleaned_name)
 
         update_data = {
             "user_id": user_id_str,
@@ -899,12 +939,12 @@ class DatabaseHandler:
         cleaned_username = clean_nickname(username)
         
         try:
-            res = await self.supabase.table(self.users_table).select('*').eq('user_id', user_id_str).maybe_single().execute()
-            
-            if res and res.data:
+            res = await self.get_user(discord_id)
+
+            if res:
                 update_data = {
                     "username": cleaned_username,
-                    "roblox_id": roblox_id if roblox_id is not None else res.data.get('roblox_id')
+                    "roblox_id": roblox_id if roblox_id is not None else res.get('roblox_id')
                 }
                 if xp is not None:
                     update_data["xp"] = xp
@@ -915,7 +955,7 @@ class DatabaseHandler:
                     if user_id_str in self._user_cache:
                         self._user_cache[user_id_str].update(update_data)
                     else:
-                        full_data = res.data.copy()
+                        full_data = res.copy()
                         full_data.update(update_data)
                         self._user_cache[user_id_str] = full_data
             else:

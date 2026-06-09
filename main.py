@@ -1,4 +1,5 @@
 import os
+import math
 import asyncio
 import aiohttp
 import discord
@@ -221,10 +222,22 @@ async def on_command_error(ctx: commands.Context, error: commands.CommandError):
     """Global error handler for slash commands"""
     try:
         if isinstance(error, commands.CommandOnCooldown):
+            retry_after = error.retry_after
+
+            if retry_after>60:
+                remaining_time = math.ceil(retry_after / 60)
+                unit = "minute"
+            else:
+                remaining_time = math.ceil(retry_after)
+                unit = "second"
+            
+            suffix = "s" if remaining_time>1 else ""
+
             await ctx.send(
-                f"```⏳ Command on cooldown. Try again in {error.retry_after:.1f}s```",
+                f"```⏳ Command on cooldown. Try again in {remaining_time} {unit}{suffix}.```",
                 ephemeral=True
             )
+            
         elif isinstance(error, commands.MissingPermissions):
             if ctx.interaction:
                 await ctx.send(

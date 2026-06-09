@@ -431,7 +431,13 @@ class ModerationCog(commands.Cog):
         xp = saved_user['xp']
        
         try:
-            await self.bot.db.create_or_update_user_in_db(member.id, username, guild, roblox_id, xp)
+            await self.bot.db.create_or_update_user_in_db(
+                    discord_id=member.id,
+                    username=username,
+                    guild=guild,
+                    roblox_id=roblox_id,
+                    xp=xp
+            )
             embed = discord.Embed(
                     description=f"User data restored for {clean_nickname(member.display_name)}. Data Restored: discord ID, username and xp. Be aware that if the user has changed username it will revert back to their old username until an action is performed on them.",
                 color=discord.Color.green()

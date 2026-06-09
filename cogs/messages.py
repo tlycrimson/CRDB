@@ -217,7 +217,7 @@ class MessageLoggerCog(commands.Cog):
                     title = "Case Logged"
                     icon_url = Config.CUFFS_ICON
                     description = f"**{suspect_user}'s** [arrest log]({message.jump_url}) has been successfully logged in the database."
-                    embed = discord.Embed(description=description, color=color).set_footer(text="Will be deleted in 2 days. This can be managed by using /manage-case-log.")
+                    embed = discord.Embed(description=description, color=color).set_footer(text="Will be deleted in 2 days. This can be managed by using the mcl command.")
                     embed.set_author(name=title, icon_url=icon_url)
                     await log_channel.send(embed=embed)
 
