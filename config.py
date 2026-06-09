@@ -43,7 +43,7 @@ class Config:
     DEGREE_GRADES_CHANNEL_ID = 1267563275223040111
     INDOC_CHANNEL_ID = 1165368317532438639
     CASE_LOGS_CHANNEL_ID = 1165368315326251114 
-    LD_CHANNEL_ID = 1360422355255689276  
+    LD_CHANNEL_ID = 1509702437215408268  
     DISCHARGE_REQUEST_CHANNEL_ID = 1165368315791806551
 
     # ===== CHANNEL LISTS =====
@@ -165,6 +165,11 @@ class Config:
         CONSTABLE_ROLE_ID,
         TRAINEE_CONSTABLE_ROLE_ID,
     }
+    SERGEANT_MAJOR_IDS = {
+        RSM_ROLE_ID,
+        COMPANY_SERGEANT_MAJOR_ROLE_ID,
+    } 
+
  
     # ===== RANK MAPPING DICTIONARIES =====
     OVERSIGHT_RANKS = {
@@ -315,3 +320,4 @@ class Config:
     BOT_BANNER = "https://i.gyazo.com/a60a9ff595fef8b22644f6fcce6ecc6a.gif"
     BOT_BANNER_CROPPED = "https://i.gyazo.com/950dda1dc9d3bced7cdf673488acd001.gif"
     HAMMER =  "https://img.icons8.com/?size=100&id=cwUfaMWCLeL8&format=png&color=000000"
+    ARCHIVE_ICON = "https://img.icons8.com/?size=100&id=lYnZPuwLszF6&format=png&color=000000"

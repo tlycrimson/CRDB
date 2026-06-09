@@ -1,5 +1,6 @@
 venv/
 .env
+setup.py
 testconfig.py
 __pycache__/
 *.pyc
