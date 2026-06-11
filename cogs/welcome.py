@@ -235,7 +235,7 @@ class WelcomeCog(commands.Cog):
             # Send all embeds
             try:
                 await member.send(embeds=discord_embeds)
-                logger.info(f"Sent {len(discord_embeds)} RMP welcome embeds to {member.display_name}")
+                await asyncio.sleep(0.3)
                 await log_channel.send(embed=log_embed)
             except discord.Forbidden:
                 # Try public channel as fallback
@@ -312,10 +312,11 @@ class WelcomeCog(commands.Cog):
 
         try:
             await member.send(embeds=[embed1, special_embed, embed2])
+            logger.info(f"Sending fallback welcome message to {member.display_name} ({member.id})")
         except discord.Forbidden:
             if welcome_channel := member.guild.get_channel(Config.MAIN_COMMS_CHANNEL_ID):
                 await welcome_channel.send(f"{member.mention}", embeds=[embed1, special_embed, embed2])
-                logger.info(f"Sending welcome message to {member.display_name} ({member_id})")
+                logger.info(f"Sending fallback welcome message to {member.display_name} ({member.id}) in main-comms")
         except discord.HTTPException as e:
             logger.error(f"Failed to send welcome message: {e}")
 
@@ -527,6 +528,7 @@ class WelcomeCog(commands.Cog):
             
             if d_log and b_log:
                 await d_log.send(embed=d_embed)
+                await asyncio.sleep(0.3)
                 await b_log.send(embed=b_embed)
                 logger.info(f"Logged deserted member, %s", member_id)
             else:

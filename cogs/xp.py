@@ -52,7 +52,7 @@ class XPCog(commands.Cog):
             usage="<member> <value>",
             description="Add XP to a user"
     )
-    @app_commands.checks.cooldown(1, 5.0)
+    @app_commands.checks.cooldown(1, 3.0)
     @has_modular_permission("xp_rewards")
     async def add_xp(self, ctx: commands.Context, user: discord.User, xp: int):
         async with self.bot.global_rate_limiter:
@@ -106,7 +106,7 @@ class XPCog(commands.Cog):
             usage="<member> <value>",
             description="Takes XP from user"
     )
-    @app_commands.checks.cooldown(1, 5.0)
+    @app_commands.checks.cooldown(1, 3.0)
     @has_modular_permission("xp_rewards")
     async def take_xp(self, ctx: commands.Context, user: discord.User, xp: int):
         async with self.bot.global_rate_limiter:
