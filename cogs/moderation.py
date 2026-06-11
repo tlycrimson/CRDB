@@ -2,15 +2,14 @@ import asyncio
 import logging 
 import discord
 from config import Config
-from typing import Optional, Literal
+from typing import Optional
 from utils.decorators import  has_modular_permission 
 from discord.ext import commands
-from discord import Color, app_commands
+from discord import app_commands
 from utils.helpers import clean_nickname, MockPayload
 from utils.views import ConfirmView, PageButtonView
 
 logger = logging.getLogger(__name__)
-
 
 
 class ModerationCog(commands.Cog):
