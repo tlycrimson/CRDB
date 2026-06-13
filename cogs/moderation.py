@@ -83,7 +83,7 @@ class ModerationCog(commands.Cog):
             
             user_name = clean_nickname(user.display_name)
             await ctx.send(
-                f"```✅ Updated {column} from {old_value} ➔ {value_converted} for {user_name}"
+                f"```✅ Updated {column} from {old_value} ➔ {value_converted} for {user_name}```"
             )
 
         except Exception as e:
