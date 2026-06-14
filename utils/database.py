@@ -514,7 +514,7 @@ class DatabaseHandler:
         color = discord.Color.green()
         title = "User Archived"
         icon_url = Config.ARCHIVE_ICON
-        description = f"**{username}** has been successfully removed from the database and archived; they can be retrieved within a thirty-day period."
+        description = f"**{clean_nickname(username)}** has been successfully removed from the database and archived; they can be retrieved within a thirty-day period."
         success = False
 
         try:
@@ -983,7 +983,7 @@ class DatabaseHandler:
                     color = discord.Color.green()
                     title = f"User {action.capitalize()}"
                     icon_url = Config.CHECK_URL
-                    description = f"**{username}** has been successfully {action} to the database."
+                    description = f"**{cleaned_username}** has been successfully {action} to the database."
 
                     log_channel = guild.get_channel(Config.DEFAULT_LOG_CHANNEL)
                     if log_channel:
