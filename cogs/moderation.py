@@ -70,9 +70,9 @@ class ModerationCog(commands.Cog):
             old_value = res.get(column, 0)
 
             try:
-                value_converted = float(value) if '.' in value else int(value)
+                value_converted = float(value) 
             except ValueError:
-                value_converted = value
+                value_converted = int(value)
 
             update_success = await self.bot.db.increment_points_handler(
                 column, db_table, member, value, replace=True
