@@ -63,7 +63,7 @@ class MessageLoggerCog(commands.Cog):
     
     async def log_deleted_users(self, users):
         users_str = "\n".join([f'- {user['username']} ({user['user_id']})' for user in users])
-        logger.info(f"Successfully deleted the following users from archive: {users_str}")
+        logger.info(f"Successfully deleted the following users from archive:\n {users_str}")
 
         color = discord.Color.green()
         title = "Archive Removal"
