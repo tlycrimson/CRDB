@@ -246,7 +246,7 @@ class AdminCog(commands.Cog):
                 if mime and mime.startswith("image/"):
                     embed.set_image(url=evidence.url)
 
-            embed.set_footer(text=f"Discharged by {dctx.author.display_name}")
+            embed.set_footer(text=f"Discharged by {clean_nickname(dctx.author.display_name)}")
 
             success_count = 0
             successful_members = []
@@ -267,7 +267,7 @@ class AdminCog(commands.Cog):
                     except discord.Forbidden:
                         try:
                             if channel := dctx.guild.get_channel(Config.PUBLIC_CHAT_CHANNEL_ID):
-                                await channel.send(f"{member.mention}", embed=embed)
+                                await channel.send(f"{member.mention} I was unable to contact you through your DMs.", embed=embed)
                         except:
                             pass
                     
