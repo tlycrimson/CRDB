@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 # --- Constants ---
 GEMINI_MODEL = "gemini-2.5-flash"
 KEY_COOLDOWN_SECONDS = 15 * 3600  
+MAX_TOKENS = 4096
 
 
 FALLBACK_MODELS = [
@@ -101,7 +102,7 @@ class AIHandler:
                         system_instruction=system_instruction,
                         temperature=0.3,
                         safety_settings=GEMINI_SAFETY_SETTINGS,
-                        max_output_tokens=800,
+                        max_output_tokens=MAX_TOKENS,
                     ),
                 )
                 if response.text:
@@ -148,7 +149,7 @@ class AIHandler:
             payload = {
                 "model": model,
                 "temperature": 0.3,
-                "max_tokens": 800,
+                "max_tokens": MAX_TOKENS,
                 "messages": [
                     {"role": "system", "content": system_instruction},
                     {"role": "user", "content": user_question},

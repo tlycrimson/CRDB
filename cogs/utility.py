@@ -1,9 +1,6 @@
-import httpx
 import asyncio
 import logging
 import discord
-from google.genai import types
-from google.genai import errors
 from discord import app_commands
 from discord.ext import commands
 
@@ -282,14 +279,15 @@ class UtilityCog(commands.Cog):
         else:
             header = f"**Query:** {query}\n\n"
  
-        full_response = f"{AI_WARNING}\n> {header}{answer}"
+        prefix = f"{AI_WARNING}\n> {header}"
+        full_response = f"{prefix}{answer}"
  
         if len(full_response) <= 2000:
             await UtilityCog._send(ctx, full_response)
             return
  
         buffer = 10
-        first_limit = 2000 - len(AI_WARNING) - len(header) - buffer
+        first_limit = 2000 - len(prefix) - buffer
         first_limit = max(first_limit, 100)  
  
         await UtilityCog._send(ctx, f"{AI_WARNING}\n> {header}{answer[:first_limit]}")
@@ -297,7 +295,11 @@ class UtilityCog(commands.Cog):
         remaining = answer[first_limit:]
         for i in range(0, len(remaining), 1900):
             await asyncio.sleep(0.3)
-            await ctx.send(remaining[i:i + 1900])
+            try:
+                await ctx.send(remaining[i:i + 1900])
+            except Exception as e:
+                logger.error(f"Failed to send chunk message {i} for msl response: {e}")
+                break
  
     @commands.hybrid_command(
             name="msl",
