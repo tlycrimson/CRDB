@@ -75,7 +75,7 @@ class ModerationCog(commands.Cog):
             value_converted = float(value) 
 
             if old_value == value_converted:
-                return await ctx.send(f"``` ❌ No changes were made for {user_name} as the values are the same.```")
+                return await ctx.send(f"``` ❌ No changes were made for {user_name}, as the values are the same.```")
 
             update_success = await self.bot.db.increment_points_handler(
                 column, db_table, member, value, replace=True
