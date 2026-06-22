@@ -177,7 +177,7 @@ class WelcomeCog(commands.Cog):
             discord_embeds[0].set_thumbnail(url=Config.RMP_URL)
             discord_embeds[0].set_author(name="Welcome to the High Rank Team!", icon_url=Config.CELEBRATE_ICON)
 
-            log_embed = embedBuilder.build_welcome_log(clean_nickname(member.display_name), "HR")
+            log_embed = embedBuilder.build_welcome_log(member, "High Rank")
             log_channel = self.bot.get_channel(Config.DEFAULT_LOG_CHANNEL)
             
             await welcome_channel.send(content=member.mention, embeds=discord_embeds)
@@ -230,7 +230,7 @@ class WelcomeCog(commands.Cog):
             
             discord_embeds[0].set_thumbnail(url=Config.RMP_URL)
 
-            log_embed = embedBuilder.build_welcome_log(clean_nickname(member.display_name), "RMP")
+            log_embed = embedBuilder.build_welcome_log(member, "Royal Military Police")
             log_channel = self.bot.get_channel(Config.DEFAULT_LOG_CHANNEL)
             # Send all embeds
             try:

@@ -337,13 +337,15 @@ def build_request_respsone(accepted: bool, username: str, check_type:int, halted
         
         return embed
 
-def build_welcome_log(username, w_type):
+def build_welcome_log(member: discord.Member, w_type: str):
         color = discord.Color.green()
         title = "Welcome Message Sent"
         icon_url = Config.CHECK_URL
-        description = f"Sent a {w_type} welcome message to **{username}**."
+        description = f"Sent a {w_type} welcome message to **{clean_nickname(member.display_name)}**."
         
-        return discord.Embed(description=description, color=color).set_author(name=title, icon_url=icon_url)
+        return discord.Embed(description=description, color=color)\
+                        .set_author(name=title, icon_url=icon_url)\
+                        .set_footer(text=f"User ID: {member.id}")
 
 def build_profile_embed(user_info, discord_user, army_rank):
         username = user_info['username']
