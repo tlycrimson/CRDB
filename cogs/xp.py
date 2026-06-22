@@ -7,6 +7,8 @@ from discord.ext import commands
 from datetime import datetime, timezone
 from typing import Optional, Literal
 
+from discord.ui import section
+
 from config import Config
 from utils import embedBuilder
 from utils.views import PageButtonView
@@ -342,13 +344,9 @@ class XPCog(commands.Cog):
     @commands.hybrid_command(
             name="give-event-xp",
             aliases=["gxp"],
-            usage="<link> <xp> <section: a/p (optional)>",
+            usage="<link> <xp>",
             description="Give XP to attendees mentioned in an event log message"
     )
-    @app_commands.choices(attendees_section=[
-        app_commands.Choice(name="Attendees:", value="Attendees:"),
-        app_commands.Choice(name="Passed:", value="Passed:")
-    ])
     @app_commands.checks.cooldown(1, 5.0)
     @has_modular_permission("xp_rewards")
     async def give_event_xp(
@@ -356,7 +354,6 @@ class XPCog(commands.Cog):
         ctx: commands.Context,
         message_link: str,
         xp_amount: int,
-        attendees_section: Literal["Attendees:", "Passed:", "a", "p"] = "Attendees:"
     ):
         async with self.bot.global_rate_limiter:
             await self.bot.rate_limiter.wait_if_needed(bucket="global_xp_update")
@@ -374,12 +371,6 @@ class XPCog(commands.Cog):
             await ctx.defer()
             initial_message = await ctx.send("```⏳ Attempting to give XP...```")
             
-            section_map = {
-                    "a": "Attendees:",
-                    "p": "Passed:",
-            }
-            section = section_map.get(attendees_section, attendees_section)
-
             try:
                 async with asyncio.timeout(60):  
                     try:
@@ -433,9 +424,18 @@ class XPCog(commands.Cog):
                         
                     # Process attendees section
                     content = message.content
-                    section_index = content.find(section)
+                    attendees_sections = ["Attendees:", "Passed:"]
+                    
+                    section_index = None
+                    attendees_section = None
+                    for section in attendees_sections:
+                        section_index = content.find(section)
+                        attendees_section = section
+                        if section_index and section_index != -1:
+                            break
+
                     if section_index == -1:
-                        await initial_message.edit(content=f"```❌ Could not find '{attendees_section}' in the message.``")
+                        await initial_message.edit(content=f"```❌ Could not find the attendees section in the message. Please denote it using 'Attendees:' or 'Passed:'.```")
                         return
                         
                     mentions_section = content[section_index + len(attendees_section):]
