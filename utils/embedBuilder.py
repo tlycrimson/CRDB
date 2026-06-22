@@ -78,7 +78,7 @@ def build_regiment_info(data: dict):
         return info_embed
 
 def build_change_log(prefix, page):
-        title = "MP Assistant v1.4.1 Change Logs"
+        title = "MP Assistant v1.4.2 Change Logs"
         description = "Below features the recent changes made to the bot. If you wish to make a suggestion to improve the bot, use the suggest command. As well, if you spot a mistake or an error, use the report command.\n\n"
         footer = "Last Updated: June 2026"
         
@@ -100,6 +100,7 @@ def build_change_log(prefix, page):
                         "- (4.1) Improved AI Handler for msl command.\n"
                         "- (4.1) Fixed minor quirks during logging.\n"
                         "- (4.1) Added detection for duplicate accounts during logging."
+                        "- (4.2) More bug fixes and better responses for the MSL command."
         )
         june_new_commands = (
                         "- /get-badge-history (!gbh)\n"
