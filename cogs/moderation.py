@@ -37,6 +37,10 @@ class ModerationCog(commands.Cog):
 
         guild = ctx.guild
         user_id = str(user.id)
+        user_name = clean_nickname(user.display_name)
+
+        if user.id == ctx.author.id:
+            user_name = "you"
 
         member = guild.get_member(user.id) or await guild.fetch_member(user.id)
         if not member:
@@ -65,14 +69,13 @@ class ModerationCog(commands.Cog):
                 res = await self.bot.db.get_lr_info(user_id) 
 
             if not res:
-                return await ctx.send(f"```❌ No record found for {user.display_name} in {table_name} table.```")
+                return await ctx.send(f"```❌ No record found for {user_name} in {table_name} table.```")
 
             old_value = res.get(column, 0)
+            value_converted = float(value) 
 
-            try:
-                value_converted = float(value) 
-            except ValueError:
-                value_converted = int(value)
+            if old_value == value_converted:
+                return await ctx.send(f"``` ❌ No changes were made for {user_name} as the values are the same.```")
 
             update_success = await self.bot.db.increment_points_handler(
                 column, db_table, member, value, replace=True
@@ -81,9 +84,8 @@ class ModerationCog(commands.Cog):
             if not update_success:
                 raise Exception("Database update returned False")
             
-            user_name = clean_nickname(user.display_name)
             await ctx.send(
-                f"```✅ Updated {column} from {old_value} ➔ {value_converted} for {user_name}```"
+                f"```✅ Updated {column} from {old_value} ➔ {value_converted} for {user_name}.```"
             )
 
         except Exception as e:
