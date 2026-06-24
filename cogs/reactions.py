@@ -384,7 +384,7 @@ class ReactionLoggerCog(commands.Cog):
             successful_attendees = []
             for attendee in attendee_members:
                 name_str = f"{clean_nickname(attendee.display_name)} | {attendee.id}"
-                if exempt_roles & set(attendee.roles):  
+                if (exempt_roles & set(attendee.roles)) or (attendee.id == host_id):  
                     successful_attendees.append(name_str)
                     continue
                 
