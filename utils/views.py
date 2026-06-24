@@ -612,7 +612,6 @@ class RequestView(discord.ui.View):
 
         return courses.get(course.lower(), None)
 
-
     @discord.ui.button(label="Accept", style=discord.ButtonStyle.green, custom_id="accept_req")
     async def approve_sc(self, interaction: discord.Interaction, button: discord.ui.Button):
         self._processing = True
@@ -626,11 +625,11 @@ class RequestView(discord.ui.View):
 
             await interaction.message.delete()
             try:
+                await self.original_msg.add_reaction("🟢")
                 await self.original_msg.remove_reaction("⌛", self.bot.user)
                 await asyncio.sleep(0.3)
                 await self.original_msg.remove_reaction("🟡", self.bot.user)
                 await asyncio.sleep(0.5)
-                await self.original_msg.add_reaction("🟢")
             except Exception:
                 pass
 
@@ -738,7 +737,7 @@ class ComplyView(discord.ui.View):
 
     async def _clear_pending_status(self):
         try:
-            await (
+            res = await (
                 self.bot.db.supabase
                 .table(PENDING_CHECK_TABLE)
                 .update({
@@ -749,10 +748,17 @@ class ComplyView(discord.ui.View):
                 .eq("request_id", str(self.request_msg.id))
                 .execute()
             )
+            return res
         except Exception as e:
             logger.error(f"_clear_pending_status failed: {e}")
 
     async def on_timeout(self):
+        res = await self._clear_pending_status()
+
+        if res and not res.data:
+            await self.halt_msg.edit(self.halt_msg.embeds[0], view=None)
+            return
+
         try:
             embed = self.halt_msg.embeds[0].add_field(name="Updated Status: Not Complied", value=f"\u200B")
             await self.halt_msg.edit(embed=embed, view=None)
@@ -764,7 +770,6 @@ class ComplyView(discord.ui.View):
         notif_embed = embedBuilder.build_comply_notif(msg, self.update_type) 
 
         await self.notif_channel.send(content=f"<@{self.checker_user_id}>", embed=notif_embed)    
-        await self._clear_pending_status()
 
     @discord.ui.button(label="I have Complied", style=discord.ButtonStyle.green, custom_id="complied")
     async def approve_sc(self, interaction: discord.Interaction, button: discord.ui.Button):
