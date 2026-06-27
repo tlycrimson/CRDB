@@ -247,6 +247,7 @@ class ModerationCog(commands.Cog):
             if view.value is not True:
                 return await ctx.send(
                     "```❎ Force log cancelled.```",
+                    ephemeral=True
                 )
 
         # 4. Build the mock payload
@@ -269,7 +270,7 @@ class ModerationCog(commands.Cog):
                     success = await method(payload, ctx.guild, member)
                     
                     if not success:
-                        return await ctx.send("```❌ Failed to forcefully log.```")
+                        return await ctx.send("```❌ Failed to forcefully log.```", ephemeral=True)
 
             if not matched:
                 return await ctx.send(
@@ -289,7 +290,6 @@ class ModerationCog(commands.Cog):
 
             await ctx.send(
                 "```✅ Forcefully logged.```",
-                ephemeral=True
             )
 
         except Exception as e:
