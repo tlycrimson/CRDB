@@ -342,11 +342,18 @@ class HaltReasonModal(discord.ui.Modal, title='Reason for Halt'):
 
     async def on_submit(self, interaction: discord.Interaction):
         selected_hours = self.hours.value.strip()
-
+        
+        
         if int(selected_hours)>120:
             await interaction.response.send_message(
                 "```❌ Time cannot exceed 5 days.```",
                 ephemeral=True,
+            )
+            return
+        elif int(selected_hours)<1:
+            await interaction.response.send_message(
+                    "```❌ Time must be 1 or above hours.```",
+                    ephemeral=True,
             )
             return
 
