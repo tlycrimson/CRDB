@@ -62,8 +62,9 @@ class AdminCog(commands.Cog):
 
         db_type = group_mapping.get(category_low, "general")
         
-        allowed_ids = await self.bot.permissions.get(db_type)
-        
+        allowed_ids_str = await self.bot.permissions.get(db_type)
+        allowed_ids = [int(i) for i in allowed_ids_str]
+
         if role is None:
             role_mentions = "\n".join(f"<@&{rid}>" for rid in allowed_ids)
             list_str = role_mentions if role_mentions else "No roles assigned (Admin only)."
@@ -76,6 +77,7 @@ class AdminCog(commands.Cog):
 
             return await ctx.send(embed=embed, ephemeral=True)
         
+
         if role.id in allowed_ids:
             allowed_ids.remove(role.id)
             action = "Removed"
@@ -85,6 +87,7 @@ class AdminCog(commands.Cog):
 
         try:
             allowed_ids = list(set(allowed_ids))
+            formatted_ids = [str(i) for i in allowed_ids]
             updated = await self.bot.permissions.update(db_type, allowed_ids)
             
             if updated:

@@ -87,7 +87,7 @@ class PermissionsCache:
                     .eq('group_type', group_type).execute()
             
             async with self._lock:
-                self._cache[group_type] = {'allowed_roles': allowed_ids}
+                self._cache[group_type] =  allowed_ids
             
             return True
         except Exception as e:
