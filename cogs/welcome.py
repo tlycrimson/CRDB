@@ -167,6 +167,9 @@ class WelcomeCog(commands.Cog):
             await self._send_fallback_hr_welcome(member, welcome_channel)
             return
         
+        log_embed = embedBuilder.build_welcome_log(member, "High Rank")
+        log_channel = self.bot.get_channel(Config.DEFAULT_LOG_CHANNEL)
+
         try:
             # Create Discord embed objects
             discord_embeds = []
@@ -177,15 +180,14 @@ class WelcomeCog(commands.Cog):
             discord_embeds[0].set_thumbnail(url=Config.RMP_URL)
             discord_embeds[0].set_author(name="Welcome to the High Rank Team!", icon_url=Config.CELEBRATE_ICON)
 
-            log_embed = embedBuilder.build_welcome_log(member, "High Rank")
-            log_channel = self.bot.get_channel(Config.DEFAULT_LOG_CHANNEL)
             
             await welcome_channel.send(content=member.mention, embeds=discord_embeds)
             logger.info(f"Sent HR welcome with {len(discord_embeds)} embeds to {member.display_name}")
-            await log_channel.send(embed=log_embed) 
         except Exception as e:
             logger.error(f"Failed to send HR welcome: {e}")
             await self._send_fallback_hr_welcome(member, welcome_channel)
+
+        await log_channel.send(embed=log_embed) 
 
     async def _send_fallback_hr_welcome(self,member: discord.Member, channel):
         """Fallback HR welcome if cache fails"""
@@ -221,6 +223,9 @@ class WelcomeCog(commands.Cog):
             await self._send_original_rmp_welcome(member)
             return
         
+        log_embed = embedBuilder.build_welcome_log(member, "Royal Military Police")
+        log_channel = self.bot.get_channel(Config.DEFAULT_LOG_CHANNEL)
+
         try:
             # Create Discord embed objects from cached data
             discord_embeds = []
@@ -230,18 +235,16 @@ class WelcomeCog(commands.Cog):
             
             discord_embeds[0].set_thumbnail(url=Config.RMP_URL)
 
-            log_embed = embedBuilder.build_welcome_log(member, "Royal Military Police")
-            log_channel = self.bot.get_channel(Config.DEFAULT_LOG_CHANNEL)
-            # Send all embeds
             try:
                 await member.send(embeds=discord_embeds)
                 await asyncio.sleep(0.3)
-                await log_channel.send(embed=log_embed)
             except discord.Forbidden:
                 # Try main channel as fallback
                 if welcome_channel := member.guild.get_channel(Config.MAIN_COMMS_CHANNEL_ID):
                     await welcome_channel.send(content=member.mention, embeds=discord_embeds)
-                    logger.info(f" Sent RMP welcome to {member.display_name} in main-comms.")
+                    logger.info(f"Sent RMP welcome to {member.display_name} in main-comms.")
+
+            await log_channel.send(embed=log_embed)
             
         except Exception as e:
             logger.error(f"Failed to send RMP welcome: {e}")
