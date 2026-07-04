@@ -24,6 +24,34 @@ class AdminCog(commands.Cog):
         self.bot = bot
         #self.monitoring_channels_cache = MonitoringChannelsCache(bot)
 
+    @commands.hybrid_command(
+        name="delete-bot-message",
+        aliases=["dbm"],
+        usage="<message_id>",
+        description="Deletes a message sent by this bot using its ID"
+    )
+    @app_commands.describe(
+        message_id="The ID of the message to delete"
+    )
+    @app_commands.checks.cooldown(1, 5)
+    @is_admin_or_dev()
+    async def delete_bot_message(
+        self,
+        ctx: commands.Context,
+        message_id: str
+    ):
+        try:
+            msg = await ctx.channel.fetch_message(int(message_id))
+            
+            await msg.delete()
+            
+        except discord.NotFound:
+            return
+        except discord.Forbidden:
+            return
+        except ValueError:
+            return
+
     #Set Permissions Command
     @commands.hybrid_command(
             name="set-permissions",
