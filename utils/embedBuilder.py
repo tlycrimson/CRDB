@@ -99,9 +99,9 @@ def build_change_log(prefix, page):
                         "- Added Temp Overseer field to RMP info embed for the general race (!info).\n"
                         "- (4.1) Improved AI Handler for msl command.\n"
                         "- (4.1) Fixed minor quirks during logging.\n"
-                        "- (4.1) Added detection for duplicate accounts during logging."
-                        "- (4.2) More bug fixes and better responses for the MSL command."
-                        "- (4.3) Give event XP command finds the attendees section automatically provided it's denoted by 'Attendees' or 'Passed:'\n."
+                        "- (4.1) Added detection for duplicate accounts during logging.\n"
+                        "- (4.2) More bug fixes and better responses for the MSL command.\n"
+                        "- (4.3) Give event XP command finds the attendees section automatically provided it's denoted by 'Attendees' or 'Passed:'.\n"
         )
         june_new_commands = (
                         "- /get-badge-history (!gbh)\n"
