@@ -238,8 +238,8 @@ class WelcomeCog(commands.Cog):
                 await asyncio.sleep(0.3)
                 await log_channel.send(embed=log_embed)
             except discord.Forbidden:
-                # Try public channel as fallback
-                if welcome_channel := member.guild.get_channel(Config.PUBLIC_CHAT_CHANNEL_ID):
+                # Try main channel as fallback
+                if welcome_channel := member.guild.get_channel(Config.MAIN_COMMS_CHANNEL_ID):
                     await welcome_channel.send(content=member.mention, embeds=discord_embeds)
                     logger.info(f" Sent RMP welcome to {member.display_name} in main-comms.")
             
