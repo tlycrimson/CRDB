@@ -101,7 +101,7 @@ def build_change_log(prefix, page):
                         "- (4.1) Fixed minor quirks during logging.\n"
                         "- (4.1) Added detection for duplicate accounts during logging."
                         "- (4.2) More bug fixes and better responses for the MSL command."
-                        "- (4.3) Give event XP command finds the attendees section automatically provided it's denoted by 'Attendees' or 'Passed:'."
+                        "- (4.3) Give event XP command finds the attendees section automatically provided it's denoted by 'Attendees' or 'Passed:'\n."
         )
         june_new_commands = (
                         "- /get-badge-history (!gbh)\n"
