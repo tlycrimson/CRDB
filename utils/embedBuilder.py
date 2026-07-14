@@ -78,7 +78,7 @@ def build_regiment_info(data: dict):
         return info_embed
 
 def build_change_log(prefix, page):
-        title = "MP Assistant v1.4.3 Change Logs"
+        title = "MP Assistant v1.4.4 Change Logs"
         description = "Below features the recent changes made to the bot. If you wish to make a suggestion to improve the bot, use the suggest command. As well, if you spot a mistake or an error, use the report command.\n\n"
         footer = "Last Updated: June 2026"
         
@@ -102,6 +102,7 @@ def build_change_log(prefix, page):
                         "- (4.1) Added detection for duplicate accounts during logging.\n"
                         "- (4.2) More bug fixes and better responses for the MSL command.\n"
                         "- (4.3) Give event XP command finds the attendees section automatically provided it's denoted by 'Attendees:' or 'Passed:'.\n"
+                        "- (4.4) For activity logs 1 xp is given for every 15 minutes rather than 30.\n"
         )
         june_new_commands = (
                         "- /get-badge-history (!gbh)\n"

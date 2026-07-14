@@ -505,7 +505,7 @@ class ReactionLoggerCog(commands.Cog):
             await tx.update_lr(user_member, updates)
 
             total_minutes = updates.get("activity", 0) + updates.get("time_guarded", 0)
-            xp_to_award = total_minutes // 30
+            xp_to_award = total_minutes // 15
 
             if xp_to_award > 0:
                 await tx.add_xp(str(user_member.id), user_member.display_name, xp_to_award)
