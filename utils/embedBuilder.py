@@ -102,7 +102,7 @@ def build_change_log(prefix, page):
                         "- (4.1) Added detection for duplicate accounts during logging.\n"
                         "- (4.2) More bug fixes and better responses for the MSL command.\n"
                         "- (4.3) Give event XP command finds the attendees section automatically provided it's denoted by 'Attendees:' or 'Passed:'.\n"
-                        "- (4.4) For activity logs 1 xp is given for every 15 minutes rather than 30.\n"
+                        "- (4.4) For activity logs, 1 xp is given for every 15 minutes rather than 30.\n"
         )
         june_new_commands = (
                         "- /get-badge-history (!gbh)\n"
