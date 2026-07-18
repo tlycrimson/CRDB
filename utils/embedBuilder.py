@@ -55,8 +55,7 @@ def build_regiment_info(data: dict):
                                     ).set_thumbnail(url=Config.RMP_URL)
                         
         info_embed.add_field(name="OVERSIGHT", value=f"───────────────────", inline=False)
-        info_embed.add_field(name="Overseer:", value="dominqsss")
-        info_embed.add_field(name="Temp Overseer:", value="dxstrii")
+        info_embed.add_field(name="Overseer:", value="dxstrii")
         info_embed.add_field(name="Provost Marshal:", value=data["pm"])
 
 
@@ -103,6 +102,7 @@ def build_change_log(prefix, page):
                         "- (4.2) More bug fixes and better responses for the MSL command.\n"
                         "- (4.3) Give event XP command finds the attendees section automatically provided it's denoted by 'Attendees:' or 'Passed:'.\n"
                         "- (4.4) For activity logs, 1 xp is given for every 15 minutes rather than 30.\n"
+                        "- (4.5) Updated the info command with the change of overseers and removed the temp.\n"
         )
         june_new_commands = (
                         "- /get-badge-history (!gbh)\n"
