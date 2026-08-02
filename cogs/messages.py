@@ -189,6 +189,9 @@ class MessageLoggerCog(commands.Cog):
         
         if not suspect_user:
             return False
+        
+        if not suspect_user.isalnum():
+            return False
 
         try: 
             suspect_id = await self.bot.roblox.get_user_id(suspect_user)
