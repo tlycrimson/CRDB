@@ -296,7 +296,7 @@ class ScCog(commands.Cog):
             flagged_groups = [
                 f"• [{item['group']['name']}](https://www.roblox.com/communities/{item['group'].get('id')})"
                 for item in groups
-                if item.get('group') and item['group'].get('id') in self.BGROUP_IDS
+                if item.get('group') and item['group'].get('id') in self.BGROUP_IDS and (item['role'].get('id')<=1 or (if "awaiting placement" in item['role'].get('name').lower()))
             ]
 
         
