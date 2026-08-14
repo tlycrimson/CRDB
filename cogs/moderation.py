@@ -46,14 +46,14 @@ class ModerationCog(commands.Cog):
         if not member:
             return await ctx.send(f"```❌ User not found in this server.```")
 
-        is_hr = is_hr(member.roles)
+        is_hr_ = is_hr(member.roles)
 
         hr_columns = ["tryouts", "events", "phases", "courses", "inspections", "joint_events"]
         lr_columns = ["activity", "time_guarded", "events_attended"]
         
-        table_name = "HRs" if is_hr else "LRs"
-        db_table = self.bot.db.hrs_table if is_hr else self.bot.db.lrs_table
-        available_columns = hr_columns if is_hr else lr_columns
+        table_name = "HRs" if is_hr_ else "LRs"
+        db_table = self.bot.db.hrs_table if is_hr_ else self.bot.db.lrs_table
+        available_columns = hr_columns if is_hr_ else lr_columns
 
         if column.lower() not in available_columns:
             return await ctx.send(
@@ -62,7 +62,7 @@ class ModerationCog(commands.Cog):
             )
 
         try:
-            if is_hr:
+            if is_hr_:
                 res = await self.bot.db.get_hr_info(user_id)
             else:
                 res = await self.bot.db.get_lr_info(user_id) 
@@ -116,7 +116,7 @@ class ModerationCog(commands.Cog):
             except discord.NotFound:
                 return []
 
-        is_hr = is_hr(member.roles)
+        is_hr_ = is_hr(member.roles)
 
         # Display name -> DB column
         hr_columns = {
@@ -134,7 +134,7 @@ class ModerationCog(commands.Cog):
             "Events Attended": "events_attended",
         }
 
-        available = hr_columns if is_hr else lr_columns
+        available = hr_columns if is_hr_ else lr_columns
 
         return [
             discord.app_commands.Choice(name=display, value=db_value)
