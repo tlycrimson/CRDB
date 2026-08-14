@@ -369,32 +369,39 @@ class ReactionLoggerCog(commands.Cog):
             for co_host in co_hosts.values():
                 await update_hoster(tx, co_host, hr_update_field, 0.5)
 
-            attendees_section = ATTENDEES_PATTERN.search(message.content)
-            if not attendees_section:
-                return False
-
-            attendee_ids = list({int(uid) for uid in MENTION_PATTERN.findall(attendees_section.group(1))})
-
             async def fetch_member(uid: int) -> discord.Member | None:
                 return guild.get_member(uid) or await guild.fetch_member(uid)
 
-            fetched = await asyncio.gather(*[fetch_member(uid) for uid in attendee_ids], return_exceptions=True)
-            attendee_members = [m for m in fetched if isinstance(m, discord.Member)]
+           
+            async def update_attendees(attendees_section):
+                attendee_ids = list({int(uid) for uid in MENTION_PATTERN.findall(attendees_section.group(1))})
 
-            successful_attendees = []
-            for attendee in attendee_members:
-                name_str = f"{clean_nickname(attendee.display_name)} | {attendee.id}"
-                if (exempt_roles & set(attendee.roles)) or (attendee.id == host_id):  
-                    successful_attendees.append(name_str)
-                    continue
-                
-                success = await tx.update_lr(attendee, {"events_attended": 1})
-                successful_attendees.append(name_str if success else f"{name_str} (failed to update points)")
+
+                fetched = await asyncio.gather(*[fetch_member(uid) for uid in attendee_ids], return_exceptions=True)
+                attendee_members = [m for m in fetched if isinstance(m, discord.Member)]
+
+                successful_attendees = []
+                for attendee in attendee_members:
+                    name_str = f"{clean_nickname(attendee.display_name)} | {attendee.id}"
+                    if (exempt_roles & set(attendee.roles)) or (attendee.id == host_id):  
+                        successful_attendees.append(name_str)
+                        continue
+                    
+                    success = await tx.update_lr(attendee, {"events_attended": 1})
+                    successful_attendees.append(name_str if success else f"{name_str} (failed to update points)")
+
+            attendees_section = ATTENDEES_PATTERN.search(message.content)
             
+            if attendees_section:
+                successful_attendees = "\n".join(await update_attendees(attendees_section))
+            else:
+                successful_attendees = None
+
+           
             await tx.update_hr(member, {"courses": Config.POINTS_PER_ACTIVITY})
             
             db_embed = embedBuilder.build_db_logger_record(member, message, Config.POINTS_PER_ACTIVITY, payload.emoji)
-            log_embed = embedBuilder.build_event_log(member, message, host_member, co_host_names, event_name, "\n".join(successful_attendees))
+            log_embed = embedBuilder.build_event_log(member, message, host_member, co_host_names, event_name, successful_attendees)
             xp_log = embedBuilder.build_xp_log(member, [f"{cleaned_host_name} | {host_member.id}: {new_total-1} ↠ {new_total}"], 1, f"[Hosting]({message.jump_url})", message.id)
             
             msg = await self.log_channel.send(embeds=[db_embed, log_embed, xp_log])

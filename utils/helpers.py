@@ -313,4 +313,4 @@ def in_regiment(user_groups):
 
 def is_hr(roles: list[discord.Role]) -> bool:
     roles_ids = [r.id for r in roles]
-    return Config.HR_ROLE_ID in roles_ids or Config.RSM_ROLE_ID in roles
+    return Config.HR_ROLE_ID in roles_ids or Config.RSM_ROLE_ID in roles_ids
