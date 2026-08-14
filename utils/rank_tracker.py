@@ -45,6 +45,9 @@ class RankTracker:
     async def _determine_division_rank(self, member_role_ids: list, is_hr: bool) -> tuple:
         """Determine member's division (HQ, SOR, PW, or Unknown)"""
         division = "PW"
+        
+        if Config.PM_ROLE_ID in member_role_ids:
+            return "PW", "Provost Marshal"
 
         if Config.HQ_ROLE_ID in member_role_ids:
             return "HQ", "Headquarters"

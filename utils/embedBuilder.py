@@ -103,6 +103,7 @@ def build_change_log(prefix, page):
                         "- (4.3) Give event XP command finds the attendees section automatically provided it's denoted by 'Attendees:' or 'Passed:'.\n"
                         "- (4.4) For activity logs, 1 xp is given for every 15 minutes rather than 30.\n"
                         "- (4.5) Updated the info command with the change of overseers and removed the temp.\n"
+                        "- (4.5) RSM gets treated as an HR and minor bug fixes"
         )
         june_new_commands = (
                         "- /get-badge-history (!gbh)\n"
