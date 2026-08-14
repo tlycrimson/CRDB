@@ -13,7 +13,7 @@ from config import Config
 from utils import embedBuilder
 from utils.views import PageButtonView
 from utils.decorators import has_modular_permission
-from utils.helpers import clean_nickname, get_tier_info, make_progress_bar
+from utils.helpers import clean_nickname, get_tier_info, make_progress_bar, is_hr
 
 logger = logging.getLogger(__name__)
 
@@ -225,8 +225,7 @@ class XPCog(commands.Cog):
             embed = embedBuilder.build_profile_embed(user_info, target_user, army_rank)
             
             try:
-                hr_role = ctx.guild.get_role(Config.HR_ROLE_ID)
-                if hr_role and hr_role in target_user.roles:
+                if is_hr(target_user.roles):
                     hr_data = await self.bot.db.get_hr_info(target_user.id)
                     total_events = 0 
                     dep_points = 0

@@ -6,7 +6,7 @@ from typing import Optional
 from utils.decorators import  has_modular_permission 
 from discord.ext import commands
 from discord import app_commands
-from utils.helpers import clean_nickname, MockPayload
+from utils.helpers import clean_nickname, MockPayload, is_hr
 from utils.views import ConfirmView, PageButtonView
 
 logger = logging.getLogger(__name__)
@@ -46,8 +46,7 @@ class ModerationCog(commands.Cog):
         if not member:
             return await ctx.send(f"```❌ User not found in this server.```")
 
-        hr_role = guild.get_role(Config.HR_ROLE_ID)
-        is_hr = hr_role and hr_role in member.roles
+        is_hr = is_hr(member.roles)
 
         hr_columns = ["tryouts", "events", "phases", "courses", "inspections", "joint_events"]
         lr_columns = ["activity", "time_guarded", "events_attended"]
@@ -117,8 +116,7 @@ class ModerationCog(commands.Cog):
             except discord.NotFound:
                 return []
 
-        hr_role = guild.get_role(Config.HR_ROLE_ID)
-        is_hr = hr_role and hr_role in member.roles
+        is_hr = is_hr(member.roles)
 
         # Display name -> DB column
         hr_columns = {

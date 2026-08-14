@@ -285,7 +285,6 @@ def dict_to_embed(data: dict) -> discord.Embed:
     
     return embed
 
-# Function: Given the user id and a sorted list, it returns the position of that user within the list
 def get_user_rank(user_id: int, sorted_users: list) -> Optional[int]:
     """Get a user's rank position based on XP (lower number = higher rank)"""
     try:
@@ -311,3 +310,7 @@ def in_regiment(user_groups):
     ]
     
     return "\n".join(regiments) if regiments else None
+
+def is_hr(roles: list[discord.Role]) -> bool:
+    roles_ids = [r.id for r in roles]
+    return Config.HR_ROLE_ID in roles_ids or Config.RSM_ROLE_ID in roles

@@ -319,9 +319,9 @@ class ReactionLoggerCog(commands.Cog):
             await asyncio.sleep(0.5)
             message = await channel.fetch_message(payload.message_id)
 
-            exempt_role_ids = {Config.HR_ROLE_ID, Config.HQ_ROLE_ID, Config.HIGH_COMMAND_ROLE_ID}
+            exempt_role_ids = {Config.RSM_ROLE_ID, Config.HR_ROLE_ID, Config.HQ_ROLE_ID, Config.HIGH_COMMAND_ROLE_ID}
             exempt_roles = {guild.get_role(rid) for rid in exempt_role_ids} - {None}
-            sgm_roles = {guild.get_role(rid) for rid in Config.SERGEANT_MAJOR_IDS} - {None}
+            sgm_roles = {guild.get_role(rid) for rid in [Config.COMPANY_SERGEANT_MAJOR_ROLE_ID]} - {None}
 
             host_mention = HOST_PATTERN.search(message.content)
             host_id = int(host_mention.group(1)) if host_mention else message.author.id
@@ -476,7 +476,7 @@ class ReactionLoggerCog(commands.Cog):
             await asyncio.sleep(0.5)
             message = await channel.fetch_message(payload.message_id)
 
-            exempt_role_ids = {Config.HR_ROLE_ID, Config.HQ_ROLE_ID, Config.HIGH_COMMAND_ROLE_ID}
+            exempt_role_ids = {Config.RSM_ROLE_ID, Config.HR_ROLE_ID, Config.HQ_ROLE_ID, Config.HIGH_COMMAND_ROLE_ID} 
             exempt_roles = {guild.get_role(rid) for rid in exempt_role_ids} - {None}
 
             user_mention = MENTION_PATTERN.search(message.content)
@@ -484,7 +484,7 @@ class ReactionLoggerCog(commands.Cog):
             user_member = guild.get_member(user_id) or await guild.fetch_member(user_id)
 
             if exempt_roles & set(user_member.roles):
-                embed = discord.Embed(description="Cannot log that. User is a high rank.", color=discord.Color.red())
+                embed = discord.Embed(description="Cannot log that. User has the High Rank or the RSM role.", color=discord.Color.red())
                 await self.log_channel.send(content=member.mention, embed=embed)  
                 return False
 
