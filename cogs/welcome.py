@@ -461,8 +461,8 @@ class WelcomeCog(commands.Cog):
                 duration_amount = 183
                 blacklist_duration = "6 months"
             else:
-                duration_amount = 14
-                blacklist_duration = "2 weeks"
+                duration_amount = 31
+                blacklist_duration = "1 month"
 
             interaction_data = BlacklistData([member.id], "Desertion.", blacklist_duration, duration_amount, None, member)
             

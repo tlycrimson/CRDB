@@ -389,11 +389,13 @@ class ReactionLoggerCog(commands.Cog):
                     
                     success = await tx.update_lr(attendee, {"events_attended": 1})
                     successful_attendees.append(name_str if success else f"{name_str} (failed to update points)")
+                    
+                    return "\n".join(successful_attendees)
 
             attendees_section = ATTENDEES_PATTERN.search(message.content)
             
             if attendees_section:
-                successful_attendees = "\n".join(await update_attendees(attendees_section))
+                successful_attendees = await update_attendees(attendees_section)
             else:
                 successful_attendees = None
 
