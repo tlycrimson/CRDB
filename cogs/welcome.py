@@ -533,9 +533,9 @@ class WelcomeCog(commands.Cog):
                 await d_log.send(embed=d_embed)
                 await asyncio.sleep(0.3)
                 await b_log.send(embed=b_embed)
-                logger.info(f"Logged deserted member, %s", member_id)
+                logger.info(f"Logged deserted member, %s (%s)", cleaned_nickname, member_id)
             else:
-                logger.error("Failed to log deserted member %s (%s) - main channel not found", member_id)
+                logger.error("Failed to log deserted member %s (%s) - main channel not found", cleaned_nickname, member_id)
         except Exception as e:
             logger.error("Error logging deserter discharge: %s", e)
             return await interaction.followup.send("```❌ An error occurred while processing the blacklist.```", ephemeral=True)
@@ -567,7 +567,7 @@ class WelcomeCog(commands.Cog):
 
             logger.info(f"Removed {cleaned_nickname} ({member_id}) from database")
         except Exception as e:
-            logger.error(f"Error registering deserter: %s", cleaned_nickname, member_id, e)
+            logger.error(f"Error registering deserter named %s (%s): %s", cleaned_nickname, member_id, e)
             await interaction.followup.send("```❌ An error occurred while processing the blacklist. Please check if I've missed anything.```", ephemeral=True)
 
        
