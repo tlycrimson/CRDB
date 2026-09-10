@@ -390,7 +390,7 @@ class RobloxClient:
         if hit:
             return val
         data, _ = await self._fetch("GET", "friends", f"/v1/users/{user_id}/friends/count")
-        result = data.get("count") if data else None
+        result = data.get("count") if data else 0
         if result is not None:
             self._cache.set(cache_key, result)
         return result
