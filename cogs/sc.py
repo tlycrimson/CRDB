@@ -259,9 +259,9 @@ class ScCog(commands.Cog):
         profile = data["user_info"]
         british_army_rank  = data["rank"]
         groups = data["groups"]
-        friends_count = data["friends_count"]
+        friends_count = data["friends_count"] or 0
         avatar = data["avatar_url"]
-        badge_count = data["badge_count"]
+        badge_count = data["badge_count"] or 0
 
         if profile is None or isinstance(profile, Exception) or not profile.get('name'):
             embed = discord.Embed(
