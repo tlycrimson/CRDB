@@ -6,7 +6,7 @@ import logging
 from config import Config
 from utils import embedBuilder
 from types import SimpleNamespace
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from utils.decorators import min_rank_required2, has_role
 from utils.helpers import clean_nickname, MockPayload
 
@@ -301,11 +301,11 @@ class HaltReasonModal(discord.ui.Modal, title='Reason for Halt'):
     HALT_MESSAGES = {
         "security": (
             "Your Royal Military Police background check has been halted for the following reasons:\n- {reason}"
-            "\n\n**You have {hours} hour{plural} to comply. Once you have, use the button to let the checker know.**"
+            "\n\n**You have till <t:{timestamp}:F> ({hours} hour{plural}) to comply. Once you have, use the button to let the checker know.**"
         ),
         "induction": (
             "Your Royal Military Police induction check has been halted for the following reasons:\n- {reason}"
-            "\n\n**You have {hours} hour{plural} to comply. Once you have, use the button to let the checker know.**"
+            "\n\n**You have till <t:{timestamp}:F> ({hours} hour{plural}) to comply. Once you have, use the button to let the checker know.**"
         ),
     }
 
@@ -333,11 +333,11 @@ class HaltReasonModal(discord.ui.Modal, title='Reason for Halt'):
         self.add_item(self.hours)
         self.add_item(self.reason)
 
-    def _get_default_message(self, hours, reason) -> str:
+    def _get_default_message(self, timestamp, hours, reason) -> str:
         if self.checker_type == Config.BG_CHECKER_ROLE_ID:
-            return self.HALT_MESSAGES["security"].format(hours=hours, reason=reason, plural="s" if int(hours)>1 else "")
+            return self.HALT_MESSAGES["security"].format(timestamp=timestamp, hours=hours, reason=reason, plural="s" if int(hours)>1 else "")
         elif self.checker_type == Config.LA_ROLE_ID:
-            return self.HALT_MESSAGES["induction"].format(hours=hours, reason=reason, plural="s" if int(hours)>1 else "")
+            return self.HALT_MESSAGES["induction"].format(timestamp=timestamp, hours=hours, reason=reason, plural="s" if int(hours)>1 else "")
         return ""
 
     async def on_submit(self, interaction: discord.Interaction):
@@ -358,11 +358,13 @@ class HaltReasonModal(discord.ui.Modal, title='Reason for Halt'):
             return
 
         timeout = self.TIMEOUT_BASE * int(selected_hours)
+        
+        timestamp = datetime.now(timezone.utc) + timedelta(hours=int(selected_hours))
 
         embed = embedBuilder.build_request_respsone(
             accepted=False,
             halted=True,
-            reason=self._get_default_message(selected_hours, self.reason.value),
+            reason=self._get_default_message(int(timestamp.timestamp()), selected_hours, self.reason.value),
             username=interaction.user.display_name,
             check_type=self.checker_type
         )
