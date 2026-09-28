@@ -3,7 +3,7 @@ import asyncio
 import discord
 import logging
 
-from typing import Tuple
+from typing import Optional, Tuple
 from dotenv import load_dotenv
 from config import Config
 from utils.helpers import clean_nickname
@@ -36,6 +36,7 @@ class DatabaseHandler:
         self.crs_table = "criminal_records"
         self.u_roles_table = "user_roles"
         self.wm_table = "welcome_messages"
+        self.xp_log_table = "xp_logs"
 
 
     async def initialise(self):
@@ -268,31 +269,61 @@ class DatabaseHandler:
         )
 
         return [(str(user['user_id']), user.get('xp', 0)) for user in sorted_users]
+ 
+    async def log_xp( 
+        self,
+        user: discord.Member,
+        staff: discord.Member,
+        xp_change: int,
+        new_total: int,
+        reason: str,
+        trigger_id: str
+    
+    ):
+        cleaned_staff_name = clean_nickname(staff.display_name)
+        cleaned_user_name = clean_nickname(user.display_name)
 
-    async def add_xp(self, user_id: str, username: str, xp: int) -> Tuple[bool, int]:
-        user_id_str = str(user_id)
+        await self.supabase.table(self.xp_log_table).insert({
+            "staff_name": cleaned_staff_name,
+            "staff_id":  staff.id,
+            "user_name": cleaned_user_name,
+            "user_id": user.id,
+            "reason": reason,        
+            "xp_change": xp_change,
+            "new_total": new_total,
+            "trigger_id": trigger_id
+        }).execute()
+
+    async def add_xp(self, user: discord.Member, staff: discord.Member, xp: int, reason: Optional[str] = None, trigger_id: Optional[str] = None) -> Tuple[bool, int]:
+        user_id_str = str(user.id)
         current_xp = await self.get_user_xp(user_id_str)
         new_total = current_xp + xp
-        cleaned_name = clean_nickname(username)
+        cleaned_user_name = clean_nickname(user.display_name)
+        cleaned_staff_name = clean_nickname(staff.display_name)
 
         try:
             await self.supabase.table(self.users_table).upsert({
                 "user_id": user_id_str,
                 "xp": new_total,
-                "username": cleaned_name
+                "username": cleaned_user_name
             }).execute()
 
             async with self._user_cache_lock:
                 if user_id_str in self._user_cache:
                     self._user_cache[user_id_str]['xp'] = new_total
-                    self._user_cache[user_id_str]['username'] = cleaned_name
+                    self._user_cache[user_id_str]['username'] = cleaned_user_name
                 else:
                     self._user_cache[user_id_str] = {
                         "user_id": user_id_str,
                         "xp": new_total,
-                        "username": cleaned_name
+                        "username": cleaned_user_name
                     }
+
+            if reason and trigger_id:
+                await self.log_xp(user, staff, xp, new_total, reason, trigger_id)
             
+            logger.info("%s (%s) gave %s xp to (%s) %s | OMID: %s", cleaned_staff_name, str(staff.id), xp, cleaned_user_name, str(user.id), trigger_id)
+
             return True, new_total
 
         except Exception as e:
@@ -300,10 +331,13 @@ class DatabaseHandler:
             return False, 0
 
 
-    async def remove_xp(self, user_id: str, xp: int) -> Tuple[bool, int]:
-        user_id_str = str(user_id)
+
+    async def remove_xp(self, user: discord.Member, staff: discord.Member, xp: int, reason: Optional[str] = None, trigger_id: Optional[str] = None) -> Tuple[bool, int]:
+        user_id_str = str(user.id)
         current_xp = await self.get_user_xp(user_id_str)
-        new_total = max(0, current_xp - xp)
+        new_total = max(0, current_xp - xp) 
+        cleaned_user_name = clean_nickname(user.display_name)
+        cleaned_staff_name = clean_nickname(staff.display_name)
 
         if not self.supabase:
             return False, 0
@@ -322,7 +356,11 @@ class DatabaseHandler:
                         "user_id": user_id_str,
                         "xp": new_total
                     }
-            
+                    
+            if reason and trigger_id:
+                await self.log_xp(user, staff, -(xp), new_total, reason, trigger_id)
+           
+            logger.info("%s (%s) removed %s xp from (%s) %s | OMID: %s", cleaned_staff_name, str(staff.id), xp, cleaned_user_name, str(user.id), trigger_id)
             return True, new_total
 
         except Exception as e:

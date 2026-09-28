@@ -8,7 +8,7 @@ from utils import embedBuilder
 from utils.helpers import clean_nickname
 from datetime import datetime, timedelta, timezone
 from dataclasses import dataclass
-from typing import Callable, List, Tuple
+from typing import Callable, List, Tuple, Optional
 
 logger = logging.getLogger(__name__)
 
@@ -46,10 +46,10 @@ class TransactionTracker:
             self.db_rollbacks.append((self.cog._update_lr_record, (member, inverse)))
         return success
 
-    async def add_xp(self, user_id: str, display_name: str, xp: int):
-        success, new_total = await self.cog.bot.db.add_xp(user_id, display_name, xp)
+    async def add_xp(self, user: discord.Member, staff: discord.Member, xp: int, reason: Optional[str] = None, trigger_id: Optional[str] =  None):
+        success, new_total = await self.cog.bot.db.add_xp(user, staff, xp, reason, trigger_id)
         if success:
-            self.db_rollbacks.append((self.cog.bot.db.add_xp, (user_id, display_name, -xp)))
+            self.db_rollbacks.append((self.cog.bot.db.add_xp, (user, staff, -xp, "operational system rollback", trigger_id)))
         return success, new_total
 
     def track_message(self, message: discord.Message):
@@ -363,7 +363,7 @@ class ReactionLoggerCog(commands.Cog):
                     await tx.update_hr(member, update_dict)
             
             await update_hoster(tx, host_member, hr_update_field)
-            _, new_total = await tx.add_xp(str(host_member.id), host_member.display_name, 1)
+            _, new_total = await tx.add_xp(host_member, member, 1, "Hosting (Automated)", str(message.id))
            
             co_host_names = "\n".join(co_hosts.keys()) if co_hosts else None
             for co_host in co_hosts.values():
@@ -444,7 +444,8 @@ class ReactionLoggerCog(commands.Cog):
 
             await tx.update_hr(host_member, {column_to_update: 1})
             await tx.update_hr(member, {"courses": Config.POINTS_PER_ACTIVITY})
-            _, new_total = await tx.add_xp(str(host_member.id), host_member.display_name, 1)
+
+            _, new_total = await tx.add_xp(host_member, member, 1, "Hosting (Automated)", str(message.id))
 
             display_mapping = {
                 self.phase_log_channel_id: "Phase",
@@ -517,7 +518,7 @@ class ReactionLoggerCog(commands.Cog):
             xp_to_award = total_minutes // 15
 
             if xp_to_award > 0:
-                await tx.add_xp(str(user_member.id), user_member.display_name, xp_to_award)
+                await tx.add_xp(user_member, member, xp_to_award, "Activity/Guarding (Automated)", str(message.id))
 
             log_embed = embedBuilder.build_activity_log(member, message, user_member, total_minutes, is_time_guarded, xp_to_award)  
             await tx.update_hr(member, {"courses": Config.POINTS_PER_ACTIVITY})

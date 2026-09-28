@@ -84,7 +84,7 @@ class XPCog(commands.Cog):
                 )
                 return
             
-            success, new_total = await self.bot.db.add_xp(user.id, cleaned_name, xp)
+            success, new_total = await self.bot.db.add_xp(user, ctx.author, xp, "Manual Addition", str(ctx.message.id))
              
             if success:
                 await ctx.send(
@@ -135,8 +135,8 @@ class XPCog(commands.Cog):
                 )
                 return
             
-            success, new_total = await self.bot.db.remove_xp(user.id, xp)
-            
+            success, new_total = await self.bot.db.remove_xp(user, ctx.author, xp, "Manual Removal", str(ctx.message.id))
+
             if success:
                 message = f"```✅ Removed {xp} XP from {cleaned_name}. New total: {new_total} XP```"
                 await ctx.send(message)
@@ -500,8 +500,7 @@ class XPCog(commands.Cog):
                                     failed_users.append(f"{cleaned_nickname} (would exceed max XP)")
                                     continue
                                     
-                                success, new_total = await self.bot.db.add_xp(member.id, member.display_name, xp_amount)
-                                
+                                success, new_total = await self.bot.db.add_xp(member, ctx.author, xp_amount, "Attending Event (gxp command)", str(ctx.message.id))
                                 if success:
                                     successful_users.append(f"• {cleaned_nickname}")
                                     await initial_message.edit(
