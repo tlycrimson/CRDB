@@ -9,8 +9,8 @@ class Config:
 
     #  ===== XP LIMIT CONFIGURATION =====
     # XP Limit Configuration
-    MAX_XP_PER_ACTION =  20  # Maximum XP that can be given/taken in a single action
-    MAX_EVENT_XP_PER_USER = 20 # Maximum XP per user in event distributions
+    MAX_XP_PER_ACTION =  300  # Maximum XP that can be given/taken in a single action
+    MAX_EVENT_XP_PER_USER = 300 # Maximum XP per user in event distributions
     MAX_EVENT_TOTAL_XP = 5000  # Maximum total XP for entire event distribution
     
     #  ===== GLOBAL RATE LIMITER CONFIGURATION =====
