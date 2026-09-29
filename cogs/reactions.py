@@ -89,12 +89,12 @@ class ReactionLoggerCog(commands.Cog):
         self.exam_monitor_channel_ids = Config.EXAM_AND_INDUCTION_MONITOR_CHANNELS
         
         self.REACTION_HANDLERS = [
-            ReactionHandler("_log_event_reaction_impl", channels=set(self.event_channel_ids)),
-            ReactionHandler("_log_training_reaction_impl", channels={self.phase_log_channel_id, self.tryout_log_channel_id, self.course_log_channel_id, self.tc_supervision_log_channel_id}),
+            #ReactionHandler("_log_event_reaction_impl", channels=set(self.event_channel_ids)),
+            #ReactionHandler("_log_training_reaction_impl", channels={self.phase_log_channel_id, self.tryout_log_channel_id, self.course_log_channel_id, self.tc_supervision_log_channel_id}),
             ReactionHandler("_log_activity_reaction_impl", channels={self.activity_log_channel_id}),
-            ReactionHandler("_log_security_check_log_reaction_impl", channels={self.sc_log_channel_id}),
-            ReactionHandler("_log_la_and_examiner_impl", channels=set(self.exam_monitor_channel_ids)),
-            ReactionHandler("_log_dbl_reaction_impl", channels=set(self.monitor_channel_ids))
+            #ReactionHandler("_log_security_check_log_reaction_impl", channels={self.sc_log_channel_id}),
+            #ReactionHandler("_log_la_and_examiner_impl", channels=set(self.exam_monitor_channel_ids)),
+            #ReactionHandler("_log_dbl_reaction_impl", channels=set(self.monitor_channel_ids))
         ]
         self.cleanup_loop.start()
 
@@ -521,8 +521,8 @@ class ReactionLoggerCog(commands.Cog):
                 await tx.add_xp(user_member, member, xp_to_award, "Activity/Guarding (Automated)", str(message.id))
 
             log_embed = embedBuilder.build_activity_log(member, message, user_member, total_minutes, is_time_guarded, xp_to_award)  
-            await tx.update_hr(member, {"courses": Config.POINTS_PER_ACTIVITY})
-            db_embed = embedBuilder.build_db_logger_record(member, message, Config.POINTS_PER_ACTIVITY, payload.emoji)
+            # await tx.update_hr(member, {"courses": Config.POINTS_PER_ACTIVITY})
+            db_embed = embedBuilder.build_db_logger_record(member, message, 0, payload.emoji)
 
             # Fixed multi-embed return object handling
             msg = await self.log_channel.send(embeds=[db_embed, log_embed])

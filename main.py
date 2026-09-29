@@ -119,7 +119,7 @@ class CRDB(commands.Bot):
             "cogs.xp",
             "cogs.welcome", 
             "cogs.moderation",
-            #"cogs.reactions",
+            "cogs.reactions",
             "cogs.admin",
             "cogs.utility",
             "cogs.sc",  

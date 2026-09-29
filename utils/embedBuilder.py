@@ -77,9 +77,9 @@ def build_regiment_info(data: dict):
         return info_embed
 
 def build_change_log(prefix, page):
-        title = "MP Assistant v1.4.4 Change Logs"
+        title = "MP Assistant v1.4.6 Change Logs"
         description = "Below features the recent changes made to the bot. If you wish to make a suggestion to improve the bot, use the suggest command. As well, if you spot a mistake or an error, use the report command.\n\n"
-        footer = "Last Updated: June 2026"
+        footer = "Last Updated: September 2026"
         
         june_updates = (
                         "- Minor bug fixes.\n"
@@ -104,6 +104,10 @@ def build_change_log(prefix, page):
                         "- (4.4) For activity logs, 1 xp is given for every 15 minutes rather than 30.\n"
                         "- (4.5) Updated the info command with the change of overseers and removed the temp.\n"
                         "- (4.5) RSM gets treated as an HR and minor bug fixes.\n"
+                        "- (4.6) Improved give-event-xp command.\n"
+                        "- (4.6) Halt embeds now include timestamps.\n"
+                        "- (4.6) Bug fixes for the background check module.\n"
+                        "- (4.6) All logging related features for HRs have been removed due to the BA bot integration.\n"
         )
         june_new_commands = (
                         "- /get-badge-history (!gbh)\n"
