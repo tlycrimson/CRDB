@@ -108,6 +108,7 @@ def build_change_log(prefix, page):
                         "- (4.6) Halt embeds now include timestamps.\n"
                         "- (4.6) Bug fixes for the background check module.\n"
                         "- (4.6) All logging related features for HRs have been removed due to the BA bot integration.\n"
+                        "- (4.6) Increased XP cap per operation.\n"
         )
         june_new_commands = (
                         "- /get-badge-history (!gbh)\n"
