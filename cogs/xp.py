@@ -423,29 +423,63 @@ class XPCog(commands.Cog):
                         
                     # Process attendees section
                     content = message.content
-                    attendees_sections = ["Attendees:", "Passed:"]
+                    attendees_sections = ["Attendees:", "Passed:", "[ATTENDEES]:", "[PASSED]:"]
                     
                     section_index = None
                     attendees_section = None
+                    start_index_of_section = 0
                     for section in attendees_sections:
                         section_index = content.find(section)
                         attendees_section = section
-                        if section_index and section_index != -1:
+                        start_index_of_section = section_index + len(attendees_section)
+                        if section_index and section_index != -1 and content[start_index_of_section:start_index_of_section+3].strip().startswith("<@"):
                             break
+                    
+                    
+                    if section_index == -1 or not content[start_index_of_section:start_index_of_section+3].strip().startswith("<@"):
+                        await initial_message.edit(content=f"```❌ Could not find the attendees section in the message. Please specify the name of the section by replying to this message or sending a message in this channel within 15 seconds.```")
 
-                    if section_index == -1:
-                        await initial_message.edit(content=f"```❌ Could not find the attendees section in the message. Please denote it using 'Attendees:' or 'Passed:'.```")
-                        return
-                        
-                    mentions_section = content[section_index + len(attendees_section):]
+                        def check(m):
+                            return m.author == ctx.author and m.channel == ctx.channel
+
+                        try:
+                            user_message = await self.bot.wait_for('message', check=check, timeout=15.0)
+                            # Some of the code above and below could be turned into a function but i seriously cba
+                            specified_section = user_message.content 
+                            section_index = content.find(specified_section)
+                            if section_index == -1:
+                                await user_message.reply(content=f"```❌ Could not find '{specified_section}' in the message. Please try again.```")
+                                return 
+
+                            start_index_of_section = section_index + len(specified_section)
+
+                            if not content[start_index_of_section:start_index_of_section+3].strip().startswith("<@"):
+                                await user_message.reply(content=f"```❌ No user mentions found after '{specified_section}'. Please check and try again. Default attendee section names that I look for:\n- 'Attendees:'\n- 'Passed:'\n- '[ATTENDEES]:'\n- '[PASSED]:'```")
+                                return
+
+                            try:
+                                await user_message.add_reaction("✅")
+                                initial_message = await user_message.reply("```⏳ Attempting to give XP with specified section...```")
+                            except Exception:
+                                pass
+
+                        except asyncio.TimeoutError:
+                            await ctx.send(f"{ctx.author.mention}\n```You did not specify or name a section so the interaction has ended.```")
+                            return 
+
+
+
+                    mentions_section = content[start_index_of_section:]
                     mentions = re.findall(r'<@!?(\d+)>', mentions_section)
 
                     mentions = list(set(mentions))
                     
+                    # I deadass could find the point after host or co-host (if there is one) and extract all mentions there LOL but ive put to much effort in now to stop
+
                     if not mentions:
-                        await initial_message.edit(content=f"```❌ No user mentions found after '{attendees_section}'```")
+                        await initial_message.edit(content=f"```❌ No user mentions found after '{attendees_section}'. Please check and try again. Default attendee sections are:\n- 'Attendees:'\n- 'Passed:'\n- '[ATTENDEES]:'\n- '[PASSED]:'```")
                         return
-                        
+
                     # Process users with progress updates
                     unique_mentions = list(set(mentions))
                     total_potential_xp = xp_amount * len(unique_mentions)
@@ -553,7 +587,7 @@ class XPCog(commands.Cog):
                 await initial_message.edit(content="⌛ Command timed out. Some XP may have been awarded.")
             except Exception as e:
                 logger.error(f"Error in give_event_xp: {str(e)}", exc_info=True)
-                await initial_message.edit(content="❌ An unexpected error occurred. Please check logs.")
+                await initial_message.edit(content="```❌ An unexpected error occurred. Please try again.```")
 
 
 async def setup(bot):
