@@ -13,11 +13,17 @@ from typing import Callable, List, Tuple, Optional
 logger = logging.getLogger(__name__)
 
 SECURITY_CHECK_PATTERN = re.compile(r"Security\s*Check(?:/s|\(s\)|s)?:\s*(\d+)", re.IGNORECASE)
-HOST_PATTERN = re.compile(r'host:\s*<@!?(\d+)>', re.IGNORECASE)
-CO_HOST_PATTERN = re.compile(r'co-host:\s*(.*?)(?=\n(?:host|attendees|passed|failed|ping|proof):|$)', re.IGNORECASE)
+HOST_PATTERN = re.compile(r'(?:\[HOST\]|host):\s*<@!?(\d+)>', re.IGNORECASE)
+CO_HOST_PATTERN = re.compile(
+    r'(?:\[CO-HOST\]|co-host):\s*(.*?)(?=\n(?:\[(?:HOST|ATTENDEES|PASSED|FAILED|PING|PROOF)\]|host|attendees|passed|failed|ping|proof):|$)',
+    re.IGNORECASE
+)
 MENTION_PATTERN = re.compile(r'<@!?(\d+)>')
-EVENT_NAME_PATTERN = re.compile(r'Event:\s*(.*?)(?:\n|$)', re.IGNORECASE)
-ATTENDEES_PATTERN = re.compile(r'(?:Attendees:|Passed:)\s*((?:<@!?\d+>[\s,]*)+)', re.IGNORECASE)
+EVENT_NAME_PATTERN = re.compile(r'(?:\[EVENT\]|Event):\s*(.*?)(?:\n|$)', re.IGNORECASE)
+ATTENDEES_PATTERN = re.compile(
+    r'(?:\[(?:ATTENDEES|PASSED)\]:?|(?:Attendees|Passed):)\s*((?:<@!?\d+>[\s,]*)+)',
+    re.IGNORECASE
+)
 TIME_PATTERN = re.compile(r'Time:\s*(\d+)')
 
 @dataclass
@@ -89,7 +95,7 @@ class ReactionLoggerCog(commands.Cog):
         self.exam_monitor_channel_ids = Config.EXAM_AND_INDUCTION_MONITOR_CHANNELS
         
         self.REACTION_HANDLERS = [
-            #ReactionHandler("_log_event_reaction_impl", channels=set(self.event_channel_ids)),
+            ReactionHandler("_log_event_reaction_impl", channels=set(self.event_channel_ids)),
             #ReactionHandler("_log_training_reaction_impl", channels={self.phase_log_channel_id, self.tryout_log_channel_id, self.course_log_channel_id, self.tc_supervision_log_channel_id}),
             ReactionHandler("_log_activity_reaction_impl", channels={self.activity_log_channel_id}),
             #ReactionHandler("_log_security_check_log_reaction_impl", channels={self.sc_log_channel_id}),
@@ -344,12 +350,12 @@ class ReactionLoggerCog(commands.Cog):
             cleaned_host_name = clean_nickname(host_member.display_name)
             hr_update_field = "events"
             
-            if payload.channel_id == Config.W_EVENT_LOG_CHANNEL_ID:
-                content = message.content
-                if re.search(r'\bjoint\b', content, re.IGNORECASE):
-                    hr_update_field = "joint_events"
-                elif re.search(r'\b(inspection|pi)\b', content, re.IGNORECASE):
-                    hr_update_field = "inspections"
+            #if payload.channel_id == Config.W_EVENT_LOG_CHANNEL_ID:
+            #    content = message.content
+            #    if re.search(r'\bjoint\b', content, re.IGNORECASE):
+            #        hr_update_field = "joint_events"
+            #    elif re.search(r'\b(inspection|pi)\b', content, re.IGNORECASE):
+            #        hr_update_field = "inspections"
 
             event_name_match = EVENT_NAME_PATTERN.search(message.content)
             event_name = event_name_match.group(1).strip() if event_name_match else hr_update_field.replace("_", " ").title()
@@ -362,12 +368,12 @@ class ReactionLoggerCog(commands.Cog):
                 else:
                     await tx.update_hr(member, update_dict)
             
-            await update_hoster(tx, host_member, hr_update_field)
-            _, new_total = await tx.add_xp(host_member, member, 1, "Hosting (Automated)", str(message.id))
+            #await update_hoster(tx, host_member, hr_update_field)
+            #_, new_total = await tx.add_xp(host_member, member, 1, "Hosting (Automated)", str(message.id))
            
             co_host_names = "\n".join(co_hosts.keys()) if co_hosts else None
-            for co_host in co_hosts.values():
-                await update_hoster(tx, co_host, hr_update_field, 0.5)
+            #for co_host in co_hosts.values():
+            #    await update_hoster(tx, co_host, hr_update_field, 0.5)
 
             async def fetch_member(uid: int) -> discord.Member | None:
                 return guild.get_member(uid) or await guild.fetch_member(uid)
@@ -400,13 +406,13 @@ class ReactionLoggerCog(commands.Cog):
                 successful_attendees = None
 
            
-            await tx.update_hr(member, {"courses": Config.POINTS_PER_ACTIVITY})
+            #await tx.update_hr(member, {"courses": Config.POINTS_PER_ACTIVITY})
             
-            db_embed = embedBuilder.build_db_logger_record(member, message, Config.POINTS_PER_ACTIVITY, payload.emoji)
+            db_embed = embedBuilder.build_db_logger_record(member, message, 0, payload.emoji)
             log_embed = embedBuilder.build_event_log(member, message, host_member, co_host_names, event_name, successful_attendees)
-            xp_log = embedBuilder.build_xp_log(member, [f"{cleaned_host_name} | {host_member.id}: {new_total-1} ↠ {new_total}"], 1, f"[Hosting]({message.jump_url})", message.id)
+            #xp_log = embedBuilder.build_xp_log(member, [f"{cleaned_host_name} | {host_member.id}: {new_total-1} ↠ {new_total}"], 1, f"[Hosting]({message.jump_url})", message.id)
             
-            msg = await self.log_channel.send(embeds=[db_embed, log_embed, xp_log])
+            msg = await self.log_channel.send(embeds=[db_embed, log_embed])
             tx.track_message(msg)
             
             return True

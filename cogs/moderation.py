@@ -305,7 +305,7 @@ class ModerationCog(commands.Cog):
             description="Save a user's tracked roles to the database."
     )
     @app_commands.checks.cooldown(1, 5.0)
-    @has_modular_permission("moderation")
+    @has_modular_permission("administrative")
     async def save_roles(self, ctx: commands.Context, member: discord.Member):
         if ctx.interaction:
             await ctx.interaction.response.defer()
@@ -367,7 +367,7 @@ class ModerationCog(commands.Cog):
             description="Restore saved roles for a user."
     )
     @app_commands.checks.cooldown(1, 5.0)
-    @has_modular_permission("moderation")
+    @has_modular_permission("administrative")
     async def restore_roles(self, ctx: commands.Context, member: discord.Member):
         
         if ctx.interaction:

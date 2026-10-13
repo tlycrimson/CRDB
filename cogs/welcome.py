@@ -345,7 +345,7 @@ class WelcomeCog(commands.Cog):
                     alert_channel = after.guild.get_channel(Config.HR_CHAT_CHANNEL_ID)
                     if alert_channel:
                         embed = discord.Embed(
-                            description=f"{cleaned_nickname} no longer has the RMP role. Please check if this not a desertion.",
+                            description=f"{cleaned_nickname} no longer has the RMP role. Please check if this a desertion.",
                             color=discord.Color.orange(),
                             timestamp=datetime.now(timezone.utc)
                         )
@@ -447,7 +447,7 @@ class WelcomeCog(commands.Cog):
             cleaned_nickname = re.sub(r'\[.*?\]', '', member.display_name).strip() or member.name
            
             embed = discord.Embed(
-                description=f"I suspect {cleaned_nickname} has just deserted!\n**Permission to blacklist?**",
+                description=f"I suspect {cleaned_nickname} has just deserted! Please check this.",
                 color=discord.Color.red()
             )
 
@@ -455,122 +455,11 @@ class WelcomeCog(commands.Cog):
             embed.set_author(name="Deserter Alert", icon_url=Config.ALERTING_NOTIF_ICON)
             embed.set_thumbnail(url=member.display_avatar.url)
             
-            hr_role = guild.get_role(Config.HR_ROLE_ID)  
-            
-            if hr_role and hr_role in member.roles:
-                duration_amount = 183
-                blacklist_duration = "6 months"
-            else:
-                duration_amount = 31
-                blacklist_duration = "1 month"
-
-            interaction_data = BlacklistData([member.id], "Desertion.", blacklist_duration, duration_amount, None, member)
-            
-            requestView = AoDView(interaction_data, self, self.bot)
-           
             msg = await alert_channel.send(
                 content=f"<@&{Config.HIGH_COMMAND_ROLE_ID}>",
                 embed=embed,
-                view=requestView
             )
             
-            await save_pending_blacklist(self.bot, msg.id, alert_channel.id, interaction_data)
-
-    class UserNotFoundError(Exception):
-         pass 
-
-    async def register_deserter(self, interaction_data, interaction):
-        member_id = interaction_data.members[0]
-        reason = interaction_data.reason
-        blacklist_duration = interaction_data.unit
-        duration_amount = interaction_data.duration
-        approver = interaction.user
-        guild = interaction.guild
-       
-        await interaction.followup.send(
-                "```⚙️ Processing desertion...```",
-                ephemeral=True,
-                wait=True
-        )
-
-        try:
-            res = await self.bot.db.supabase.table(self.bot.db.users_table).select("*").eq("user_id", str(member_id)).execute()
-            data = res.data 
-
-            if not data:
-                logger.warning(f"User {member_id} not found in database.")
-                raise self.UserNotFoundError(f"Member ID {member_id} does not exist in the 'users' table.")
-            else:
-                user_row = data[0]
-                
-                cleaned_nickname = user_row.get("username")
-                roblox_id = user_row.get("roblox_id")
-
-                logger.info(f"Retrieved user information for {cleaned_nickname}: {roblox_id}")
-
-        except Exception as e:
-            logger.error(f"Error getting user information for {member_id}: {e}")
-            return await interaction.followup.send("```❌ An error occurred while processing the blacklist.```", ephemeral=True)
-        
-        member_info = f" {cleaned_nickname} | {member_id} (<@{member_id}>)"
-        if roblox_id:
-            member_info += f" | {roblox_id}"
-        
-
-        current_date = datetime.now(timezone.utc)    
-        ending_date = current_date + timedelta(days=duration_amount)  
-        
-        approver_username = clean_nickname(approver.display_name)
-        d_embed = embedBuilder.build_discharge_log("Dishonourable", member_info, approver_username, reason, "Blacklist", blacklist_duration, ending_date, None)
-        
-        b_embed = embedBuilder.build_blacklist_log(approver_username, member_info, blacklist_duration, reason, ending_date)
-
-        try:
-            d_log = self.bot.get_channel(Config.D_LOG_CHANNEL_ID)
-            b_log = self.bot.get_channel(Config.B_LOG_CHANNEL_ID)
-            
-            if d_log and b_log:
-                await d_log.send(embed=d_embed)
-                await asyncio.sleep(0.3)
-                await b_log.send(embed=b_embed)
-                logger.info(f"Logged deserted member, %s (%s)", cleaned_nickname, member_id)
-            else:
-                logger.error("Failed to log deserted member %s (%s) - main channel not found", cleaned_nickname, member_id)
-        except Exception as e:
-            logger.error("Error logging deserter discharge: %s", e)
-            return await interaction.followup.send("```❌ An error occurred while processing the blacklist.```", ephemeral=True)
-        
-        try:
-            await self.bot.db.discharge_user(str(member_id), cleaned_nickname, guild)
-          
-
-            user_groups = await self.bot.roblox.get_groups(roblox_id) if roblox_id else []
-
-            regiment_list = in_regiment(user_groups)
-
-            other_regiments = regiment_list or "N/A (Double Check this)"
-
-            embed = interaction.message.embeds[0]
-            embed.description = (
-                    f"Successfully blacklisted the deserter. Please log this in BA.\n\n"
-                    f"Name: {cleaned_nickname}\n"
-                    f"Roblox ID: {roblox_id or 'Their Roblox ID'}\n"
-                    f"Regiment deserted: RMP\n"
-                    f"Other regiments: {other_regiments}\n"
-                    f"Ping: <hicom in other regiment>\n"
-            )
-
-            embed.color = discord.Color.green()
-
-            await interaction.message.edit(embed=embed, view=None)
-            await interaction.followup.send("```✅ Completed.```", ephemeral=True)
-
-            logger.info(f"Removed {cleaned_nickname} ({member_id}) from database")
-        except Exception as e:
-            logger.error(f"Error registering deserter named %s (%s): %s", cleaned_nickname, member_id, e)
-            await interaction.followup.send("```❌ An error occurred while processing the blacklist. Please check if I've missed anything.```", ephemeral=True)
-
-       
 
     #Edit-Welcome Messages Commands
     @app_commands.command(name="edit-welcome", description="Edit welcome messages for HR or new RMP members")

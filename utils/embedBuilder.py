@@ -77,9 +77,9 @@ def build_regiment_info(data: dict):
         return info_embed
 
 def build_change_log(prefix, page):
-        title = "MP Assistant v1.4.6 Change Logs"
+        title = "MP Assistant v1.4.7 Change Logs"
         description = "Below features the recent changes made to the bot. If you wish to make a suggestion to improve the bot, use the suggest command. As well, if you spot a mistake or an error, use the report command.\n\n"
-        footer = "Last Updated: September 2026"
+        footer = "Last Updated: October 2026"
         
         june_updates = (
                         "- Minor bug fixes.\n"
@@ -109,6 +109,9 @@ def build_change_log(prefix, page):
                         "- (4.6) Bug fixes for the background check module.\n"
                         "- (4.6) All logging related features for HRs have been removed due to the BA bot integration.\n"
                         "- (4.6) Increased XP cap per operation.\n"
+                        "- (4.7) Attendees can now be logged by reacting to the log again.\n"
+                        "- (4.7) Desertion Module automatic logging/reqeusting feature has been removed.\n"
+                        "- (4.7) The save and restore commands can now only be used by roles permitted to use the administrative group commands.\n"
         )
         june_new_commands = (
                         "- /get-badge-history (!gbh)\n"
@@ -161,7 +164,7 @@ def build_change_log(prefix, page):
 
         embed = discord.Embed(color=discord.Color.dark_red())
         if (page == 0):
-                embed.set_author(name="June 2026 Change Logs",icon_url=Config.BOT_ICON)
+                embed.set_author(name="June-October 2026 Change Logs",icon_url=Config.BOT_ICON)
                 embed.description=june_updates
                 embed.add_field(name="New Commands", value=june_new_commands, inline=False)
         else:
@@ -258,8 +261,6 @@ def build_commands_page(page: int, prefix):
                                         "/security-check (sc) - Security Check Roblox user (Only for Security checkers and HI-COM)",
                                         "/force-log (fl | log) - Force log an event/training/activity/etc manually",
                                         "/edit-user (eu) - Edit a user in the database",
-                                        "/save-roles (sr) - Save requestable roles for a user in the database", 
-                                        "/restore-roles (rr) - Generate a Dyno role format to restore a user's requestable roles",
                                         "/restore-user (restore) - Restore a user's data who has been recently removed from the database",
                                         "/remove-user (remove) - Remove a user from the database",
                                         "/manage-case-logs (mcl) - Manage a user's case-log by viewing their record or adding/deleting a record.",
@@ -272,6 +273,8 @@ def build_commands_page(page: int, prefix):
                             'icon': Config.STAFF_BADGE_ICON,
                             'content': 
                                 [
+                                        "/save-roles (sr) - Save requestable roles for a user in the database", 
+                                        "/restore-roles (rr) - Generate a Dyno role format to restore a user's requestable roles",
                                         "/reset-db (rdb) - Reset the LR and HR section of the database",
                                         "/discharge - Sends discharge notification to user and logs in discharge logs",
                                         "/blacklist (bl) - Blacklist a user which sends a notification to them and logs the blacklist in discharge logs",
