@@ -263,9 +263,9 @@ class UtilityCog(commands.Cog):
     async def _send(ctx: commands.Context, content: str):
         """Reply if possible, otherwise send."""
         try:
-            await ctx.reply(content)
+            await ctx.reply(content,allowed_mentions=discord.AllowedMentions.none())
         except Exception:
-            await ctx.send(content)
+            await ctx.send(content, allowed_mentions=discord.AllowedMentions.none())
 
     @staticmethod
     async def _send_chunked(ctx: commands.Context, answer: str, query: str, jump_url: str):
