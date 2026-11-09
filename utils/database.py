@@ -296,10 +296,15 @@ class DatabaseHandler:
 
     async def add_xp(self, user: discord.Member, staff: discord.Member, xp: int, reason: Optional[str] = None, trigger_id: Optional[str] = None) -> Tuple[bool, int]:
         user_id_str = str(user.id)
-        current_xp = await self.get_user_xp(user_id_str)
-        new_total = current_xp + xp
         cleaned_user_name = clean_nickname(user.display_name)
         cleaned_staff_name = clean_nickname(staff.display_name)
+
+        user_data = await self.get_user(user_id_str)
+        if not user_data:
+            await self.create_or_update_user_in_db(user_id_str, cleaned_user_name, user.guild)
+
+        current_xp = await self.get_user_xp(user_id_str)
+        new_total = current_xp + xp
 
         try:
             await self.supabase.table(self.users_table).upsert({
@@ -334,10 +339,15 @@ class DatabaseHandler:
 
     async def remove_xp(self, user: discord.Member, staff: discord.Member, xp: int, reason: Optional[str] = None, trigger_id: Optional[str] = None) -> Tuple[bool, int]:
         user_id_str = str(user.id)
-        current_xp = await self.get_user_xp(user_id_str)
-        new_total = max(0, current_xp - xp) 
         cleaned_user_name = clean_nickname(user.display_name)
         cleaned_staff_name = clean_nickname(staff.display_name)
+
+        user_data = await self.get_user(user_id_str)
+        if not user_data:
+            await self.create_or_update_user_in_db(user_id_str, cleaned_user_name, user.guild)
+
+        current_xp = await self.get_user_xp(user_id_str)
+        new_total = max(0, current_xp - xp) 
 
         if not self.supabase:
             return False, 0

@@ -369,7 +369,7 @@ class ReactionLoggerCog(commands.Cog):
                     await tx.update_hr(member, update_dict)
             
             #await update_hoster(tx, host_member, hr_update_field)
-            #_, new_total = await tx.add_xp(host_member, member, 1, "Hosting (Automated)", str(message.id))
+            _, new_total = await tx.add_xp(host_member, member, 1, "Hosting (Automated)", str(message.id))
            
             co_host_names = "\n".join(co_hosts.keys()) if co_hosts else None
             #for co_host in co_hosts.values():
@@ -410,9 +410,9 @@ class ReactionLoggerCog(commands.Cog):
             
             db_embed = embedBuilder.build_db_logger_record(member, message, 0, payload.emoji)
             log_embed = embedBuilder.build_event_log(member, message, host_member, co_host_names, event_name, successful_attendees)
-            #xp_log = embedBuilder.build_xp_log(member, [f"{cleaned_host_name} | {host_member.id}: {new_total-1} ↠ {new_total}"], 1, f"[Hosting]({message.jump_url})", message.id)
+            xp_log = embedBuilder.build_xp_log(member, [f"{cleaned_host_name} | {host_member.id}: {new_total-1} ↠ {new_total}"], 1, f"[Hosting]({message.jump_url})", message.id)
             
-            msg = await self.log_channel.send(embeds=[db_embed, log_embed])
+            msg = await self.log_channel.send(embeds=[db_embed, xp_log, log_embed])
             tx.track_message(msg)
             
             return True
@@ -467,7 +467,7 @@ class ReactionLoggerCog(commands.Cog):
             db_embed = embedBuilder.build_db_logger_record(member, message, Config.POINTS_PER_ACTIVITY, payload.emoji)
             xp_log = embedBuilder.build_xp_log(member, [f"{clean_nickname(host_member.display_name)} | {host_member.id}: {new_total-1} ↠ {new_total}"], 1, f"[Hosting]({message.jump_url})", message.id)
 
-            msg = await self.log_channel.send(embeds=[db_embed, log_embed, xp_log])
+            msg = await self.log_channel.send(embeds=[db_embed, xp_log, log_embed])
             tx.track_message(msg)
             
             return True

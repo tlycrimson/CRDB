@@ -113,6 +113,7 @@ def build_change_log(prefix, page):
                         "- (4.7) Desertion Module automatic logging/reqeusting feature has been removed.\n"
                         "- (4.7) The save and restore commands can now only be used by roles permitted to use the administrative group commands.\n"
                         "- (4.7.1) Bug fix for ping bypass using the MSL command.\n"
+                        "- (4.7.2) HRs now get XP for hosting when the event is logged.\n"
         )
         june_new_commands = (
                         "- /get-badge-history (!gbh)\n"
