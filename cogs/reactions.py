@@ -85,7 +85,7 @@ class ReactionLoggerCog(commands.Cog):
         self.bot = bot
         self.monitor_channel_ids = set(Config.DEFAULT_MONITOR_CHANNELS)
         self.log_channel_id = Config.DEFAULT_LOG_CHANNEL
-        self.event_channel_ids = [Config.W_EVENT_LOG_CHANNEL_ID, Config.EVENT_LOG_CHANNEL_ID]
+        self.event_channel_ids = Config.NEW_DEF_MON_CHANS
         self.phase_log_channel_id = Config.PHASE_LOG_CHANNEL_ID
         self.tryout_log_channel_id = Config.TRYOUT_LOG_CHANNEL_ID
         self.course_log_channel_id = Config.COURSE_LOG_CHANNEL_ID
