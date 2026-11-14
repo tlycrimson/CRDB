@@ -292,14 +292,29 @@ class ScCog(commands.Cog):
         }
         
         flagged_groups = []
+        sub_regiments = []
+        
         if groups:
-            flagged_groups = [
-                f"• [{item['group']['name']}](https://www.roblox.com/communities/{item['group'].get('id')})"
-                for item in groups
-                if item.get('group') 
-                and item['group'].get('id') in self.BGROUP_IDS 
-                and "awaiting placement" not in item['role'].get('name').lower()
-            ]
+            for item in groups:
+                if item.get('group'):
+                    group_id = item['group'].get('id') 
+
+                    if group_id in self.BGROUP_IDS and "awaiting placement" not in item['role'].get('name').lower():
+                        flagged_groups.append(f"• [{item['group']['name']}](https://www.roblox.com/communities/{group_id})")
+
+                    elif group_id in Config.SUB_REGIMENTS:
+                        if group_id == Config.QMC and "customer" in item['role'].get('name').lower():
+                            continue
+                        sub_regiments.append(f"• [{item['group']['name']}](https://www.roblox.com/communities/{group_id})")
+
+        #if groups:
+        #   flagged_groups = [
+        #        f"• [{item['group']['name']}](https://www.roblox.com/communities/{item['group'].get('id')})"
+        #        for item in groups
+        #        if item.get('group') 
+        #        and item['group'].get('id') in self.BGROUP_IDS 
+        #        and "awaiting placement" not in item['role'].get('name').lower()
+        #    ]
 
         
         fg_value= "YES" if flagged_groups else "CLEAR"
@@ -320,7 +335,7 @@ class ScCog(commands.Cog):
         else:
             records = "CLEAN"
 
-        passed = all(m['meets_req'] for m in metrics.values()) and not bool(flagged_groups) and not criminal_records
+        passed = all(m['meets_req'] for m in metrics.values()) and not bool(flagged_groups) and not criminal_records and not (len(sub_regiments)>=2)
         
         if warning:
             embed = discord.Embed(color=discord.Color.orange())
@@ -345,6 +360,10 @@ class ScCog(commands.Cog):
         
         if flagged_groups:
             embed.add_field(name="FLAGGED GROUPS LIST:", value="\n".join(flagged_groups), inline=False)
+
+        if len(sub_regiments)>=2:
+            embed.add_field(name="IN 2 OR MORE SUBS:", value="\n".join(sub_regiments), inline=False)
+
         embed.set_author(
             name=username,
             url=f"https://www.roblox.com/users/{user_id}/profile",

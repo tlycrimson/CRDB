@@ -102,6 +102,13 @@ class Config:
     AMC = 7293600
     PATROL = 5786049
     SI = 32578828
+    SUB_REGIMENTS = {
+            RAMC,
+            MCS,
+            QMC,
+            ETS,
+            RMAS
+    }
     REGIMENTS = {
             SI,
             PARAS, 
@@ -119,6 +126,7 @@ class Config:
             AMC,
             PATROL,
     }
+    
 
     # ===== DIVISION & RANK ROLES =====
     RMP_ROLE_ID = 1165368311727521795

@@ -77,7 +77,7 @@ def build_regiment_info(data: dict):
         return info_embed
 
 def build_change_log(prefix, page):
-        title = "MP Assistant v1.4.7.2 Change Logs"
+        title = "MP Assistant v1.4.7.3 Change Logs"
         description = "Below features the recent changes made to the bot. If you wish to make a suggestion to improve the bot, use the suggest command. As well, if you spot a mistake or an error, use the report command.\n\n"
         footer = "Last Updated: October 2026"
         
@@ -114,6 +114,7 @@ def build_change_log(prefix, page):
                         "- (4.7) The save and restore commands can now only be used by roles permitted to use the administrative group commands.\n"
                         "- (4.7.1) Bug fix for ping bypass using the MSL command.\n"
                         "- (4.7.2) HRs now get XP for hosting when the event is logged.\n"
+                        "- (4.7.3) Security check info now includes if the user is in 2 or more sub-regiments."
         )
         june_new_commands = (
                         "- /get-badge-history (!gbh)\n"
